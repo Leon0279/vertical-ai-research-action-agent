@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from app.domain.enums.task_type import TaskType
 from app.domain.models import ExecutionState
+from app.services.planner.contracts.task_interpreter_protocol import TaskInterpreterProtocol
 
 
-class TaskInterpreterService:
+class TaskInterpreterService(TaskInterpreterProtocol):
     """Heuristic interpreter placeholder for phase-1 architecture."""
 
     async def interpret(self, state: ExecutionState) -> None:

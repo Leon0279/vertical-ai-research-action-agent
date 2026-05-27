@@ -5,9 +5,10 @@ from __future__ import annotations
 from app.adapters.memory.contracts.long_term_memory_store_protocol import LongTermMemoryStoreProtocol
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 from app.domain.models import ExecutionState
+from app.services.memory.contracts.context_memory_loader_protocol import ContextMemoryLoaderProtocol
 
 
-class ContextMemoryLoaderService:
+class ContextMemoryLoaderService(ContextMemoryLoaderProtocol):
     """Load task-relevant short-term and long-term memory."""
 
     def __init__(

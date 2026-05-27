@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from app.common.utils.ids import generate_session_id, generate_trace_id
 from app.domain.models import ExecutionState, RequestContext
+from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
 
 
-class RequestIntakeService:
+class RequestIntakeService(RequestIntakeProtocol):
     """Normalize request input and initialize the execution state."""
 
     async def intake(self, request: RequestContext) -> ExecutionState:

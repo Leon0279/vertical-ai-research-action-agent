@@ -3,9 +3,10 @@
 from app.domain.enums.task_type import TaskType
 from app.domain.enums.workflow_pattern import WorkflowPattern
 from app.domain.models import ExecutionState, StructuredOutput
+from app.services.output.contracts.response_assembler_protocol import ResponseAssemblerProtocol
 
 
-class ResponseAssemblerService:
+class ResponseAssemblerService(ResponseAssemblerProtocol):
     """Assemble final structured output from run state."""
 
     async def assemble(self, state: ExecutionState) -> StructuredOutput:

@@ -6,9 +6,10 @@ from uuid import uuid4
 
 from app.adapters.memory.contracts.long_term_memory_store_protocol import LongTermMemoryStoreProtocol
 from app.domain.models import ExecutionState, MemoryRecord
+from app.services.memory.contracts.memory_persistence_protocol import MemoryPersistenceProtocol
 
 
-class MemoryPersistenceService:
+class MemoryPersistenceService(MemoryPersistenceProtocol):
     """Persist memory candidates into long-term store."""
 
     def __init__(self, long_term_store: LongTermMemoryStoreProtocol) -> None:

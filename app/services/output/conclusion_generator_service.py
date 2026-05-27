@@ -1,9 +1,10 @@
 """Conclusion generation skeleton."""
 
 from app.domain.models import ConclusionResult, ExecutionState, FinalRecommendation
+from app.services.output.contracts.conclusion_generator_protocol import ConclusionGeneratorProtocol
 
 
-class ConclusionGeneratorService:
+class ConclusionGeneratorService(ConclusionGeneratorProtocol):
     """Generate task-specific conclusion with placeholder logic."""
 
     async def generate(self, state: ExecutionState) -> ConclusionResult:

@@ -2,9 +2,10 @@
 
 from app.domain.enums.memory_type import MemoryType
 from app.domain.models import ExecutionState, MemoryCandidate
+from app.services.memory.contracts.memory_distiller_protocol import MemoryDistillerProtocol
 
 
-class MemoryDistillerService:
+class MemoryDistillerService(MemoryDistillerProtocol):
     """Extract durable memory candidates from current run."""
 
     async def distill(self, state: ExecutionState) -> list[MemoryCandidate]:

@@ -2,9 +2,12 @@
 
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 from app.domain.models import ExecutionState, SessionMemory
+from app.services.memory.contracts.session_continuity_manager_protocol import (
+    SessionContinuityManagerProtocol,
+)
 
 
-class SessionContinuityManagerService:
+class SessionContinuityManagerService(SessionContinuityManagerProtocol):
     """Store task-relevant continuity fields in short-term memory."""
 
     def __init__(self, session_store: SessionMemoryStoreProtocol) -> None:

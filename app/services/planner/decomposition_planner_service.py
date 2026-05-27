@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from app.domain.enums.planning_depth import PlanningDepth
 from app.domain.models import ExecutionPlan, ExecutionState, PlanStep
+from app.services.planner.contracts.decomposition_planner_protocol import DecompositionPlannerProtocol
 
 
-class DecompositionPlannerService:
+class DecompositionPlannerService(DecompositionPlannerProtocol):
     """Produce lightweight planning artifacts."""
 
     async def plan(self, state: ExecutionState) -> None:

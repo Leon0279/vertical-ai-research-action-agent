@@ -2,6 +2,8 @@
 
 from app.api.app import app
 from app.orchestration.research_action_pipeline import ResearchActionPipeline, build_default_pipeline
+from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
+from app.services.planner.contracts.task_interpreter_protocol import TaskInterpreterProtocol
 
 
 def test_app_importable() -> None:
@@ -27,3 +29,10 @@ def test_pipeline_exposes_private_stage_methods() -> None:
         "_output",
     ):
         assert hasattr(pipeline, method_name)
+
+
+def test_default_dependencies_satisfy_pipeline_protocols() -> None:
+    pipeline = build_default_pipeline()
+
+    assert isinstance(pipeline._dependencies.request_intake, RequestIntakeProtocol)
+    assert isinstance(pipeline._dependencies.task_interpreter, TaskInterpreterProtocol)
