@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from app.common.utils.ids import generate_trace_id
 from app.domain.models import ExecutionState, RequestContext, StructuredOutput
 from app.orchestration.pipeline_dependencies import PipelineDependencies, build_default_dependencies
 
@@ -27,14 +26,7 @@ class ResearchActionPipeline:
     async def _request_intake(self, request: RequestContext) -> ExecutionState:
         """Initialize execution state from the incoming request."""
 
-        state = ExecutionState(original_query=request.original_query)
-        state.stage_history.append("request_intake")
-        state.trace_id = generate_trace_id()
-        state.constraints = request.constraints
-        state.project_context["project_id"] = request.project_id
-        state.project_context["session_id"] = request.session_id
-        state.project_context["preferences"] = request.preferences
-        return state
+        return await self._dependencies.request_intake.intake(request)
 
     async def _task_interpretation(self, state: ExecutionState) -> None:
         """Infer task intent fields."""

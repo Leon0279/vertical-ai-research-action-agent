@@ -26,6 +26,7 @@ class ExecutionState(BaseModel):
 
     trace_id: str | None = None
     stage_history: list[str] = Field(default_factory=list)
+    request_metadata: dict[str, Any] = Field(default_factory=dict)
 
     original_query: str
     user_goal: str | None = None

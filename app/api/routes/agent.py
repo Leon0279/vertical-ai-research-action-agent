@@ -19,10 +19,9 @@ async def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
 
     request_context = RequestContext(
         original_query=payload.query,
+        user_id=payload.user_id,
         session_id=payload.session_id,
         project_id=payload.project_id,
-        constraints=payload.constraints,
-        preferences=payload.preferences,
     )
 
     output = await _pipeline.run(request_context)

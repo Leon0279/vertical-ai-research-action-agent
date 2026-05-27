@@ -12,6 +12,7 @@ def test_pipeline_stage_order() -> None:
         pipeline.run(
             RequestContext(
                 original_query="Compare RAG and agentic retrieval for production systems.",
+                user_id="u-1",
                 session_id="s-1",
                 project_id="p-1",
             )

@@ -10,6 +10,8 @@ from app.adapters.retrieval.stub_retriever import StubRetriever
 from app.services.evidence.evidence_processor_service import EvidenceProcessorService
 from app.services.executor.loop_controller_service import LoopControllerService
 from app.services.executor.research_executor_service import ResearchExecutorService
+from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
+from app.services.intake.request_intake_service import RequestIntakeService
 from app.services.memory.context_memory_loader_service import ContextMemoryLoaderService
 from app.services.memory.memory_distiller_service import MemoryDistillerService
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
@@ -26,6 +28,7 @@ from app.services.retrieval.retrieval_service import RetrievalService
 class PipelineDependencies:
     """All service dependencies used by orchestration stages."""
 
+    request_intake: RequestIntakeProtocol
     task_interpreter: TaskInterpreterService
     workflow_router: WorkflowRouterService
     decomposition_planner: DecompositionPlannerService
@@ -54,6 +57,7 @@ def build_default_dependencies() -> PipelineDependencies:
     )
 
     return PipelineDependencies(
+        request_intake=RequestIntakeService(),
         task_interpreter=TaskInterpreterService(),
         workflow_router=WorkflowRouterService(),
         decomposition_planner=DecompositionPlannerService(),
@@ -68,4 +72,3 @@ def build_default_dependencies() -> PipelineDependencies:
         session_continuity_manager=SessionContinuityManagerService(session_store=session_store),
         response_assembler=ResponseAssemblerService(),
     )
-

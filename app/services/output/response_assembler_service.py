@@ -9,6 +9,8 @@ class ResponseAssemblerService:
     """Assemble final structured output from run state."""
 
     async def assemble(self, state: ExecutionState) -> StructuredOutput:
+        session_id = state.project_context.get("session_id")
+        session_id_generated = state.request_metadata.get("session_id_generated")
         return StructuredOutput(
             trace_id=state.trace_id,
             task_type=state.task_type or TaskType.TOPIC_EXPLORATION,
@@ -23,5 +25,8 @@ class ResponseAssemblerService:
             citations=state.conclusion.citations if state.conclusion else [],
             confidence=state.confidence,
             stage_history=state.stage_history,
-            metadata={},
+            metadata={
+                "session_id": session_id,
+                "session_id_generated": session_id_generated,
+            },
         )
