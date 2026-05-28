@@ -2,9 +2,10 @@
 
 from app.adapters.retrieval.contracts.retriever_protocol import RetrieverProtocol
 from app.domain.models import EvidenceItem
+from app.services.retrieval.contracts.retrieval_service_protocol import RetrievalServiceProtocol
 
 
-class RetrievalService:
+class RetrievalService(RetrievalServiceProtocol):
     """Service wrapper over retrieval adapter."""
 
     def __init__(self, retriever: RetrieverProtocol) -> None:

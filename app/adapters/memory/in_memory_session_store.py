@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 from app.domain.models import SessionMemory
 
 
-class InMemorySessionStore:
+class InMemorySessionStore(SessionMemoryStoreProtocol):
     """Simple in-process store for session memory."""
 
     def __init__(self) -> None:

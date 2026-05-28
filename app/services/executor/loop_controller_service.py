@@ -1,10 +1,11 @@
 """Loop continuation policy skeleton."""
 
 from app.domain.models import ExecutionState
+from app.services.executor.contracts.loop_controller_protocol import LoopControllerProtocol
 from app.services.executor.execution_guardrails import ExecutionGuardrails
 
 
-class LoopControllerService:
+class LoopControllerService(LoopControllerProtocol):
     """Simple loop controller bounded by static guardrails."""
 
     def __init__(self, guardrails: ExecutionGuardrails | None = None) -> None:

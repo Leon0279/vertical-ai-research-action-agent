@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from app.adapters.memory.contracts.long_term_memory_store_protocol import LongTermMemoryStoreProtocol
 from app.domain.models import MemoryRecord
 
 
-class InMemoryLongTermStore:
+class InMemoryLongTermStore(LongTermMemoryStoreProtocol):
     """Simple in-process store for long-term memory records."""
 
     def __init__(self) -> None:

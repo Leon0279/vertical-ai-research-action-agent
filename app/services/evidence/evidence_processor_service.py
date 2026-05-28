@@ -1,9 +1,10 @@
 """Evidence processing skeleton."""
 
 from app.domain.models import EvidenceItem, EvidenceSummary
+from app.services.evidence.contracts.evidence_processor_protocol import EvidenceProcessorProtocol
 
 
-class EvidenceProcessorService:
+class EvidenceProcessorService(EvidenceProcessorProtocol):
     """Evidence normalization and summarization placeholder."""
 
     async def normalize(self, evidence: list[EvidenceItem]) -> list[EvidenceItem]:
