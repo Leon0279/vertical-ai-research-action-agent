@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from app.domain.models import RequestContext
+from app.domain.models import ExecutionContext, RequestContext
 from app.services.intake.request_intake_service import RequestIntakeService
 
 
@@ -21,18 +21,15 @@ def test_request_intake_service_normalizes_and_generates_session_id() -> None:
         )
     )
 
-    assert state.original_query == "Help me compare retrieval methods."
-    assert state.trace_id and state.trace_id.startswith("trace-")
-    assert state.constraints == {}
-    assert state.stage_history == ["request_intake"]
-    assert state.project_context["project_id"] == "project-1"
-    assert state.project_context["session_id"].startswith("session-")
-    assert state.request_metadata == {
-        "user_id": "user-1",
-        "session_id": state.project_context["session_id"],
-        "project_id": "project-1",
-        "session_id_generated": True,
-    }
+    assert isinstance(state, ExecutionContext)
+    assert state.running_state.original_query == "Help me compare retrieval methods."
+    assert state.running_state.project_scope_id == "project-1"
+    assert state.running_state.constraints == []
+    assert state.runtime_context.request_id.startswith("trace-")
+    assert state.runtime_context.user_id == "user-1"
+    assert state.runtime_context.session_id.startswith("session-")
+    assert state.runtime_context.session_id_generated is True
+    assert state.runtime_context.stage_history == ["request_intake"]
 
 
 def test_request_intake_service_preserves_existing_session_id() -> None:
@@ -48,8 +45,8 @@ def test_request_intake_service_preserves_existing_session_id() -> None:
         )
     )
 
-    assert state.project_context["session_id"] == "session-existing"
-    assert state.request_metadata["session_id_generated"] is False
+    assert state.runtime_context.session_id == "session-existing"
+    assert state.runtime_context.session_id_generated is False
 
 
 def test_request_intake_service_rejects_blank_query() -> None:

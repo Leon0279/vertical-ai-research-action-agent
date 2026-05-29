@@ -1,13 +1,14 @@
 """Conclusion generation skeleton."""
 
-from app.domain.models import ConclusionResult, ExecutionState, FinalRecommendation
+from app.domain.models import ConclusionResult, ExecutionContext, FinalRecommendation
 from app.services.output.contracts.conclusion_generator_protocol import ConclusionGeneratorProtocol
 
 
 class ConclusionGeneratorService(ConclusionGeneratorProtocol):
     """Generate task-specific conclusion with placeholder logic."""
 
-    async def generate(self, state: ExecutionState) -> ConclusionResult:
+    async def generate(self, context: ExecutionContext) -> ConclusionResult:
+        state = context.running_state
         recommendation = FinalRecommendation(
             recommendation="Phase 1 skeleton only: no final production recommendation yet.",
             rationale="Core architecture boundaries are established; internals remain stubbed.",
@@ -19,7 +20,7 @@ class ConclusionGeneratorService(ConclusionGeneratorProtocol):
             citations=[],
             confidence=0.2,
         )
-        state.final_recommendation = recommendation
-        state.confidence = conclusion.confidence
-        state.action_items = conclusion.action_items
+        state.final_recommendation = recommendation.recommendation
+        state.confidence = "low"
+        state.action_items = [item.title for item in conclusion.action_items]
         return conclusion

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.models import ExecutionState, IntermediateFinding
+from app.domain.models import ExecutionContext, IntermediateFinding
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
 from app.services.evidence.contracts.evidence_processor_protocol import EvidenceProcessorProtocol
 from app.services.executor.contracts.loop_controller_protocol import LoopControllerProtocol
@@ -22,11 +22,12 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         self._evidence_processor = evidence_processor
         self._loop_controller = loop_controller
 
-    async def execute(self, state: ExecutionState) -> None:
+    async def execute(self, context: ExecutionContext) -> None:
+        state = context.running_state
         iteration = 0
         collected = []
 
-        while await self._loop_controller.should_continue(state=state, iteration=iteration):
+        while await self._loop_controller.should_continue(context=context, iteration=iteration):
             iteration += 1
             batch = await self._retrieval_service.retrieve(query=state.original_query, limit=5)
             collected.extend(batch)
@@ -34,12 +35,12 @@ class ResearchExecutorService(ResearchExecutorProtocol):
                 break
 
         normalized = await self._evidence_processor.normalize(collected)
-        state.retrieved_evidence = normalized
-        state.evidence_summary = await self._evidence_processor.summarize(normalized)
-        state.intermediate_findings = [
-            IntermediateFinding(
-                statement="Research loop completed with stubbed retrieval backend.",
-                rationale="No real external retrieval is enabled in Phase 1.",
-                confidence=0.2,
-            )
-        ]
+        state.retrieved_evidence_refs = [item.evidence_id for item in normalized]
+        evidence_summary = await self._evidence_processor.summarize(normalized)
+        state.evidence_summary = evidence_summary.summary
+        finding = IntermediateFinding(
+            statement="Research loop completed with stubbed retrieval backend.",
+            rationale="No real external retrieval is enabled in Phase 1.",
+            confidence=0.2,
+        )
+        state.intermediate_findings = [finding.statement]

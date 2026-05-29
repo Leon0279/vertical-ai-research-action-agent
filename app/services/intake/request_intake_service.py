@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from app.common.utils.ids import generate_session_id, generate_trace_id
-from app.domain.models import ExecutionState, RequestContext
+from app.domain.models import ExecutionContext, RequestContext, RunningState, RuntimeContext
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
 
 
 class RequestIntakeService(RequestIntakeProtocol):
-    """Normalize request input and initialize the execution state."""
+    """Normalize request input and initialize the execution context."""
 
-    async def intake(self, request: RequestContext) -> ExecutionState:
+    async def intake(self, request: RequestContext) -> ExecutionContext:
         original_query = request.original_query.strip()
         user_id = request.user_id.strip()
 
@@ -24,18 +24,37 @@ class RequestIntakeService(RequestIntakeProtocol):
         if session_id_generated:
             session_id = generate_session_id()
 
-        state = ExecutionState(
+        return self._build_execution_context(
             original_query=original_query,
-            constraints={},
-            request_metadata={
-                "user_id": user_id,
-                "session_id": session_id,
-                "project_id": request.project_id,
-                "session_id_generated": session_id_generated,
-            },
+            user_id=user_id,
+            session_id=session_id,
+            session_id_generated=session_id_generated,
+            project_id=request.project_id,
         )
-        state.stage_history.append("request_intake")
-        state.trace_id = generate_trace_id()
-        state.project_context["session_id"] = session_id
-        state.project_context["project_id"] = request.project_id
-        return state
+
+    def _build_execution_context(
+        self,
+        *,
+        original_query: str,
+        user_id: str,
+        session_id: str,
+        session_id_generated: bool,
+        project_id: str | None,
+    ) -> ExecutionContext:
+        """Build the initial execution context after request normalization."""
+
+        running_state = RunningState(
+            original_query=original_query,
+            project_scope_id=project_id,
+        )
+        runtime_context = RuntimeContext(
+            request_id=generate_trace_id(),
+            user_id=user_id,
+            session_id=session_id,
+            session_id_generated=session_id_generated,
+        )
+        runtime_context.stage_history.append("request_intake")
+        return ExecutionContext(
+            running_state=running_state,
+            runtime_context=runtime_context,
+        )

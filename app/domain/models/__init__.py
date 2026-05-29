@@ -4,6 +4,13 @@ from app.domain.models.action_item import ActionItem
 from app.domain.models.citation import Citation
 from app.domain.models.conclusion.conclusion_result import ConclusionResult
 from app.domain.models.conclusion.final_recommendation import FinalRecommendation
+from app.domain.models.context import (
+    ContextItem,
+    ExecutionContext,
+    RunningState,
+    RuntimeContext,
+    SupplementalContext,
+)
 from app.domain.models.evidence.evidence_item import EvidenceItem
 from app.domain.models.evidence.evidence_summary import EvidenceSummary
 from app.domain.models.execution_state import ExecutionState
@@ -20,8 +27,10 @@ __all__ = [
     "ActionItem",
     "Citation",
     "ConclusionResult",
+    "ContextItem",
     "EvidenceItem",
     "EvidenceSummary",
+    "ExecutionContext",
     "ExecutionPlan",
     "ExecutionState",
     "FinalRecommendation",
@@ -30,6 +39,9 @@ __all__ = [
     "MemoryRecord",
     "PlanStep",
     "RequestContext",
+    "RunningState",
+    "RuntimeContext",
     "SessionMemory",
     "StructuredOutput",
+    "SupplementalContext",
 ]

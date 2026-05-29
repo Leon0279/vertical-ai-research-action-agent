@@ -2,30 +2,22 @@
 
 from __future__ import annotations
 
-from app.domain.enums.planning_depth import PlanningDepth
-from app.domain.models import ExecutionPlan, ExecutionState, PlanStep
+from app.domain.models import ExecutionContext
 from app.services.planner.contracts.decomposition_planner_protocol import DecompositionPlannerProtocol
 
 
 class DecompositionPlannerService(DecompositionPlannerProtocol):
     """Produce lightweight planning artifacts."""
 
-    async def plan(self, state: ExecutionState) -> None:
+    async def plan(self, context: ExecutionContext) -> None:
+        state = context.running_state
         word_count = len(state.original_query.split())
-        depth = PlanningDepth.SHALLOW if word_count < 15 else PlanningDepth.MEDIUM
-        state.planning_depth = depth
-
-        state.plan = ExecutionPlan(
-            objective=state.user_goal or state.original_query,
-            planning_depth=depth,
-            steps=[
-                PlanStep(
-                    step_id="step-1",
-                    title="Collect evidence",
-                    description="Retrieve and organize task-relevant evidence.",
-                )
-            ],
-        )
+        planning_depth = "SHALLOW" if word_count < 15 else "MEDIUM"
+        objective = state.user_goal or state.original_query
+        state.plan = [
+            f"Objective: {objective}",
+            f"Planning depth: {planning_depth}",
+            "Collect evidence: Retrieve and organize task-relevant evidence.",
+        ]
         state.sub_questions = []
         state.comparison_candidates = []
-        state.initial_evidence_strategy = "stub_strategy"
