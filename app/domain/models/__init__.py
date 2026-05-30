@@ -22,6 +22,7 @@ from app.domain.models.planning.execution_plan import ExecutionPlan
 from app.domain.models.planning.plan_step import PlanStep
 from app.domain.models.request_context import RequestContext
 from app.domain.models.structured_output import StructuredOutput
+from app.domain.models.task_interpretation_result import TaskInterpretationResult
 
 __all__ = [
     "ActionItem",
@@ -44,4 +45,5 @@ __all__ = [
     "SessionMemory",
     "StructuredOutput",
     "SupplementalContext",
+    "TaskInterpretationResult",
 ]
