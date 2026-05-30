@@ -2,6 +2,8 @@
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.adapters.llm.stub_llm_client import StubLLMClient
+from app.adapters.llm.zhipu_llm_client import ZhipuLLMClient
+from app.adapters.llm.zhipu_llm_client_config import ZhipuLLMClientConfig
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.adapters.retrieval.contracts.retriever_protocol import RetrieverProtocol
@@ -27,6 +29,7 @@ from app.services.retrieval.retrieval_service import RetrievalService
 
 def test_adapter_protocol_conformance() -> None:
     assert isinstance(StubLLMClient(), LLMClientProtocol)
+    assert isinstance(ZhipuLLMClient(config=ZhipuLLMClientConfig(api_key="fake-key")), LLMClientProtocol)
     assert isinstance(StubRetriever(), RetrieverProtocol)
 
 
