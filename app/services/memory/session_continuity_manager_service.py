@@ -20,13 +20,17 @@ class SessionContinuityManagerService(SessionContinuityManagerProtocol):
             return
 
         memory = SessionMemory(
+            user_id=context.runtime_context.user_id,
             session_id=session_id,
-            active_user_goal=state.user_goal,
-            active_task_type=state.task_type,
-            task_framing=state.task_framing,
+            session_working_summary=state.user_goal,
+            current_local_task_framing=state.task_framing,
             latest_recommendation=state.final_recommendation,
             latest_action_items=state.action_items,
-            session_project_context={"project_scope_id": state.project_scope_id},
-            session_constraints={"constraints": state.constraints},
+            open_questions=state.open_questions,
+            temporary_context={
+                "project_scope_id": state.project_scope_id,
+                "project_context_summary": state.project_context_summary,
+                "constraints": state.constraints,
+            },
         )
         await self._session_store.save(memory)

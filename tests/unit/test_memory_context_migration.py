@@ -17,8 +17,10 @@ def test_context_memory_loader_populates_supplemental_context() -> None:
     async def run_test() -> ExecutionContext:
         await session_store.save(
             SessionMemory(
+                user_id="user-1",
                 session_id="session-1",
-                active_user_goal="Compare retrieval approaches.",
+                session_working_summary="Compare retrieval approaches.",
+                current_local_task_framing="Comparison of retrieval approaches.",
                 latest_recommendation="Prefer the simpler baseline first.",
             )
         )
@@ -46,6 +48,7 @@ def test_context_memory_loader_populates_supplemental_context() -> None:
 
     assert len(context.supplemental_context.session_support) == 1
     assert context.supplemental_context.session_support[0].source_type == "session_memory"
+    assert context.running_state.task_framing == "Comparison of retrieval approaches."
     assert len(context.supplemental_context.decision_support) == 1
     assert context.supplemental_context.decision_support[0].summary == "Use Redis for session memory."
 
@@ -70,12 +73,13 @@ def test_session_continuity_manager_uses_runtime_session_id() -> None:
 
     async def run_test() -> SessionMemory | None:
         await SessionContinuityManagerService(session_store).update(context)
-        return await session_store.load("session-1")
+        return await session_store.load(user_id="user-1", session_id="session-1")
 
     memory = asyncio.run(run_test())
 
     assert memory is not None
+    assert memory.user_id == "user-1"
     assert memory.session_id == "session-1"
-    assert memory.active_user_goal == "Compare retrieval approaches."
+    assert memory.session_working_summary == "Compare retrieval approaches."
     assert memory.latest_action_items == ["Run a small evaluation."]
-    assert memory.session_project_context == {"project_scope_id": "project-1"}
+    assert memory.temporary_context["project_scope_id"] == "project-1"

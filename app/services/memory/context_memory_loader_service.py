@@ -24,6 +24,7 @@ class ContextMemoryLoaderService(ContextMemoryLoaderProtocol):
         state = context.running_state
         supplemental_context = context.supplemental_context
         session_memory = await self._session_store.load(
+            user_id=context.runtime_context.user_id,
             session_id=context.runtime_context.session_id
         )
         long_term_records = await self._long_term_store.query(
@@ -35,9 +36,7 @@ class ContextMemoryLoaderService(ContextMemoryLoaderProtocol):
             supplemental_context.session_support.append(
                 self._context_item_from_session_memory(session_memory)
             )
-            state.user_goal = state.user_goal or session_memory.active_user_goal
-            state.task_type = state.task_type or session_memory.active_task_type
-            state.task_framing = state.task_framing or session_memory.task_framing
+            state.task_framing = state.task_framing or session_memory.current_local_task_framing
 
         for record in long_term_records:
             item = self._context_item_from_memory_record(record)
@@ -56,8 +55,8 @@ class ContextMemoryLoaderService(ContextMemoryLoaderProtocol):
         summary_parts = [
             value
             for value in (
-                memory.active_user_goal,
-                memory.task_framing,
+                memory.session_working_summary,
+                memory.current_local_task_framing,
                 memory.latest_recommendation,
             )
             if value

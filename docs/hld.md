@@ -2026,7 +2026,7 @@ The Task Interpretation Component converts a normalized request into an initial 
 
 ## Context and Memory Loader
 
-(I will write a LLM for Context and Memory Loader Implementation, so this part is just a brief description)
+(I will write a LLD for Context and Memory Loader Implementation, so this part is just a brief description)
 
 ### Purpose
 

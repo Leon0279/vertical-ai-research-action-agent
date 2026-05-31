@@ -18,6 +18,7 @@ from app.domain.models.intermediate_finding import IntermediateFinding
 from app.domain.models.memory.memory_candidate import MemoryCandidate
 from app.domain.models.memory.memory_record import MemoryRecord
 from app.domain.models.memory.session_memory import SessionMemory
+from app.domain.models.memory.session_turn_summary import SessionTurnSummary
 from app.domain.models.planning.execution_plan import ExecutionPlan
 from app.domain.models.planning.plan_step import PlanStep
 from app.domain.models.request_context import RequestContext
@@ -43,6 +44,7 @@ __all__ = [
     "RunningState",
     "RuntimeContext",
     "SessionMemory",
+    "SessionTurnSummary",
     "StructuredOutput",
     "SupplementalContext",
     "TaskInterpretationResult",

@@ -10,13 +10,13 @@ class InMemorySessionStore(SessionMemoryStoreProtocol):
     """Simple in-process store for session memory."""
 
     def __init__(self) -> None:
-        self._store: dict[str, SessionMemory] = {}
+        self._store: dict[tuple[str, str], SessionMemory] = {}
 
-    async def load(self, session_id: str | None) -> SessionMemory | None:
-        if not session_id:
+    async def load(self, *, user_id: str, session_id: str | None) -> SessionMemory | None:
+        if not user_id or not session_id:
             return None
-        return self._store.get(session_id)
+        return self._store.get((user_id, session_id))
 
     async def save(self, memory: SessionMemory) -> None:
-        if memory.session_id:
-            self._store[memory.session_id] = memory
+        if memory.user_id and memory.session_id:
+            self._store[(memory.user_id, memory.session_id)] = memory
