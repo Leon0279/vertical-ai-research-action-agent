@@ -6,7 +6,16 @@ from app.adapters.llm.zhipu_llm_client import ZhipuLLMClient
 from app.adapters.llm.zhipu_llm_client_config import ZhipuLLMClientConfig
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
+from app.adapters.memory.contracts.project_profile_memory_store_protocol import (
+    ProjectProfileMemoryStoreProtocol,
+)
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
+from app.adapters.memory.postgres_project_profile_memory_store import (
+    PostgresProjectProfileMemoryStore,
+)
+from app.adapters.memory.postgres_project_profile_memory_store_config import (
+    PostgresProjectProfileMemoryStoreConfig,
+)
 from app.adapters.memory.redis_session_memory_store import RedisSessionMemoryStore
 from app.adapters.memory.redis_session_memory_store_config import RedisSessionMemoryStoreConfig
 from app.adapters.retrieval.contracts.retriever_protocol import RetrieverProtocol
@@ -33,6 +42,13 @@ from app.services.retrieval.retrieval_service import RetrievalService
 def test_adapter_protocol_conformance() -> None:
     assert isinstance(StubLLMClient(), LLMClientProtocol)
     assert isinstance(ZhipuLLMClient(config=ZhipuLLMClientConfig(api_key="fake-key")), LLMClientProtocol)
+    assert isinstance(
+        PostgresProjectProfileMemoryStore(
+            config=PostgresProjectProfileMemoryStoreConfig(dsn="postgresql://example.test/db"),
+            pool=object(),
+        ),
+        ProjectProfileMemoryStoreProtocol,
+    )
     assert isinstance(
         RedisSessionMemoryStore(
             config=RedisSessionMemoryStoreConfig(redis_url="redis://example.test/0"),

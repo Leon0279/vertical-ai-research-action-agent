@@ -17,6 +17,7 @@ from app.domain.models.execution_state import ExecutionState
 from app.domain.models.intermediate_finding import IntermediateFinding
 from app.domain.models.memory.memory_candidate import MemoryCandidate
 from app.domain.models.memory.memory_record import MemoryRecord
+from app.domain.models.memory.project_profile_memory_record import ProjectProfileMemoryRecord
 from app.domain.models.memory.session_memory import SessionMemory
 from app.domain.models.memory.session_turn_summary import SessionTurnSummary
 from app.domain.models.planning.execution_plan import ExecutionPlan
@@ -39,6 +40,7 @@ __all__ = [
     "IntermediateFinding",
     "MemoryCandidate",
     "MemoryRecord",
+    "ProjectProfileMemoryRecord",
     "PlanStep",
     "RequestContext",
     "RunningState",
