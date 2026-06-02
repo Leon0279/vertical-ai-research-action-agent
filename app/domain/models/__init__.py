@@ -1,6 +1,7 @@
 """Typed domain model exports for convenient top-level imports."""
 
 from app.domain.models.action_item import ActionItem
+from app.domain.models.memory.action_memory_record import ActionMemoryRecord
 from app.domain.models.citation import Citation
 from app.domain.models.conclusion.conclusion_result import ConclusionResult
 from app.domain.models.conclusion.final_recommendation import FinalRecommendation
@@ -29,6 +30,7 @@ from app.domain.models.task_interpretation_result import TaskInterpretationResul
 
 __all__ = [
     "ActionItem",
+    "ActionMemoryRecord",
     "Citation",
     "ConclusionResult",
     "ContextItem",

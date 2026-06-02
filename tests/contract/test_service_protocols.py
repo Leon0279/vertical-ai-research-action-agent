@@ -6,6 +6,9 @@ from app.adapters.llm.zhipu_llm_client import ZhipuLLMClient
 from app.adapters.llm.zhipu_llm_client_config import ZhipuLLMClientConfig
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
+from app.adapters.memory.contracts.action_memory_store_protocol import (
+    ActionMemoryStoreProtocol,
+)
 from app.adapters.memory.contracts.decision_memory_store_protocol import (
     DecisionMemoryStoreProtocol,
 )
@@ -13,6 +16,12 @@ from app.adapters.memory.contracts.project_profile_memory_store_protocol import 
     ProjectProfileMemoryStoreProtocol,
 )
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
+from app.adapters.memory.postgres_action_memory_store import (
+    PostgresActionMemoryStore,
+)
+from app.adapters.memory.postgres_action_memory_store_config import (
+    PostgresActionMemoryStoreConfig,
+)
 from app.adapters.memory.postgres_decision_memory_store import (
     PostgresDecisionMemoryStore,
 )
@@ -51,6 +60,13 @@ from app.services.retrieval.retrieval_service import RetrievalService
 def test_adapter_protocol_conformance() -> None:
     assert isinstance(StubLLMClient(), LLMClientProtocol)
     assert isinstance(ZhipuLLMClient(config=ZhipuLLMClientConfig(api_key="fake-key")), LLMClientProtocol)
+    assert isinstance(
+        PostgresActionMemoryStore(
+            config=PostgresActionMemoryStoreConfig(dsn="postgresql://example.test/db"),
+            pool=object(),
+        ),
+        ActionMemoryStoreProtocol,
+    )
     assert isinstance(
         PostgresDecisionMemoryStore(
             config=PostgresDecisionMemoryStoreConfig(dsn="postgresql://example.test/db"),

@@ -1,5 +1,8 @@
 """Memory adapter contracts."""
 
+from app.adapters.memory.contracts.action_memory_store_protocol import (
+    ActionMemoryStoreProtocol,
+)
 from app.adapters.memory.contracts.decision_memory_store_protocol import (
     DecisionMemoryStoreProtocol,
 )
@@ -10,6 +13,7 @@ from app.adapters.memory.contracts.project_profile_memory_store_protocol import 
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 
 __all__ = [
+    "ActionMemoryStoreProtocol",
     "SessionMemoryStoreProtocol",
     "LongTermMemoryStoreProtocol",
     "DecisionMemoryStoreProtocol",
