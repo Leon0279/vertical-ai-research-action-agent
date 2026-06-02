@@ -12,6 +12,9 @@ from app.adapters.memory.contracts.action_memory_store_protocol import (
 from app.adapters.memory.contracts.decision_memory_store_protocol import (
     DecisionMemoryStoreProtocol,
 )
+from app.adapters.memory.contracts.preference_policy_memory_store_protocol import (
+    PreferencePolicyMemoryStoreProtocol,
+)
 from app.adapters.memory.contracts.project_profile_memory_store_protocol import (
     ProjectProfileMemoryStoreProtocol,
 )
@@ -27,6 +30,12 @@ from app.adapters.memory.postgres_decision_memory_store import (
 )
 from app.adapters.memory.postgres_decision_memory_store_config import (
     PostgresDecisionMemoryStoreConfig,
+)
+from app.adapters.memory.postgres_preference_policy_memory_store import (
+    PostgresPreferencePolicyMemoryStore,
+)
+from app.adapters.memory.postgres_preference_policy_memory_store_config import (
+    PostgresPreferencePolicyMemoryStoreConfig,
 )
 from app.adapters.memory.postgres_project_profile_memory_store import (
     PostgresProjectProfileMemoryStore,
@@ -73,6 +82,13 @@ def test_adapter_protocol_conformance() -> None:
             pool=object(),
         ),
         DecisionMemoryStoreProtocol,
+    )
+    assert isinstance(
+        PostgresPreferencePolicyMemoryStore(
+            config=PostgresPreferencePolicyMemoryStoreConfig(dsn="postgresql://example.test/db"),
+            pool=object(),
+        ),
+        PreferencePolicyMemoryStoreProtocol,
     )
     assert isinstance(
         PostgresProjectProfileMemoryStore(

@@ -7,6 +7,9 @@ from app.adapters.memory.contracts.decision_memory_store_protocol import (
     DecisionMemoryStoreProtocol,
 )
 from app.adapters.memory.contracts.long_term_memory_store_protocol import LongTermMemoryStoreProtocol
+from app.adapters.memory.contracts.preference_policy_memory_store_protocol import (
+    PreferencePolicyMemoryStoreProtocol,
+)
 from app.adapters.memory.contracts.project_profile_memory_store_protocol import (
     ProjectProfileMemoryStoreProtocol,
 )
@@ -17,5 +20,6 @@ __all__ = [
     "SessionMemoryStoreProtocol",
     "LongTermMemoryStoreProtocol",
     "DecisionMemoryStoreProtocol",
+    "PreferencePolicyMemoryStoreProtocol",
     "ProjectProfileMemoryStoreProtocol",
 ]
