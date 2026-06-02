@@ -1,5 +1,8 @@
 """Memory adapter stubs."""
 
+from app.adapters.memory.contracts.decision_memory_store_protocol import (
+    DecisionMemoryStoreProtocol,
+)
 from app.adapters.memory.contracts.long_term_memory_store_protocol import LongTermMemoryStoreProtocol
 from app.adapters.memory.contracts.project_profile_memory_store_protocol import (
     ProjectProfileMemoryStoreProtocol,
@@ -7,6 +10,15 @@ from app.adapters.memory.contracts.project_profile_memory_store_protocol import 
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
+from app.adapters.memory.postgres_decision_memory_store import (
+    PostgresDecisionMemoryStore,
+)
+from app.adapters.memory.postgres_decision_memory_store_config import (
+    PostgresDecisionMemoryStoreConfig,
+)
+from app.adapters.memory.postgres_decision_memory_store_error import (
+    PostgresDecisionMemoryStoreError,
+)
 from app.adapters.memory.postgres_project_profile_memory_store import (
     PostgresProjectProfileMemoryStore,
 )
@@ -23,9 +35,13 @@ from app.adapters.memory.redis_session_memory_store_error import RedisSessionMem
 __all__ = [
     "SessionMemoryStoreProtocol",
     "LongTermMemoryStoreProtocol",
+    "DecisionMemoryStoreProtocol",
     "ProjectProfileMemoryStoreProtocol",
     "InMemorySessionStore",
     "InMemoryLongTermStore",
+    "PostgresDecisionMemoryStore",
+    "PostgresDecisionMemoryStoreConfig",
+    "PostgresDecisionMemoryStoreError",
     "PostgresProjectProfileMemoryStore",
     "PostgresProjectProfileMemoryStoreConfig",
     "PostgresProjectProfileMemoryStoreError",

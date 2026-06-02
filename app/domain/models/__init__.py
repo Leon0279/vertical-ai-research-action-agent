@@ -15,6 +15,7 @@ from app.domain.models.evidence.evidence_item import EvidenceItem
 from app.domain.models.evidence.evidence_summary import EvidenceSummary
 from app.domain.models.execution_state import ExecutionState
 from app.domain.models.intermediate_finding import IntermediateFinding
+from app.domain.models.memory.decision_memory_record import DecisionMemoryRecord
 from app.domain.models.memory.memory_candidate import MemoryCandidate
 from app.domain.models.memory.memory_record import MemoryRecord
 from app.domain.models.memory.project_profile_memory_record import ProjectProfileMemoryRecord
@@ -31,6 +32,7 @@ __all__ = [
     "Citation",
     "ConclusionResult",
     "ContextItem",
+    "DecisionMemoryRecord",
     "EvidenceItem",
     "EvidenceSummary",
     "ExecutionContext",
