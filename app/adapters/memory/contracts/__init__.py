@@ -13,6 +13,9 @@ from app.adapters.memory.contracts.preference_policy_memory_store_protocol impor
 from app.adapters.memory.contracts.project_profile_memory_store_protocol import (
     ProjectProfileMemoryStoreProtocol,
 )
+from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
+    ResearchKnowledgeMemoryStoreProtocol,
+)
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 
 __all__ = [
@@ -22,4 +25,5 @@ __all__ = [
     "DecisionMemoryStoreProtocol",
     "PreferencePolicyMemoryStoreProtocol",
     "ProjectProfileMemoryStoreProtocol",
+    "ResearchKnowledgeMemoryStoreProtocol",
 ]

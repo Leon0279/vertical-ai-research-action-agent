@@ -8,6 +8,15 @@ from app.domain.models.memory.preference_policy_memory_record import (
     PreferencePolicyMemoryRecord,
 )
 from app.domain.models.memory.project_profile_memory_record import ProjectProfileMemoryRecord
+from app.domain.models.memory.research_knowledge_recall_query import (
+    ResearchKnowledgeRecallQuery,
+)
+from app.domain.models.memory.research_knowledge_recall_result import (
+    ResearchKnowledgeRecallResult,
+)
+from app.domain.models.memory.research_knowledge_unit_record import (
+    ResearchKnowledgeUnitRecord,
+)
 from app.domain.models.memory.session_memory import SessionMemory
 from app.domain.models.memory.session_turn_summary import SessionTurnSummary
 
@@ -18,6 +27,9 @@ __all__ = [
     "MemoryRecord",
     "PreferencePolicyMemoryRecord",
     "ProjectProfileMemoryRecord",
+    "ResearchKnowledgeRecallQuery",
+    "ResearchKnowledgeRecallResult",
+    "ResearchKnowledgeUnitRecord",
     "SessionMemory",
     "SessionTurnSummary",
 ]

@@ -18,6 +18,9 @@ from app.adapters.memory.contracts.preference_policy_memory_store_protocol impor
 from app.adapters.memory.contracts.project_profile_memory_store_protocol import (
     ProjectProfileMemoryStoreProtocol,
 )
+from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
+    ResearchKnowledgeMemoryStoreProtocol,
+)
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 from app.adapters.memory.postgres_action_memory_store import (
     PostgresActionMemoryStore,
@@ -42,6 +45,12 @@ from app.adapters.memory.postgres_project_profile_memory_store import (
 )
 from app.adapters.memory.postgres_project_profile_memory_store_config import (
     PostgresProjectProfileMemoryStoreConfig,
+)
+from app.adapters.memory.postgres_research_knowledge_memory_store import (
+    PostgresResearchKnowledgeMemoryStore,
+)
+from app.adapters.memory.postgres_research_knowledge_memory_store_config import (
+    PostgresResearchKnowledgeMemoryStoreConfig,
 )
 from app.adapters.memory.redis_session_memory_store import RedisSessionMemoryStore
 from app.adapters.memory.redis_session_memory_store_config import RedisSessionMemoryStoreConfig
@@ -96,6 +105,13 @@ def test_adapter_protocol_conformance() -> None:
             pool=object(),
         ),
         ProjectProfileMemoryStoreProtocol,
+    )
+    assert isinstance(
+        PostgresResearchKnowledgeMemoryStore(
+            config=PostgresResearchKnowledgeMemoryStoreConfig(dsn="postgresql://example.test/db"),
+            pool=object(),
+        ),
+        ResearchKnowledgeMemoryStoreProtocol,
     )
     assert isinstance(
         RedisSessionMemoryStore(
