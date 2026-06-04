@@ -12,6 +12,7 @@ from app.domain.models.context import (
     RuntimeContext,
     SupplementalContext,
 )
+from app.domain.models.embedding_result import EmbeddingResult
 from app.domain.models.evidence.evidence_item import EvidenceItem
 from app.domain.models.evidence.evidence_summary import EvidenceSummary
 from app.domain.models.execution_state import ExecutionState
@@ -47,6 +48,7 @@ __all__ = [
     "ConclusionResult",
     "ContextItem",
     "DecisionMemoryRecord",
+    "EmbeddingResult",
     "EvidenceItem",
     "EvidenceSummary",
     "ExecutionContext",
