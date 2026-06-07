@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.domain.enums.workflow_pattern import WorkflowPattern
+from app.domain.models.workflow_execution_policy import WorkflowExecutionPolicy
+
 
 class RunningState(BaseModel):
     """Canonical mutable state for a single request run."""
@@ -54,6 +57,15 @@ class RunningState(BaseModel):
     current_action_status: str | None = Field(
         default=None,
         description="A distilled summary of the current project action and execution status.",
+    )
+
+    workflow_pattern: WorkflowPattern | None = Field(
+        default=None,
+        description="Workflow pattern selected by the Workflow Router for downstream stages.",
+    )
+    execution_policy: WorkflowExecutionPolicy | None = Field(
+        default=None,
+        description="Lightweight execution policy selected by the Workflow Router.",
     )
 
     plan: list[str] = Field(

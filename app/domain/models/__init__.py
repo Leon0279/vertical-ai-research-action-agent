@@ -40,6 +40,7 @@ from app.domain.models.planning.plan_step import PlanStep
 from app.domain.models.request_context import RequestContext
 from app.domain.models.structured_output import StructuredOutput
 from app.domain.models.task_interpretation_result import TaskInterpretationResult
+from app.domain.models.workflow_execution_policy import WorkflowExecutionPolicy
 
 __all__ = [
     "ActionItem",
@@ -72,4 +73,5 @@ __all__ = [
     "StructuredOutput",
     "SupplementalContext",
     "TaskInterpretationResult",
+    "WorkflowExecutionPolicy",
 ]

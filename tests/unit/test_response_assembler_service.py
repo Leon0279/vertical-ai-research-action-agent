@@ -56,3 +56,23 @@ def test_response_assembler_converts_running_state_outputs() -> None:
     assert output.recommendation == "Use the simpler retrieval baseline first."
     assert [item.title for item in output.action_items] == ["Run a small evaluation."]
     assert output.confidence == 0.5
+
+
+def test_response_assembler_prefers_routed_workflow_pattern() -> None:
+    context = ExecutionContext(
+        running_state=RunningState(
+            original_query="Compare retrieval methods.",
+            task_type=TaskType.COMPARISON.value,
+            workflow_pattern=WorkflowPattern.RECOMMENDATION,
+        ),
+        runtime_context=RuntimeContext(
+            request_id="trace-123",
+            user_id="user-1",
+            session_id="session-123",
+        ),
+    )
+
+    output = asyncio.run(ResponseAssemblerService().assemble(context))
+
+    assert output.task_type == TaskType.COMPARISON
+    assert output.workflow_pattern == WorkflowPattern.RECOMMENDATION
