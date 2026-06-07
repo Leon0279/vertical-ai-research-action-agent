@@ -4,8 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.adapters.embedding.zhipu_embedding_client import ZhipuEmbeddingClient
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
-from app.adapters.memory.in_memory_session_store import InMemorySessionStore
+from app.adapters.memory.postgres_action_memory_store import PostgresActionMemoryStore
+from app.adapters.memory.postgres_decision_memory_store import PostgresDecisionMemoryStore
+from app.adapters.memory.postgres_preference_policy_memory_store import (
+    PostgresPreferencePolicyMemoryStore,
+)
+from app.adapters.memory.postgres_project_profile_memory_store import (
+    PostgresProjectProfileMemoryStore,
+)
+from app.adapters.memory.postgres_research_knowledge_memory_store import (
+    PostgresResearchKnowledgeMemoryStore,
+)
+from app.adapters.memory.redis_session_memory_store import RedisSessionMemoryStore
 from app.adapters.retrieval.stub_retriever import StubRetriever
 from app.services.evidence.evidence_processor_service import EvidenceProcessorService
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
@@ -54,10 +66,16 @@ class PipelineDependencies:
 
 
 def build_default_dependencies() -> PipelineDependencies:
-    """Construct the default no-op dependency graph for phase-1 skeleton."""
+    """Construct the default runtime dependency graph."""
 
-    session_store = InMemorySessionStore()
+    session_store = RedisSessionMemoryStore()
     long_term_store = InMemoryLongTermStore()
+    project_profile_store = PostgresProjectProfileMemoryStore()
+    decision_store = PostgresDecisionMemoryStore()
+    action_store = PostgresActionMemoryStore()
+    preference_policy_store = PostgresPreferencePolicyMemoryStore()
+    research_knowledge_store = PostgresResearchKnowledgeMemoryStore()
+    embedding_client = ZhipuEmbeddingClient()
 
     retrieval_service = RetrievalService(retriever=StubRetriever())
     evidence_processor = EvidenceProcessorService()
@@ -75,7 +93,12 @@ def build_default_dependencies() -> PipelineDependencies:
         decomposition_planner=DecompositionPlannerService(),
         context_memory_loader=ContextMemoryLoaderService(
             session_store=session_store,
-            long_term_store=long_term_store,
+            project_profile_store=project_profile_store,
+            decision_store=decision_store,
+            action_store=action_store,
+            preference_policy_store=preference_policy_store,
+            research_knowledge_store=research_knowledge_store,
+            embedding_client=embedding_client,
         ),
         research_executor=research_executor,
         conclusion_generator=ConclusionGeneratorService(),

@@ -1,6 +1,19 @@
 """Importability tests for architecture skeleton."""
 
 from app.api.app import app
+from app.adapters.embedding.zhipu_embedding_client import ZhipuEmbeddingClient
+from app.adapters.memory.postgres_action_memory_store import PostgresActionMemoryStore
+from app.adapters.memory.postgres_decision_memory_store import PostgresDecisionMemoryStore
+from app.adapters.memory.postgres_preference_policy_memory_store import (
+    PostgresPreferencePolicyMemoryStore,
+)
+from app.adapters.memory.postgres_project_profile_memory_store import (
+    PostgresProjectProfileMemoryStore,
+)
+from app.adapters.memory.postgres_research_knowledge_memory_store import (
+    PostgresResearchKnowledgeMemoryStore,
+)
+from app.adapters.memory.redis_session_memory_store import RedisSessionMemoryStore
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.adapters.retrieval.contracts.retriever_protocol import RetrieverProtocol
@@ -40,6 +53,14 @@ def test_default_dependencies_satisfy_pipeline_protocols() -> None:
 
     assert isinstance(pipeline._dependencies.request_intake, RequestIntakeProtocol)
     assert isinstance(pipeline._dependencies.task_interpreter, TaskInterpreterProtocol)
+    loader = pipeline._dependencies.context_memory_loader
+    assert isinstance(loader._session_store, RedisSessionMemoryStore)
+    assert isinstance(loader._project_profile_store, PostgresProjectProfileMemoryStore)
+    assert isinstance(loader._decision_store, PostgresDecisionMemoryStore)
+    assert isinstance(loader._action_store, PostgresActionMemoryStore)
+    assert isinstance(loader._preference_policy_store, PostgresPreferencePolicyMemoryStore)
+    assert isinstance(loader._research_knowledge_store, PostgresResearchKnowledgeMemoryStore)
+    assert isinstance(loader._embedding_client, ZhipuEmbeddingClient)
 
 
 def test_adapter_implementations_satisfy_runtime_checkable_protocols() -> None:

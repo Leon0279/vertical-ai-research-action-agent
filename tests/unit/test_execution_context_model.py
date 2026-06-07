@@ -41,6 +41,7 @@ def test_supplemental_context_is_partitioned() -> None:
 
     assert context.session_support == []
     assert context.decision_support == [item]
+    assert context.policy_support == []
     assert context.external_evidence_support == []
 
 

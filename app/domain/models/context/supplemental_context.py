@@ -14,5 +14,6 @@ class SupplementalContext(BaseModel):
     project_support: list[ContextItem] = Field(default_factory=list)
     decision_support: list[ContextItem] = Field(default_factory=list)
     action_support: list[ContextItem] = Field(default_factory=list)
+    policy_support: list[ContextItem] = Field(default_factory=list)
     research_support: list[ContextItem] = Field(default_factory=list)
     external_evidence_support: list[ContextItem] = Field(default_factory=list)

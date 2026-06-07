@@ -150,12 +150,38 @@ def test_memory_service_interfaces_instantiable() -> None:
     assert hasattr(MemoryDistillerService(), "distill")
     assert hasattr(WorkflowRouterService(), "route")
 
-    session_store = InMemorySessionStore()
     long_term_store = InMemoryLongTermStore()
+    session_store = InMemorySessionStore()
+    project_profile_store = PostgresProjectProfileMemoryStore(
+        config=PostgresProjectProfileMemoryStoreConfig(dsn="postgresql://example.test/db"),
+        pool=object(),
+    )
+    decision_store = PostgresDecisionMemoryStore(
+        config=PostgresDecisionMemoryStoreConfig(dsn="postgresql://example.test/db"),
+        pool=object(),
+    )
+    action_store = PostgresActionMemoryStore(
+        config=PostgresActionMemoryStoreConfig(dsn="postgresql://example.test/db"),
+        pool=object(),
+    )
+    preference_policy_store = PostgresPreferencePolicyMemoryStore(
+        config=PostgresPreferencePolicyMemoryStoreConfig(dsn="postgresql://example.test/db"),
+        pool=object(),
+    )
+    research_knowledge_store = PostgresResearchKnowledgeMemoryStore(
+        config=PostgresResearchKnowledgeMemoryStoreConfig(dsn="postgresql://example.test/db"),
+        pool=object(),
+    )
+    embedding_client = ZhipuEmbeddingClient(config=ZhipuEmbeddingClientConfig(api_key="fake-key"))
 
     memory_loader = ContextMemoryLoaderService(
         session_store=session_store,
-        long_term_store=long_term_store,
+        project_profile_store=project_profile_store,
+        decision_store=decision_store,
+        action_store=action_store,
+        preference_policy_store=preference_policy_store,
+        research_knowledge_store=research_knowledge_store,
+        embedding_client=embedding_client,
     )
     memory_persistence = MemoryPersistenceService(long_term_store=long_term_store)
     continuity_manager = SessionContinuityManagerService(session_store=session_store)
