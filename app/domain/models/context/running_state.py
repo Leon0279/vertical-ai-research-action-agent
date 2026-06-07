@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.domain.enums.planning_depth import PlanningDepth
 from app.domain.enums.workflow_pattern import WorkflowPattern
 from app.domain.models.workflow_execution_policy import WorkflowExecutionPolicy
 
@@ -68,6 +69,10 @@ class RunningState(BaseModel):
         description="Lightweight execution policy selected by the Workflow Router.",
     )
 
+    planning_depth: PlanningDepth = Field(
+        default=PlanningDepth.NONE,
+        description="Selected planning depth for the current run.",
+    )
     plan: list[str] = Field(
         default_factory=list,
         description="The current execution plan for this run.",
@@ -83,6 +88,10 @@ class RunningState(BaseModel):
     information_gaps: list[str] = Field(
         default_factory=list,
         description="Known information gaps that have not yet been filled.",
+    )
+    initial_evidence_strategy: list[str] = Field(
+        default_factory=list,
+        description="Initial evidence-gathering guidance produced by planning.",
     )
 
     retrieved_evidence_refs: list[str] = Field(

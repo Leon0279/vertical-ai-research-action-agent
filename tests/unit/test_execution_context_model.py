@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from app.domain.enums import PlanningDepth
 from app.domain.models import (
     ContextItem,
     ExecutionContext,
@@ -19,7 +20,9 @@ def test_running_state_defaults_follow_context_construction_lld() -> None:
     assert state.workflow_pattern is None
     assert state.execution_policy is None
     assert state.constraints == []
+    assert state.planning_depth == PlanningDepth.NONE
     assert state.plan == []
+    assert state.initial_evidence_strategy == []
     assert state.retrieved_evidence_refs == []
     assert state.intermediate_findings == []
     assert state.action_items == []
