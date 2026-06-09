@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.memory.postgres_decision_memory_store_error import (
     PostgresDecisionMemoryStoreError,
 )
+from app.config.env_loader import load_env_file
 
 
 class PostgresDecisionMemoryStoreConfig(BaseModel):
@@ -22,6 +23,7 @@ class PostgresDecisionMemoryStoreConfig(BaseModel):
     def from_env(cls) -> "PostgresDecisionMemoryStoreConfig":
         """Build config from environment variables."""
 
+        load_env_file()
         dsn = os.getenv("POSTGRES_DECISION_MEMORY_DSN", "").strip()
         if not dsn:
             raise PostgresDecisionMemoryStoreError(

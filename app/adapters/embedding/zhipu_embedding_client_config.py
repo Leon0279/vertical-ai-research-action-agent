@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.adapters.embedding.zhipu_embedding_client_error import (
     ZhipuEmbeddingClientError,
 )
+from app.config.env_loader import load_env_file
 
 
 class ZhipuEmbeddingClientConfig(BaseModel):
@@ -41,6 +42,7 @@ class ZhipuEmbeddingClientConfig(BaseModel):
     def from_env(cls) -> "ZhipuEmbeddingClientConfig":
         """Build config from environment variables."""
 
+        load_env_file()
         api_key = os.getenv("ZHIPU_API_KEY", "").strip()
         if not api_key:
             raise ZhipuEmbeddingClientError(

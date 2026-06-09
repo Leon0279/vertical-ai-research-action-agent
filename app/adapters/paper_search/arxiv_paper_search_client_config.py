@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.paper_search.arxiv_paper_search_client_error import (
     ArxivPaperSearchClientError,
 )
+from app.config.env_loader import load_env_file
 
 
 class ArxivPaperSearchClientConfig(BaseModel):
@@ -26,6 +27,7 @@ class ArxivPaperSearchClientConfig(BaseModel):
     def from_env(cls) -> "ArxivPaperSearchClientConfig":
         """Build config from environment variables."""
 
+        load_env_file()
         user_agent = os.getenv("ARXIV_PAPER_SEARCH_USER_AGENT", "").strip()
         if not user_agent:
             raise ArxivPaperSearchClientError(

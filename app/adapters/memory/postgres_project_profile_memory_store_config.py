@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.memory.postgres_project_profile_memory_store_error import (
     PostgresProjectProfileMemoryStoreError,
 )
+from app.config.env_loader import load_env_file
 
 
 class PostgresProjectProfileMemoryStoreConfig(BaseModel):
@@ -22,6 +23,7 @@ class PostgresProjectProfileMemoryStoreConfig(BaseModel):
     def from_env(cls) -> "PostgresProjectProfileMemoryStoreConfig":
         """Build config from environment variables."""
 
+        load_env_file()
         dsn = os.getenv("POSTGRES_PROJECT_PROFILE_MEMORY_DSN", "").strip()
         if not dsn:
             raise PostgresProjectProfileMemoryStoreError(

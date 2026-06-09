@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.memory.postgres_action_memory_store_error import (
     PostgresActionMemoryStoreError,
 )
+from app.config.env_loader import load_env_file
 
 
 class PostgresActionMemoryStoreConfig(BaseModel):
@@ -22,6 +23,7 @@ class PostgresActionMemoryStoreConfig(BaseModel):
     def from_env(cls) -> "PostgresActionMemoryStoreConfig":
         """Build config from environment variables."""
 
+        load_env_file()
         dsn = os.getenv("POSTGRES_ACTION_MEMORY_DSN", "").strip()
         if not dsn:
             raise PostgresActionMemoryStoreError(

@@ -7,6 +7,7 @@ import os
 from pydantic import BaseModel, Field
 
 from app.adapters.llm.zhipu_llm_client_error import ZhipuLLMClientError
+from app.config.env_loader import load_env_file
 
 
 class ZhipuLLMClientConfig(BaseModel):
@@ -23,6 +24,7 @@ class ZhipuLLMClientConfig(BaseModel):
     def from_env(cls) -> "ZhipuLLMClientConfig":
         """Build config from environment variables."""
 
+        load_env_file()
         api_key = os.getenv("ZHIPU_API_KEY", "").strip()
         if not api_key:
             raise ZhipuLLMClientError("ZHIPU_API_KEY is required for Zhipu LLM calls.")

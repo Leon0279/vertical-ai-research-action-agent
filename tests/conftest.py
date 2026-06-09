@@ -8,6 +8,7 @@ import os
 def pytest_configure() -> None:
     """Provide minimal env for default runtime dependency construction in tests."""
 
+    os.environ.setdefault("VAA_SKIP_DOTENV", "1")
     os.environ.setdefault("REDIS_SESSION_MEMORY_URL", "redis://127.0.0.1:1/0")
     os.environ.setdefault("POSTGRES_PROJECT_PROFILE_MEMORY_DSN", "postgresql://127.0.0.1:1/test")
     os.environ.setdefault("POSTGRES_DECISION_MEMORY_DSN", "postgresql://127.0.0.1:1/test")
