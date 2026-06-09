@@ -6,9 +6,19 @@ from app.adapters.embedding import (
     ZhipuEmbeddingClientConfig,
     ZhipuEmbeddingClientError,
 )
+from app.adapters.paper_search import (
+    ArxivPaperSearchClient,
+    ArxivPaperSearchClientConfig,
+    ArxivPaperSearchClientError,
+    PaperSearchClientProtocol,
+)
 
 __all__ = [
+    "ArxivPaperSearchClient",
+    "ArxivPaperSearchClientConfig",
+    "ArxivPaperSearchClientError",
     "EmbeddingClientProtocol",
+    "PaperSearchClientProtocol",
     "ZhipuEmbeddingClient",
     "ZhipuEmbeddingClientConfig",
     "ZhipuEmbeddingClientError",

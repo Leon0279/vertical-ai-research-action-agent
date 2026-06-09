@@ -35,6 +35,11 @@ from app.domain.models.memory.research_knowledge_unit_record import (
 )
 from app.domain.models.memory.session_memory import SessionMemory
 from app.domain.models.memory.session_turn_summary import SessionTurnSummary
+from app.domain.models.paper_search import (
+    PaperSearchQuery,
+    PaperSearchResponse,
+    PaperSearchResult,
+)
 from app.domain.models.planning.execution_plan import ExecutionPlan
 from app.domain.models.planning.plan_step import PlanStep
 from app.domain.models.request_context import RequestContext
@@ -59,6 +64,9 @@ __all__ = [
     "IntermediateFinding",
     "MemoryCandidate",
     "MemoryRecord",
+    "PaperSearchQuery",
+    "PaperSearchResponse",
+    "PaperSearchResult",
     "PreferencePolicyMemoryRecord",
     "ProjectProfileMemoryRecord",
     "ResearchKnowledgeRecallQuery",

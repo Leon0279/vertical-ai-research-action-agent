@@ -11,6 +11,13 @@ from app.adapters.embedding.zhipu_embedding_client import ZhipuEmbeddingClient
 from app.adapters.embedding.zhipu_embedding_client_config import (
     ZhipuEmbeddingClientConfig,
 )
+from app.adapters.paper_search.arxiv_paper_search_client import ArxivPaperSearchClient
+from app.adapters.paper_search.arxiv_paper_search_client_config import (
+    ArxivPaperSearchClientConfig,
+)
+from app.adapters.paper_search.contracts.paper_search_client_protocol import (
+    PaperSearchClientProtocol,
+)
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.adapters.memory.contracts.action_memory_store_protocol import (
@@ -88,6 +95,12 @@ def test_adapter_protocol_conformance() -> None:
     assert isinstance(
         ZhipuEmbeddingClient(config=ZhipuEmbeddingClientConfig(api_key="fake-key")),
         EmbeddingClientProtocol,
+    )
+    assert isinstance(
+        ArxivPaperSearchClient(
+            config=ArxivPaperSearchClientConfig(user_agent="test-agent")
+        ),
+        PaperSearchClientProtocol,
     )
     assert isinstance(
         PostgresActionMemoryStore(
