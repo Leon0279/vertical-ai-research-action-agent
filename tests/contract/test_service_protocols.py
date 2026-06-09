@@ -18,6 +18,15 @@ from app.adapters.paper_search.arxiv_paper_search_client_config import (
 from app.adapters.paper_search.contracts.paper_search_client_protocol import (
     PaperSearchClientProtocol,
 )
+from app.adapters.paper_content_fetch.arxiv_paper_content_fetch_client import (
+    ArxivPaperContentFetchClient,
+)
+from app.adapters.paper_content_fetch.arxiv_paper_content_fetch_client_config import (
+    ArxivPaperContentFetchClientConfig,
+)
+from app.adapters.paper_content_fetch.contracts.paper_content_fetch_client_protocol import (
+    PaperContentFetchClientProtocol,
+)
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.adapters.memory.contracts.action_memory_store_protocol import (
@@ -101,6 +110,12 @@ def test_adapter_protocol_conformance() -> None:
             config=ArxivPaperSearchClientConfig(user_agent="test-agent")
         ),
         PaperSearchClientProtocol,
+    )
+    assert isinstance(
+        ArxivPaperContentFetchClient(
+            config=ArxivPaperContentFetchClientConfig(user_agent="test-agent")
+        ),
+        PaperContentFetchClientProtocol,
     )
     assert isinstance(
         PostgresActionMemoryStore(

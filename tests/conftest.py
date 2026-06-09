@@ -18,3 +18,4 @@ def pytest_configure() -> None:
     os.environ.setdefault("ZHIPU_API_KEY", "test-zhipu-api-key")
     os.environ.setdefault("ZHIPU_EMBEDDING_BASE_URL", "http://127.0.0.1:1/api/paas/v4")
     os.environ.setdefault("ZHIPU_EMBEDDING_TIMEOUT_SECONDS", "0.1")
+    os.environ.setdefault("ARXIV_PAPER_CONTENT_FETCH_USER_AGENT", "vaa-test-agent/1.0")

@@ -12,12 +12,22 @@ from app.adapters.paper_search import (
     ArxivPaperSearchClientError,
     PaperSearchClientProtocol,
 )
+from app.adapters.paper_content_fetch import (
+    ArxivPaperContentFetchClient,
+    ArxivPaperContentFetchClientConfig,
+    ArxivPaperContentFetchClientError,
+    PaperContentFetchClientProtocol,
+)
 
 __all__ = [
+    "ArxivPaperContentFetchClient",
+    "ArxivPaperContentFetchClientConfig",
+    "ArxivPaperContentFetchClientError",
     "ArxivPaperSearchClient",
     "ArxivPaperSearchClientConfig",
     "ArxivPaperSearchClientError",
     "EmbeddingClientProtocol",
+    "PaperContentFetchClientProtocol",
     "PaperSearchClientProtocol",
     "ZhipuEmbeddingClient",
     "ZhipuEmbeddingClientConfig",

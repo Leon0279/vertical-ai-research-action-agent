@@ -40,6 +40,11 @@ from app.domain.models.paper_search import (
     PaperSearchResponse,
     PaperSearchResult,
 )
+from app.domain.models.paper_content_fetch import (
+    PaperContentExtractionStatus,
+    PaperContentFetchRequest,
+    PaperContentFetchResult,
+)
 from app.domain.models.planning.execution_plan import ExecutionPlan
 from app.domain.models.planning.plan_step import PlanStep
 from app.domain.models.request_context import RequestContext
@@ -64,6 +69,9 @@ __all__ = [
     "IntermediateFinding",
     "MemoryCandidate",
     "MemoryRecord",
+    "PaperContentExtractionStatus",
+    "PaperContentFetchRequest",
+    "PaperContentFetchResult",
     "PaperSearchQuery",
     "PaperSearchResponse",
     "PaperSearchResult",
