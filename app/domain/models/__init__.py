@@ -12,6 +12,11 @@ from app.domain.models.context import (
     RuntimeContext,
     SupplementalContext,
 )
+from app.domain.models.docs_search import (
+    DocsSearchQuery,
+    DocsSearchResponse,
+    DocsSearchResult,
+)
 from app.domain.models.embedding_result import EmbeddingResult
 from app.domain.models.evidence.evidence_item import EvidenceItem
 from app.domain.models.evidence.evidence_summary import EvidenceSummary
@@ -59,6 +64,9 @@ __all__ = [
     "ConclusionResult",
     "ContextItem",
     "DecisionMemoryRecord",
+    "DocsSearchQuery",
+    "DocsSearchResponse",
+    "DocsSearchResult",
     "EmbeddingResult",
     "EvidenceItem",
     "EvidenceSummary",

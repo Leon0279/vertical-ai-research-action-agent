@@ -4,6 +4,14 @@ from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.adapters.llm.stub_llm_client import StubLLMClient
 from app.adapters.llm.zhipu_llm_client import ZhipuLLMClient
 from app.adapters.llm.zhipu_llm_client_config import ZhipuLLMClientConfig
+from app.adapters.docs_search.contracts.docs_search_client_protocol import (
+    DocsSearchClientProtocol,
+)
+from app.adapters.docs_search.llms_txt_docs_search_client import LlmsTxtDocsSearchClient
+from app.adapters.docs_search.llms_txt_docs_search_client_config import (
+    LlmsTxtDocsSearchClientConfig,
+    LlmsTxtDocsSourceConfig,
+)
 from app.adapters.embedding.contracts.embedding_client_protocol import (
     EmbeddingClientProtocol,
 )
@@ -104,6 +112,19 @@ def test_adapter_protocol_conformance() -> None:
     assert isinstance(
         ZhipuEmbeddingClient(config=ZhipuEmbeddingClientConfig(api_key="fake-key")),
         EmbeddingClientProtocol,
+    )
+    assert isinstance(
+        LlmsTxtDocsSearchClient(
+            config=LlmsTxtDocsSearchClientConfig(
+                sources=[
+                    LlmsTxtDocsSourceConfig(
+                        source_name="test_docs",
+                        llms_txt_url="https://example.test/llms.txt",
+                    )
+                ]
+            )
+        ),
+        DocsSearchClientProtocol,
     )
     assert isinstance(
         ArxivPaperSearchClient(

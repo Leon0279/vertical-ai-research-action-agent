@@ -1,5 +1,12 @@
 """Adapters layer package."""
 
+from app.adapters.docs_search import (
+    DocsSearchClientProtocol,
+    LlmsTxtDocsSearchClient,
+    LlmsTxtDocsSearchClientConfig,
+    LlmsTxtDocsSearchClientError,
+    LlmsTxtDocsSourceConfig,
+)
 from app.adapters.embedding import (
     EmbeddingClientProtocol,
     ZhipuEmbeddingClient,
@@ -26,7 +33,12 @@ __all__ = [
     "ArxivPaperSearchClient",
     "ArxivPaperSearchClientConfig",
     "ArxivPaperSearchClientError",
+    "DocsSearchClientProtocol",
     "EmbeddingClientProtocol",
+    "LlmsTxtDocsSearchClient",
+    "LlmsTxtDocsSearchClientConfig",
+    "LlmsTxtDocsSearchClientError",
+    "LlmsTxtDocsSourceConfig",
     "PaperContentFetchClientProtocol",
     "PaperSearchClientProtocol",
     "ZhipuEmbeddingClient",
