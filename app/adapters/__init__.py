@@ -31,6 +31,12 @@ from app.adapters.web_search import (
     TavilyWebSearchClientError,
     WebSearchClientProtocol,
 )
+from app.adapters.web_content_fetch import (
+    TavilyWebContentFetchClient,
+    TavilyWebContentFetchClientConfig,
+    TavilyWebContentFetchClientError,
+    WebContentFetchClientProtocol,
+)
 
 __all__ = [
     "ArxivPaperContentFetchClient",
@@ -50,7 +56,11 @@ __all__ = [
     "TavilyWebSearchClient",
     "TavilyWebSearchClientConfig",
     "TavilyWebSearchClientError",
+    "TavilyWebContentFetchClient",
+    "TavilyWebContentFetchClientConfig",
+    "TavilyWebContentFetchClientError",
     "WebSearchClientProtocol",
+    "WebContentFetchClientProtocol",
     "ZhipuEmbeddingClient",
     "ZhipuEmbeddingClientConfig",
     "ZhipuEmbeddingClientError",

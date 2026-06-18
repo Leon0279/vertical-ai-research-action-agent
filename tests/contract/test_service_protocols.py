@@ -42,6 +42,15 @@ from app.adapters.web_search.tavily_web_search_client import TavilyWebSearchClie
 from app.adapters.web_search.tavily_web_search_client_config import (
     TavilyWebSearchClientConfig,
 )
+from app.adapters.web_content_fetch.contracts.web_content_fetch_client_protocol import (
+    WebContentFetchClientProtocol,
+)
+from app.adapters.web_content_fetch.tavily_web_content_fetch_client import (
+    TavilyWebContentFetchClient,
+)
+from app.adapters.web_content_fetch.tavily_web_content_fetch_client_config import (
+    TavilyWebContentFetchClientConfig,
+)
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.adapters.memory.contracts.action_memory_store_protocol import (
@@ -150,6 +159,12 @@ def test_adapter_protocol_conformance() -> None:
             config=TavilyWebSearchClientConfig(api_key="fake-key")
         ),
         WebSearchClientProtocol,
+    )
+    assert isinstance(
+        TavilyWebContentFetchClient(
+            config=TavilyWebContentFetchClientConfig(api_key="fake-key")
+        ),
+        WebContentFetchClientProtocol,
     )
     assert isinstance(
         PostgresActionMemoryStore(
