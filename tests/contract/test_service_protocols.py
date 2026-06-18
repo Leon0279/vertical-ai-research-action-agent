@@ -35,6 +35,13 @@ from app.adapters.paper_content_fetch.arxiv_paper_content_fetch_client_config im
 from app.adapters.paper_content_fetch.contracts.paper_content_fetch_client_protocol import (
     PaperContentFetchClientProtocol,
 )
+from app.adapters.web_search.contracts.web_search_client_protocol import (
+    WebSearchClientProtocol,
+)
+from app.adapters.web_search.tavily_web_search_client import TavilyWebSearchClient
+from app.adapters.web_search.tavily_web_search_client_config import (
+    TavilyWebSearchClientConfig,
+)
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.adapters.memory.contracts.action_memory_store_protocol import (
@@ -137,6 +144,12 @@ def test_adapter_protocol_conformance() -> None:
             config=ArxivPaperContentFetchClientConfig(user_agent="test-agent")
         ),
         PaperContentFetchClientProtocol,
+    )
+    assert isinstance(
+        TavilyWebSearchClient(
+            config=TavilyWebSearchClientConfig(api_key="fake-key")
+        ),
+        WebSearchClientProtocol,
     )
     assert isinstance(
         PostgresActionMemoryStore(

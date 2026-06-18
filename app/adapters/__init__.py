@@ -25,6 +25,12 @@ from app.adapters.paper_content_fetch import (
     ArxivPaperContentFetchClientError,
     PaperContentFetchClientProtocol,
 )
+from app.adapters.web_search import (
+    TavilyWebSearchClient,
+    TavilyWebSearchClientConfig,
+    TavilyWebSearchClientError,
+    WebSearchClientProtocol,
+)
 
 __all__ = [
     "ArxivPaperContentFetchClient",
@@ -41,6 +47,10 @@ __all__ = [
     "LlmsTxtDocsSourceConfig",
     "PaperContentFetchClientProtocol",
     "PaperSearchClientProtocol",
+    "TavilyWebSearchClient",
+    "TavilyWebSearchClientConfig",
+    "TavilyWebSearchClientError",
+    "WebSearchClientProtocol",
     "ZhipuEmbeddingClient",
     "ZhipuEmbeddingClientConfig",
     "ZhipuEmbeddingClientError",
