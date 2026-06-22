@@ -51,6 +51,10 @@ from app.adapters.web_content_fetch.tavily_web_content_fetch_client import (
 from app.adapters.web_content_fetch.tavily_web_content_fetch_client_config import (
     TavilyWebContentFetchClientConfig,
 )
+from app.services.tools.contracts.tavily_web_search_tool_protocol import (
+    TavilyWebSearchToolProtocol,
+)
+from app.services.tools.tavily_web_search_tool import TavilyWebSearchTool
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.adapters.memory.contracts.action_memory_store_protocol import (
@@ -216,6 +220,17 @@ def test_service_protocol_conformance() -> None:
     assert isinstance(DecompositionPlannerService(), DecompositionPlannerProtocol)
     assert isinstance(EvidenceProcessorService(), EvidenceProcessorProtocol)
     assert isinstance(ConclusionGeneratorService(), ConclusionGeneratorProtocol)
+    assert isinstance(
+        TavilyWebSearchTool(
+            web_search_client=TavilyWebSearchClient(
+                config=TavilyWebSearchClientConfig(api_key="fake-key")
+            ),
+            web_content_fetch_client=TavilyWebContentFetchClient(
+                config=TavilyWebContentFetchClientConfig(api_key="fake-key")
+            ),
+        ),
+        TavilyWebSearchToolProtocol,
+    )
 
 
 def test_memory_service_interfaces_instantiable() -> None:

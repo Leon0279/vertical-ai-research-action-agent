@@ -55,6 +55,10 @@ from app.domain.models.planning.plan_step import PlanStep
 from app.domain.models.request_context import RequestContext
 from app.domain.models.structured_output import StructuredOutput
 from app.domain.models.task_interpretation_result import TaskInterpretationResult
+from app.domain.models.tools import (
+    TavilyWebSearchToolRequest,
+    TavilyWebSearchToolResult,
+)
 from app.domain.models.web_content_fetch import (
     WebContentFetchFailedResult,
     WebContentFetchRequest,
@@ -109,6 +113,8 @@ __all__ = [
     "StructuredOutput",
     "SupplementalContext",
     "TaskInterpretationResult",
+    "TavilyWebSearchToolRequest",
+    "TavilyWebSearchToolResult",
     "WebContentFetchFailedResult",
     "WebContentFetchRequest",
     "WebContentFetchResponse",
