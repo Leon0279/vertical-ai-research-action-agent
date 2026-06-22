@@ -54,6 +54,10 @@ from app.adapters.web_content_fetch.tavily_web_content_fetch_client_config impor
 from app.services.tools.contracts.tavily_web_search_tool_protocol import (
     TavilyWebSearchToolProtocol,
 )
+from app.services.tools.contracts.arxiv_paper_search_tool_protocol import (
+    ArxivPaperSearchToolProtocol,
+)
+from app.services.tools.arxiv_paper_search_tool import ArxivPaperSearchTool
 from app.services.tools.tavily_web_search_tool import TavilyWebSearchTool
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
@@ -230,6 +234,17 @@ def test_service_protocol_conformance() -> None:
             ),
         ),
         TavilyWebSearchToolProtocol,
+    )
+    assert isinstance(
+        ArxivPaperSearchTool(
+            paper_search_client=ArxivPaperSearchClient(
+                config=ArxivPaperSearchClientConfig(user_agent="test-agent")
+            ),
+            paper_content_fetch_client=ArxivPaperContentFetchClient(
+                config=ArxivPaperContentFetchClientConfig(user_agent="test-agent")
+            ),
+        ),
+        ArxivPaperSearchToolProtocol,
     )
 
 
