@@ -60,8 +60,12 @@ from app.services.tools.contracts.arxiv_paper_search_tool_protocol import (
 from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
     LlmsTxtDocsSearchToolProtocol,
 )
+from app.services.tools.contracts.research_knowledge_memory_tool_protocol import (
+    ResearchKnowledgeMemoryToolProtocol,
+)
 from app.services.tools.arxiv_paper_search_tool import ArxivPaperSearchTool
 from app.services.tools.llms_txt_docs_search_tool import LlmsTxtDocsSearchTool
+from app.services.tools.research_knowledge_memory_tool import ResearchKnowledgeMemoryTool
 from app.services.tools.tavily_web_search_tool import TavilyWebSearchTool
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
@@ -264,6 +268,20 @@ def test_service_protocol_conformance() -> None:
             ),
         ),
         LlmsTxtDocsSearchToolProtocol,
+    )
+    assert isinstance(
+        ResearchKnowledgeMemoryTool(
+            research_knowledge_store=PostgresResearchKnowledgeMemoryStore(
+                config=PostgresResearchKnowledgeMemoryStoreConfig(
+                    dsn="postgresql://example.test/db"
+                ),
+                pool=object(),
+            ),
+            embedding_client=ZhipuEmbeddingClient(
+                config=ZhipuEmbeddingClientConfig(api_key="fake-key")
+            ),
+        ),
+        ResearchKnowledgeMemoryToolProtocol,
     )
 
 

@@ -6,6 +6,9 @@ from app.services.tools.contracts.arxiv_paper_search_tool_protocol import (
 from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
     LlmsTxtDocsSearchToolProtocol,
 )
+from app.services.tools.contracts.research_knowledge_memory_tool_protocol import (
+    ResearchKnowledgeMemoryToolProtocol,
+)
 from app.services.tools.contracts.tavily_web_search_tool_protocol import (
     TavilyWebSearchToolProtocol,
 )
@@ -13,5 +16,6 @@ from app.services.tools.contracts.tavily_web_search_tool_protocol import (
 __all__ = [
     "ArxivPaperSearchToolProtocol",
     "LlmsTxtDocsSearchToolProtocol",
+    "ResearchKnowledgeMemoryToolProtocol",
     "TavilyWebSearchToolProtocol",
 ]

@@ -60,6 +60,8 @@ from app.domain.models.tools import (
     ArxivPaperSearchToolResult,
     LlmsTxtDocsSearchToolRequest,
     LlmsTxtDocsSearchToolResult,
+    ResearchKnowledgeMemoryToolRequest,
+    ResearchKnowledgeMemoryToolResult,
     TavilyWebSearchToolRequest,
     TavilyWebSearchToolResult,
 )
@@ -114,6 +116,8 @@ __all__ = [
     "ResearchKnowledgeUnitRecord",
     "PlanStep",
     "RequestContext",
+    "ResearchKnowledgeMemoryToolRequest",
+    "ResearchKnowledgeMemoryToolResult",
     "RunningState",
     "RuntimeContext",
     "SessionMemory",

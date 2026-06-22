@@ -12,6 +12,12 @@ from app.domain.models.tools.llms_txt_docs_search_tool_request import (
 from app.domain.models.tools.llms_txt_docs_search_tool_result import (
     LlmsTxtDocsSearchToolResult,
 )
+from app.domain.models.tools.research_knowledge_memory_tool_request import (
+    ResearchKnowledgeMemoryToolRequest,
+)
+from app.domain.models.tools.research_knowledge_memory_tool_result import (
+    ResearchKnowledgeMemoryToolResult,
+)
 from app.domain.models.tools.tavily_web_search_tool_request import TavilyWebSearchToolRequest
 from app.domain.models.tools.tavily_web_search_tool_result import TavilyWebSearchToolResult
 
@@ -20,6 +26,8 @@ __all__ = [
     "ArxivPaperSearchToolResult",
     "LlmsTxtDocsSearchToolRequest",
     "LlmsTxtDocsSearchToolResult",
+    "ResearchKnowledgeMemoryToolRequest",
+    "ResearchKnowledgeMemoryToolResult",
     "TavilyWebSearchToolRequest",
     "TavilyWebSearchToolResult",
 ]
