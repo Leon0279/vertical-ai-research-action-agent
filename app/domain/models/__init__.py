@@ -58,6 +58,8 @@ from app.domain.models.task_interpretation_result import TaskInterpretationResul
 from app.domain.models.tools import (
     ArxivPaperSearchToolRequest,
     ArxivPaperSearchToolResult,
+    LlmsTxtDocsSearchToolRequest,
+    LlmsTxtDocsSearchToolResult,
     TavilyWebSearchToolRequest,
     TavilyWebSearchToolResult,
 )
@@ -95,6 +97,8 @@ __all__ = [
     "ExecutionState",
     "FinalRecommendation",
     "IntermediateFinding",
+    "LlmsTxtDocsSearchToolRequest",
+    "LlmsTxtDocsSearchToolResult",
     "MemoryCandidate",
     "MemoryRecord",
     "PaperContentExtractionStatus",
