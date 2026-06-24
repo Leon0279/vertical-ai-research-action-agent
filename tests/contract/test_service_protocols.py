@@ -63,6 +63,10 @@ from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
 from app.services.tools.contracts.research_knowledge_memory_tool_protocol import (
     ResearchKnowledgeMemoryToolProtocol,
 )
+from app.services.families.contracts.paper_search_family_service_protocol import (
+    PaperSearchFamilyServiceProtocol,
+)
+from app.services.families.paper_search_family_service import PaperSearchFamilyService
 from app.services.tools.arxiv_paper_search_tool import ArxivPaperSearchTool
 from app.services.tools.llms_txt_docs_search_tool import LlmsTxtDocsSearchTool
 from app.services.tools.research_knowledge_memory_tool import ResearchKnowledgeMemoryTool
@@ -282,6 +286,19 @@ def test_service_protocol_conformance() -> None:
             ),
         ),
         ResearchKnowledgeMemoryToolProtocol,
+    )
+    assert isinstance(
+        PaperSearchFamilyService(
+            ArxivPaperSearchTool(
+                paper_search_client=ArxivPaperSearchClient(
+                    config=ArxivPaperSearchClientConfig(user_agent="test-agent")
+                ),
+                paper_content_fetch_client=ArxivPaperContentFetchClient(
+                    config=ArxivPaperContentFetchClientConfig(user_agent="test-agent")
+                ),
+            )
+        ),
+        PaperSearchFamilyServiceProtocol,
     )
 
 

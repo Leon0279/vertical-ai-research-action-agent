@@ -1,5 +1,9 @@
 """Services layer package."""
 
+from app.services.families import (
+    PaperSearchFamilyService,
+    PaperSearchFamilyServiceProtocol,
+)
 from app.services.tools import (
     ArxivPaperSearchTool,
     ArxivPaperSearchToolProtocol,
@@ -12,6 +16,8 @@ from app.services.tools import (
 __all__ = [
     "ArxivPaperSearchTool",
     "ArxivPaperSearchToolProtocol",
+    "PaperSearchFamilyService",
+    "PaperSearchFamilyServiceProtocol",
     "ResearchKnowledgeMemoryTool",
     "ResearchKnowledgeMemoryToolProtocol",
     "TavilyWebSearchTool",

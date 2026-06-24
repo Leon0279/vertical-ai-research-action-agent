@@ -21,6 +21,10 @@ from app.domain.models.embedding_result import EmbeddingResult
 from app.domain.models.evidence.evidence_item import EvidenceItem
 from app.domain.models.evidence.evidence_summary import EvidenceSummary
 from app.domain.models.execution_state import ExecutionState
+from app.domain.models.families import (
+    PaperSearchFamilyRequest,
+    PaperSearchFamilyResult,
+)
 from app.domain.models.intermediate_finding import IntermediateFinding
 from app.domain.models.memory.decision_memory_record import DecisionMemoryRecord
 from app.domain.models.memory.memory_candidate import MemoryCandidate
@@ -99,6 +103,8 @@ __all__ = [
     "ExecutionState",
     "FinalRecommendation",
     "IntermediateFinding",
+    "PaperSearchFamilyRequest",
+    "PaperSearchFamilyResult",
     "LlmsTxtDocsSearchToolRequest",
     "LlmsTxtDocsSearchToolResult",
     "MemoryCandidate",
