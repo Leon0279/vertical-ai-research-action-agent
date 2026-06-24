@@ -154,6 +154,10 @@ from app.services.planner.task_interpreter_service import TaskInterpreterService
 from app.services.planner.workflow_router_service import WorkflowRouterService
 from app.services.retrieval.contracts.retrieval_service_protocol import RetrievalServiceProtocol
 from app.services.retrieval.retrieval_service import RetrievalService
+from app.services.tool_execution_layer.contracts.family_selection_service_protocol import (
+    FamilySelectionServiceProtocol,
+)
+from app.services.tool_execution_layer.family_selection_service import FamilySelectionService
 
 
 def test_adapter_protocol_conformance() -> None:
@@ -250,6 +254,7 @@ def test_service_protocol_conformance() -> None:
     assert isinstance(DecompositionPlannerService(), DecompositionPlannerProtocol)
     assert isinstance(EvidenceProcessorService(), EvidenceProcessorProtocol)
     assert isinstance(ConclusionGeneratorService(), ConclusionGeneratorProtocol)
+    assert isinstance(FamilySelectionService(), FamilySelectionServiceProtocol)
     assert isinstance(
         TavilyWebSearchTool(
             web_search_client=TavilyWebSearchClient(

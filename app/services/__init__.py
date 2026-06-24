@@ -10,6 +10,10 @@ from app.services.families import (
     WebSearchFamilyService,
     WebSearchFamilyServiceProtocol,
 )
+from app.services.tool_execution_layer import (
+    FamilySelectionService,
+    FamilySelectionServiceProtocol,
+)
 from app.services.tools import (
     ArxivPaperSearchTool,
     ArxivPaperSearchToolProtocol,
@@ -24,6 +28,8 @@ __all__ = [
     "ArxivPaperSearchToolProtocol",
     "DocsSearchFamilyService",
     "DocsSearchFamilyServiceProtocol",
+    "FamilySelectionService",
+    "FamilySelectionServiceProtocol",
     "PaperSearchFamilyService",
     "PaperSearchFamilyServiceProtocol",
     "ResearchKnowledgeMemoryTool",
