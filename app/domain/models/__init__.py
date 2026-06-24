@@ -26,6 +26,8 @@ from app.domain.models.families import (
     DocsSearchFamilyResult,
     PaperSearchFamilyRequest,
     PaperSearchFamilyResult,
+    ResearchKnowledgeRecallFamilyRequest,
+    ResearchKnowledgeRecallFamilyResult,
     WebSearchFamilyRequest,
     WebSearchFamilyResult,
 )
@@ -130,6 +132,8 @@ __all__ = [
     "RequestContext",
     "ResearchKnowledgeMemoryToolRequest",
     "ResearchKnowledgeMemoryToolResult",
+    "ResearchKnowledgeRecallFamilyRequest",
+    "ResearchKnowledgeRecallFamilyResult",
     "RunningState",
     "RuntimeContext",
     "SessionMemory",

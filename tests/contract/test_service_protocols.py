@@ -69,11 +69,17 @@ from app.services.families.contracts.docs_search_family_service_protocol import 
 from app.services.families.contracts.paper_search_family_service_protocol import (
     PaperSearchFamilyServiceProtocol,
 )
+from app.services.families.contracts.research_knowledge_recall_family_service_protocol import (
+    ResearchKnowledgeRecallFamilyServiceProtocol,
+)
 from app.services.families.contracts.web_search_family_service_protocol import (
     WebSearchFamilyServiceProtocol,
 )
 from app.services.families.docs_search_family_service import DocsSearchFamilyService
 from app.services.families.paper_search_family_service import PaperSearchFamilyService
+from app.services.families.research_knowledge_recall_family_service import (
+    ResearchKnowledgeRecallFamilyService,
+)
 from app.services.families.web_search_family_service import WebSearchFamilyService
 from app.services.tools.arxiv_paper_search_tool import ArxivPaperSearchTool
 from app.services.tools.llms_txt_docs_search_tool import LlmsTxtDocsSearchTool
@@ -337,6 +343,22 @@ def test_service_protocol_conformance() -> None:
             )
         ),
         WebSearchFamilyServiceProtocol,
+    )
+    assert isinstance(
+        ResearchKnowledgeRecallFamilyService(
+            ResearchKnowledgeMemoryTool(
+                research_knowledge_store=PostgresResearchKnowledgeMemoryStore(
+                    config=PostgresResearchKnowledgeMemoryStoreConfig(
+                        dsn="postgresql://example.test/db"
+                    ),
+                    pool=object(),
+                ),
+                embedding_client=ZhipuEmbeddingClient(
+                    config=ZhipuEmbeddingClientConfig(api_key="fake-key")
+                ),
+            )
+        ),
+        ResearchKnowledgeRecallFamilyServiceProtocol,
     )
 
 

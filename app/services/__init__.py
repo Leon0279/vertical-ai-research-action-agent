@@ -5,6 +5,8 @@ from app.services.families import (
     DocsSearchFamilyServiceProtocol,
     PaperSearchFamilyService,
     PaperSearchFamilyServiceProtocol,
+    ResearchKnowledgeRecallFamilyService,
+    ResearchKnowledgeRecallFamilyServiceProtocol,
     WebSearchFamilyService,
     WebSearchFamilyServiceProtocol,
 )
@@ -26,6 +28,8 @@ __all__ = [
     "PaperSearchFamilyServiceProtocol",
     "ResearchKnowledgeMemoryTool",
     "ResearchKnowledgeMemoryToolProtocol",
+    "ResearchKnowledgeRecallFamilyService",
+    "ResearchKnowledgeRecallFamilyServiceProtocol",
     "TavilyWebSearchTool",
     "TavilyWebSearchToolProtocol",
     "WebSearchFamilyService",
