@@ -63,9 +63,13 @@ from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
 from app.services.tools.contracts.research_knowledge_memory_tool_protocol import (
     ResearchKnowledgeMemoryToolProtocol,
 )
+from app.services.families.contracts.docs_search_family_service_protocol import (
+    DocsSearchFamilyServiceProtocol,
+)
 from app.services.families.contracts.paper_search_family_service_protocol import (
     PaperSearchFamilyServiceProtocol,
 )
+from app.services.families.docs_search_family_service import DocsSearchFamilyService
 from app.services.families.paper_search_family_service import PaperSearchFamilyService
 from app.services.tools.arxiv_paper_search_tool import ArxivPaperSearchTool
 from app.services.tools.llms_txt_docs_search_tool import LlmsTxtDocsSearchTool
@@ -299,6 +303,23 @@ def test_service_protocol_conformance() -> None:
             )
         ),
         PaperSearchFamilyServiceProtocol,
+    )
+    assert isinstance(
+        DocsSearchFamilyService(
+            LlmsTxtDocsSearchTool(
+                docs_search_client=LlmsTxtDocsSearchClient(
+                    config=LlmsTxtDocsSearchClientConfig(
+                        sources=[
+                            LlmsTxtDocsSourceConfig(
+                                source_name="test_docs",
+                                llms_txt_url="https://example.test/llms.txt",
+                            )
+                        ]
+                    )
+                ),
+            )
+        ),
+        DocsSearchFamilyServiceProtocol,
     )
 
 
