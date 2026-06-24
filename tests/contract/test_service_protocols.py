@@ -69,8 +69,12 @@ from app.services.families.contracts.docs_search_family_service_protocol import 
 from app.services.families.contracts.paper_search_family_service_protocol import (
     PaperSearchFamilyServiceProtocol,
 )
+from app.services.families.contracts.web_search_family_service_protocol import (
+    WebSearchFamilyServiceProtocol,
+)
 from app.services.families.docs_search_family_service import DocsSearchFamilyService
 from app.services.families.paper_search_family_service import PaperSearchFamilyService
+from app.services.families.web_search_family_service import WebSearchFamilyService
 from app.services.tools.arxiv_paper_search_tool import ArxivPaperSearchTool
 from app.services.tools.llms_txt_docs_search_tool import LlmsTxtDocsSearchTool
 from app.services.tools.research_knowledge_memory_tool import ResearchKnowledgeMemoryTool
@@ -320,6 +324,19 @@ def test_service_protocol_conformance() -> None:
             )
         ),
         DocsSearchFamilyServiceProtocol,
+    )
+    assert isinstance(
+        WebSearchFamilyService(
+            TavilyWebSearchTool(
+                web_search_client=TavilyWebSearchClient(
+                    config=TavilyWebSearchClientConfig(api_key="fake-key")
+                ),
+                web_content_fetch_client=TavilyWebContentFetchClient(
+                    config=TavilyWebContentFetchClientConfig(api_key="fake-key")
+                ),
+            )
+        ),
+        WebSearchFamilyServiceProtocol,
     )
 
 

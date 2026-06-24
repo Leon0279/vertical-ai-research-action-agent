@@ -26,6 +26,8 @@ from app.domain.models.families import (
     DocsSearchFamilyResult,
     PaperSearchFamilyRequest,
     PaperSearchFamilyResult,
+    WebSearchFamilyRequest,
+    WebSearchFamilyResult,
 )
 from app.domain.models.intermediate_finding import IntermediateFinding
 from app.domain.models.memory.decision_memory_record import DecisionMemoryRecord
@@ -146,4 +148,6 @@ __all__ = [
     "WebSearchResponse",
     "WebSearchResult",
     "WorkflowExecutionPolicy",
+    "WebSearchFamilyRequest",
+    "WebSearchFamilyResult",
 ]

@@ -5,6 +5,8 @@ from app.services.families import (
     DocsSearchFamilyServiceProtocol,
     PaperSearchFamilyService,
     PaperSearchFamilyServiceProtocol,
+    WebSearchFamilyService,
+    WebSearchFamilyServiceProtocol,
 )
 from app.services.tools import (
     ArxivPaperSearchTool,
@@ -26,4 +28,6 @@ __all__ = [
     "ResearchKnowledgeMemoryToolProtocol",
     "TavilyWebSearchTool",
     "TavilyWebSearchToolProtocol",
+    "WebSearchFamilyService",
+    "WebSearchFamilyServiceProtocol",
 ]
