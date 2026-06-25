@@ -7,6 +7,12 @@ from app.domain.models.tool_execution_layer.family_selection_request import (
 from app.domain.models.tool_execution_layer.family_selection_result import (
     FamilySelectionResult,
 )
+from app.domain.models.tool_execution_layer.request_completion_evaluation_request import (
+    RequestCompletionEvaluationRequest,
+)
+from app.domain.models.tool_execution_layer.request_completion_evaluation_result import (
+    RequestCompletionEvaluationResult,
+)
 from app.domain.models.tool_execution_layer.retrieval_query_generation_request import (
     RetrievalQueryGenerationRequest,
 )
@@ -18,6 +24,8 @@ __all__ = [
     "EvidenceShape",
     "FamilySelectionRequest",
     "FamilySelectionResult",
+    "RequestCompletionEvaluationRequest",
+    "RequestCompletionEvaluationResult",
     "RetrievalQueryGenerationRequest",
     "RetrievalQueryGenerationResult",
 ]

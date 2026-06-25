@@ -70,6 +70,8 @@ from app.domain.models.tool_execution_layer import (
     EvidenceShape,
     FamilySelectionRequest,
     FamilySelectionResult,
+    RequestCompletionEvaluationRequest,
+    RequestCompletionEvaluationResult,
     RetrievalQueryGenerationRequest,
     RetrievalQueryGenerationResult,
 )
@@ -137,6 +139,8 @@ __all__ = [
     "PaperSearchResult",
     "PreferencePolicyMemoryRecord",
     "ProjectProfileMemoryRecord",
+    "RequestCompletionEvaluationRequest",
+    "RequestCompletionEvaluationResult",
     "ResearchKnowledgeRecallQuery",
     "ResearchKnowledgeRecallResult",
     "ResearchKnowledgeUnitRecord",

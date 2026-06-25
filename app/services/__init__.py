@@ -13,6 +13,8 @@ from app.services.families import (
 from app.services.tool_execution_layer import (
     FamilySelectionService,
     FamilySelectionServiceProtocol,
+    RequestCompletionEvaluationService,
+    RequestCompletionEvaluationServiceProtocol,
     RetrievalQueryGenerationService,
     RetrievalQueryGenerationServiceProtocol,
 )
@@ -34,6 +36,8 @@ __all__ = [
     "FamilySelectionServiceProtocol",
     "PaperSearchFamilyService",
     "PaperSearchFamilyServiceProtocol",
+    "RequestCompletionEvaluationService",
+    "RequestCompletionEvaluationServiceProtocol",
     "ResearchKnowledgeMemoryTool",
     "ResearchKnowledgeMemoryToolProtocol",
     "ResearchKnowledgeRecallFamilyService",

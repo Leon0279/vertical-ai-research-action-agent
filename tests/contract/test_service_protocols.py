@@ -157,10 +157,16 @@ from app.services.retrieval.retrieval_service import RetrievalService
 from app.services.tool_execution_layer.contracts.family_selection_service_protocol import (
     FamilySelectionServiceProtocol,
 )
+from app.services.tool_execution_layer.contracts.request_completion_evaluation_service_protocol import (
+    RequestCompletionEvaluationServiceProtocol,
+)
 from app.services.tool_execution_layer.contracts.retrieval_query_generation_service_protocol import (
     RetrievalQueryGenerationServiceProtocol,
 )
 from app.services.tool_execution_layer.family_selection_service import FamilySelectionService
+from app.services.tool_execution_layer.request_completion_evaluation_service import (
+    RequestCompletionEvaluationService,
+)
 from app.services.tool_execution_layer.retrieval_query_generation_service import (
     RetrievalQueryGenerationService,
 )
@@ -261,6 +267,10 @@ def test_service_protocol_conformance() -> None:
     assert isinstance(EvidenceProcessorService(), EvidenceProcessorProtocol)
     assert isinstance(ConclusionGeneratorService(), ConclusionGeneratorProtocol)
     assert isinstance(FamilySelectionService(), FamilySelectionServiceProtocol)
+    assert isinstance(
+        RequestCompletionEvaluationService(),
+        RequestCompletionEvaluationServiceProtocol,
+    )
     assert isinstance(
         RetrievalQueryGenerationService(StubLLMClient()),
         RetrievalQueryGenerationServiceProtocol,
