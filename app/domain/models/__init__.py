@@ -69,6 +69,8 @@ from app.domain.models.tool_execution_layer import (
     EvidenceShape,
     FamilySelectionRequest,
     FamilySelectionResult,
+    RetrievalQueryGenerationRequest,
+    RetrievalQueryGenerationResult,
 )
 from app.domain.models.tools import (
     ArxivPaperSearchToolRequest,
@@ -142,6 +144,8 @@ __all__ = [
     "ResearchKnowledgeMemoryToolResult",
     "ResearchKnowledgeRecallFamilyRequest",
     "ResearchKnowledgeRecallFamilyResult",
+    "RetrievalQueryGenerationRequest",
+    "RetrievalQueryGenerationResult",
     "RunningState",
     "RuntimeContext",
     "SessionMemory",

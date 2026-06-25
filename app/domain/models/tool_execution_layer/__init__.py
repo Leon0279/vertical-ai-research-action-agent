@@ -7,9 +7,17 @@ from app.domain.models.tool_execution_layer.family_selection_request import (
 from app.domain.models.tool_execution_layer.family_selection_result import (
     FamilySelectionResult,
 )
+from app.domain.models.tool_execution_layer.retrieval_query_generation_request import (
+    RetrievalQueryGenerationRequest,
+)
+from app.domain.models.tool_execution_layer.retrieval_query_generation_result import (
+    RetrievalQueryGenerationResult,
+)
 
 __all__ = [
     "EvidenceShape",
     "FamilySelectionRequest",
     "FamilySelectionResult",
+    "RetrievalQueryGenerationRequest",
+    "RetrievalQueryGenerationResult",
 ]

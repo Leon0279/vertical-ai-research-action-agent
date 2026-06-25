@@ -157,7 +157,13 @@ from app.services.retrieval.retrieval_service import RetrievalService
 from app.services.tool_execution_layer.contracts.family_selection_service_protocol import (
     FamilySelectionServiceProtocol,
 )
+from app.services.tool_execution_layer.contracts.retrieval_query_generation_service_protocol import (
+    RetrievalQueryGenerationServiceProtocol,
+)
 from app.services.tool_execution_layer.family_selection_service import FamilySelectionService
+from app.services.tool_execution_layer.retrieval_query_generation_service import (
+    RetrievalQueryGenerationService,
+)
 
 
 def test_adapter_protocol_conformance() -> None:
@@ -255,6 +261,10 @@ def test_service_protocol_conformance() -> None:
     assert isinstance(EvidenceProcessorService(), EvidenceProcessorProtocol)
     assert isinstance(ConclusionGeneratorService(), ConclusionGeneratorProtocol)
     assert isinstance(FamilySelectionService(), FamilySelectionServiceProtocol)
+    assert isinstance(
+        RetrievalQueryGenerationService(StubLLMClient()),
+        RetrievalQueryGenerationServiceProtocol,
+    )
     assert isinstance(
         TavilyWebSearchTool(
             web_search_client=TavilyWebSearchClient(

@@ -13,6 +13,8 @@ from app.services.families import (
 from app.services.tool_execution_layer import (
     FamilySelectionService,
     FamilySelectionServiceProtocol,
+    RetrievalQueryGenerationService,
+    RetrievalQueryGenerationServiceProtocol,
 )
 from app.services.tools import (
     ArxivPaperSearchTool,
@@ -36,6 +38,8 @@ __all__ = [
     "ResearchKnowledgeMemoryToolProtocol",
     "ResearchKnowledgeRecallFamilyService",
     "ResearchKnowledgeRecallFamilyServiceProtocol",
+    "RetrievalQueryGenerationService",
+    "RetrievalQueryGenerationServiceProtocol",
     "TavilyWebSearchTool",
     "TavilyWebSearchToolProtocol",
     "WebSearchFamilyService",
