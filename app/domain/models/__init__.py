@@ -22,6 +22,7 @@ from app.domain.models.evidence.evidence_item import EvidenceItem
 from app.domain.models.evidence.evidence_summary import EvidenceSummary
 from app.domain.models.execution_state import ExecutionState
 from app.domain.models.families import (
+    BaseFamilyExecutionResult,
     DocsSearchFamilyRequest,
     DocsSearchFamilyResult,
     PaperSearchFamilyRequest,
@@ -101,6 +102,7 @@ __all__ = [
     "ActionMemoryRecord",
     "ArxivPaperSearchToolRequest",
     "ArxivPaperSearchToolResult",
+    "BaseFamilyExecutionResult",
     "Citation",
     "ConclusionResult",
     "ContextItem",
