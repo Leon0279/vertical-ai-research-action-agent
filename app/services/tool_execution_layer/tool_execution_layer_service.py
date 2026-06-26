@@ -92,8 +92,8 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         latest_query_generation: RetrievalQueryGenerationResult | None = None
         latest_family_result: BaseFamilyExecutionResult | None = None
         latest_evaluation: RequestCompletionEvaluationResult | None = None
-        retry_count = normalized_request.retry_count
-        fallback_applied = normalized_request.fallback_applied
+        retry_count = 0
+        fallback_applied = False
         recovery_attempt_count = 0
         recovery_exhausted_reason: str | None = None
         retry_family: str | None = None
@@ -277,8 +277,8 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                         fallback_applied=fallback_applied,
                         recovery_attempt_count=recovery_attempt_count,
                         attempts=attempts,
-                    recovery_exhausted_reason=recovery_exhausted_reason,
-                )
+                        recovery_exhausted_reason=recovery_exhausted_reason,
+                    )
                 retry_count += 1
                 recovery_attempt_count += 1
                 retry_family = selected_family
@@ -338,9 +338,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
             action_mode=request.action_mode,
             evidence_goal=(request.evidence_goal or "").strip() or None,
             evidence_shape=request.evidence_shape,
-            task_type=(request.task_type or "").strip() or None,
             task_framing=(request.task_framing or "").strip() or None,
-            evidence_strategy=(request.evidence_strategy or "").strip() or None,
             allowed_source_families=self._normalize_string_list(
                 request.allowed_source_families
             ),
@@ -356,7 +354,6 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 request.recent_low_value_queries
             ),
             preferred_tool=(request.preferred_tool or "").strip() or None,
-            freshness_requirement=(request.freshness_requirement or "").strip() or None,
             source_names=self._normalize_string_list(request.source_names),
             include_domains=self._normalize_string_list(request.include_domains),
             exclude_domains=self._normalize_string_list(request.exclude_domains),
@@ -373,15 +370,9 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
             topic_tags=self._normalize_string_list(request.topic_tags),
             source_types=self._normalize_string_list(request.source_types),
             memory_recall_limit=request.memory_recall_limit,
-            failure_reason=request.failure_reason,
-            continuation_available=request.continuation_available,
             retry_budget=request.retry_budget,
-            retry_count=request.retry_count,
             fallback_policy=request.fallback_policy,
-            fallback_applied=request.fallback_applied,
-            completion_max_results=request.completion_max_results,
             timeout_limit_ms=request.timeout_limit_ms,
-            request_elapsed_ms=request.request_elapsed_ms,
         )
 
     def _normalize_string_list(self, values: list[str]) -> list[str]:
@@ -428,9 +419,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 action_mode=request.action_mode,
                 evidence_goal=request.evidence_goal,
                 evidence_shape=request.evidence_shape,
-                task_type=request.task_type,
                 task_framing=request.task_framing,
-                evidence_strategy=request.evidence_strategy,
                 allowed_source_families=request.allowed_source_families,
                 preferred_source_families=request.preferred_source_families,
                 blocked_source_families=merged_blocked,
@@ -470,7 +459,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 selected_family=selected_family,
                 generated_query=generated_query,
             )
-            return await family_service.run(family_request), request.failure_reason
+            return await family_service.run(family_request), None
         except Exception as exc:
             return (
                 self._failed_family_result(
@@ -478,7 +467,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                     generated_query=generated_query,
                     error_info=str(exc),
                 ),
-                request.failure_reason or "tool_error",
+                "tool_error",
             )
 
     def _build_family_request(
@@ -536,8 +525,6 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         self,
         request: ToolExecutionLayerRequest,
     ) -> str | None:
-        if request.freshness_requirement:
-            return request.freshness_requirement
         if request.evidence_shape is None:
             return None
         return request.evidence_shape.freshness_requirement
@@ -594,14 +581,14 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 generated_query=generated_query,
                 execution_outcome=family_result,
                 failure_reason=failure_reason,
-                continuation_available=request.continuation_available,
+                continuation_available=False,
                 retry_budget=request.retry_budget,
                 retry_count=retry_count,
                 fallback_policy=request.fallback_policy,
                 fallback_applied=fallback_applied,
-                max_results=request.completion_max_results,
+                max_results=None,
                 timeout_limit_ms=request.timeout_limit_ms,
-                request_elapsed_ms=request.request_elapsed_ms,
+                request_elapsed_ms=None,
                 available_families=available_families,
                 allowed_source_families=request.allowed_source_families,
                 blocked_source_families=self._normalize_string_list(
@@ -748,6 +735,41 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
             {
                 "policy": self._POLICY_NAME,
                 "execution_status": execution_status,
+                "family_selection_status": (
+                    family_selection_result.selection_status
+                    if family_selection_result is not None
+                    else None
+                ),
+                "query_generation_status": (
+                    query_generation_result.generation_status
+                    if query_generation_result is not None
+                    else None
+                ),
+                "evaluation_status": (
+                    completion_evaluation_result.evaluation_status
+                    if completion_evaluation_result is not None
+                    else None
+                ),
+                "request_completion_status": (
+                    completion_evaluation_result.request_completion_status
+                    if completion_evaluation_result is not None
+                    else None
+                ),
+                "needs_recovery": (
+                    completion_evaluation_result.needs_recovery
+                    if completion_evaluation_result is not None
+                    else False
+                ),
+                "recovery_action": (
+                    completion_evaluation_result.recovery_action
+                    if completion_evaluation_result is not None
+                    else None
+                ),
+                "next_step_hint": (
+                    completion_evaluation_result.next_step_hint
+                    if completion_evaluation_result is not None
+                    else None
+                ),
                 "retry_count": retry_count,
                 "fallback_applied": fallback_applied,
                 "recovery_attempt_count": recovery_attempt_count,
@@ -769,6 +791,21 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 "retry_count": retry_count,
                 "fallback_applied": fallback_applied,
                 "recovery_exhausted_reason": recovery_exhausted_reason,
+                "family_selection_summary": (
+                    family_selection_result.selection_summary
+                    if family_selection_result is not None
+                    else None
+                ),
+                "query_generation_summary": (
+                    query_generation_result.generation_summary
+                    if query_generation_result is not None
+                    else None
+                ),
+                "completion_evaluation_summary": (
+                    completion_evaluation_result.evaluation_summary
+                    if completion_evaluation_result is not None
+                    else None
+                ),
             }
         )
 
@@ -785,30 +822,6 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 if family_execution_result is not None
                 else 0
             ),
-            selected_family=selected_family,
-            generated_query=generated_query,
-            query_focus=(
-                query_generation_result.query_focus
-                if query_generation_result is not None
-                else None
-            ),
-            needs_recovery=(
-                completion_evaluation_result.needs_recovery
-                if completion_evaluation_result is not None
-                else False
-            ),
-            next_step_hint=(
-                completion_evaluation_result.next_step_hint
-                if completion_evaluation_result is not None
-                else None
-            ),
-            family_selection_result=family_selection_result,
-            query_generation_result=query_generation_result,
-            family_execution_result=family_execution_result,
-            completion_evaluation_result=completion_evaluation_result,
-            recovery_attempt_count=recovery_attempt_count,
-            fallback_applied=fallback_applied,
-            retry_count=retry_count,
             source_summary=source_summary,
             execution_summary=execution_summary,
             retrieval_trace=retrieval_trace,

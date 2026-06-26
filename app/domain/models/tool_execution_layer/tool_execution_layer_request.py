@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 from app.domain.models.tool_execution_layer.evidence_shape import EvidenceShape
 from app.domain.models.tool_execution_layer.family_selection_request import ActionMode
 from app.domain.models.tool_execution_layer.request_completion_evaluation_request import (
-    FailureReason,
     FallbackPolicy,
 )
 from app.domain.models.tool_execution_layer.retrieval_query_generation_request import (
@@ -33,17 +32,9 @@ class ToolExecutionLayerRequest(BaseModel):
         default=None,
         description="Optional desired evidence shape.",
     )
-    task_type: str | None = Field(
-        default=None,
-        description="Optional interpreted task type.",
-    )
     task_framing: str | None = Field(
         default=None,
         description="Optional task framing signal.",
-    )
-    evidence_strategy: str | None = Field(
-        default=None,
-        description="Optional evidence strategy signal.",
     )
     allowed_source_families: list[RetrievalFamily] = Field(
         default_factory=list,
@@ -72,10 +63,6 @@ class ToolExecutionLayerRequest(BaseModel):
     preferred_tool: str | None = Field(
         default=None,
         description="Optional Research Executor-owned preferred tool hint.",
-    )
-    freshness_requirement: str | None = Field(
-        default=None,
-        description="Optional freshness hint for docs and web families.",
     )
     source_names: list[str] = Field(
         default_factory=list,
@@ -138,46 +125,19 @@ class ToolExecutionLayerRequest(BaseModel):
         ge=1,
         description="Maximum recalled memory units.",
     )
-    failure_reason: FailureReason | None = Field(
-        default=None,
-        description="Optional normalized failure reason from caller context.",
-    )
-    continuation_available: bool = Field(
-        default=False,
-        description="Whether current request continuation is available.",
-    )
     retry_budget: int = Field(
         default=1,
         ge=0,
         description="Maximum internal retry attempts for this Tool Execution Layer request.",
     )
-    retry_count: int = Field(
-        default=0,
-        ge=0,
-        description="Retry count already consumed before this service call.",
-    )
     fallback_policy: FallbackPolicy = Field(
         default="fallback_within_same_family",
         description="Fallback policy for this request.",
-    )
-    fallback_applied: bool = Field(
-        default=False,
-        description="Whether fallback was already applied before this service call.",
-    )
-    completion_max_results: int | None = Field(
-        default=None,
-        ge=1,
-        description="Optional completion guard passed to the evaluator.",
     )
     timeout_limit_ms: int | None = Field(
         default=None,
         gt=0,
         description="Optional total Tool Execution Layer request timeout budget.",
-    )
-    request_elapsed_ms: int | None = Field(
-        default=None,
-        ge=0,
-        description="Elapsed time already consumed before this service call.",
     )
 
 

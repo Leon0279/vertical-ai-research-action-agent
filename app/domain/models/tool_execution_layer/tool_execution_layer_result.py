@@ -8,16 +8,6 @@ from pydantic import BaseModel, Field
 
 from app.domain.models.families.base_family_execution_result import (
     AcquisitionStatus,
-    BaseFamilyExecutionResult,
-)
-from app.domain.models.tool_execution_layer.family_selection_result import (
-    FamilySelectionResult,
-)
-from app.domain.models.tool_execution_layer.request_completion_evaluation_result import (
-    RequestCompletionEvaluationResult,
-)
-from app.domain.models.tool_execution_layer.retrieval_query_generation_result import (
-    RetrievalQueryGenerationResult,
 )
 from app.domain.models.tool_execution_layer.tool_execution_layer_request import (
     ExecutionStatus,
@@ -41,56 +31,6 @@ class ToolExecutionLayerResult(BaseModel):
         default=0,
         ge=0,
         description="Final dropped item count from family execution.",
-    )
-    selected_family: str | None = Field(
-        default=None,
-        description="Final selected family used by the layer flow.",
-    )
-    generated_query: str | None = Field(
-        default=None,
-        description="Final generated retrieval query used for family execution.",
-    )
-    query_focus: str | None = Field(
-        default=None,
-        description="Final generated query focus label.",
-    )
-    needs_recovery: bool = Field(
-        default=False,
-        description="Whether the final evaluation still indicates recovery need.",
-    )
-    next_step_hint: str | None = Field(
-        default=None,
-        description="Final evaluation next-step hint.",
-    )
-    family_selection_result: FamilySelectionResult | None = Field(
-        default=None,
-        description="Most recent family selection result.",
-    )
-    query_generation_result: RetrievalQueryGenerationResult | None = Field(
-        default=None,
-        description="Most recent query generation result.",
-    )
-    family_execution_result: BaseFamilyExecutionResult | None = Field(
-        default=None,
-        description="Most recent family execution result.",
-    )
-    completion_evaluation_result: RequestCompletionEvaluationResult | None = Field(
-        default=None,
-        description="Most recent completion evaluation result.",
-    )
-    recovery_attempt_count: int = Field(
-        default=0,
-        ge=0,
-        description="Internal recovery attempts executed by the layer.",
-    )
-    fallback_applied: bool = Field(
-        default=False,
-        description="Whether a broader-family fallback was applied by the layer.",
-    )
-    retry_count: int = Field(
-        default=0,
-        ge=0,
-        description="Total retry count after the layer flow.",
     )
     source_summary: dict[str, Any] = Field(
         default_factory=dict,

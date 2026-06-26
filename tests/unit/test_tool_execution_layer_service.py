@@ -7,6 +7,7 @@ from typing import Any
 
 from app.domain.models import (
     BaseFamilyExecutionResult,
+    EvidenceShape,
     FamilySelectionRequest,
     FamilySelectionResult,
     RequestCompletionEvaluationRequest,
@@ -215,11 +216,19 @@ def test_happy_path_executes_docs_and_stops() -> None:
     )
 
     assert result.execution_status == "completed"
-    assert result.selected_family == "docs_search"
-    assert result.generated_query == "docs_search query"
     assert result.acquisition_status == "success"
     assert result.normalized_items == [{"item_id": "1"}]
+    assert result.retrieval_trace["selected_family"] == "docs_search"
+    assert result.retrieval_trace["generated_query"] == "docs_search query"
+    assert result.retrieval_trace["query_focus"] == "focus"
     assert "selected_tool" not in result.model_dump().keys()
+    assert "selected_family" not in result.model_dump().keys()
+    assert "generated_query" not in result.model_dump().keys()
+    assert "query_focus" not in result.model_dump().keys()
+    assert "family_selection_result" not in result.model_dump().keys()
+    assert "query_generation_result" not in result.model_dump().keys()
+    assert "family_execution_result" not in result.model_dump().keys()
+    assert "completion_evaluation_result" not in result.model_dump().keys()
     assert len(docs.requests) == 1
 
 
@@ -238,7 +247,7 @@ def test_preferred_tool_is_passed_through_but_not_synthesized() -> None:
 
     assert result.execution_status == "completed"
     assert docs.requests[0].preferred_tool == "research_executor_tool_hint"
-    assert result.family_execution_result.selected_tool == "tool_v1"
+    assert result.source_summary["selected_tool"] == "tool_v1"
 
 
 def test_family_selection_no_match_stops_before_query_generation() -> None:
@@ -339,8 +348,8 @@ def test_retry_same_tool_reuses_same_family_query_and_original_preferred_tool() 
     )
 
     assert result.execution_status == "completed"
-    assert result.retry_count == 1
-    assert result.recovery_attempt_count == 1
+    assert result.execution_summary["retry_count"] == 1
+    assert result.execution_summary["recovery_attempt_count"] == 1
     assert len(selector.requests) == 1
     assert len(query.requests) == 1
     assert len(docs.requests) == 2
@@ -385,10 +394,10 @@ def test_broader_fallback_blocks_current_family_and_executes_new_family() -> Non
     )
 
     assert result.execution_status == "completed"
-    assert result.selected_family == "web_search"
-    assert result.generated_query == "web query"
-    assert result.fallback_applied is True
-    assert result.recovery_attempt_count == 1
+    assert result.retrieval_trace["selected_family"] == "web_search"
+    assert result.retrieval_trace["generated_query"] == "web query"
+    assert result.execution_summary["fallback_applied"] is True
+    assert result.execution_summary["recovery_attempt_count"] == 1
     assert selector.requests[1].blocked_source_families == ["docs_search"]
     assert docs.requests[0].query_text == "docs query"
     assert web.requests[0].query_text == "web query"
@@ -411,7 +420,7 @@ def test_same_family_fallback_is_recorded_as_unavailable() -> None:
     )
 
     assert result.execution_status == "completed"
-    assert result.needs_recovery is True
+    assert result.execution_summary["needs_recovery"] is True
     assert result.execution_summary["recovery_exhausted_reason"] == (
         "same_family_fallback_not_executable"
     )
@@ -436,7 +445,7 @@ def test_family_exception_is_evaluated_as_tool_error() -> None:
     assert result.execution_status == "completed"
     assert result.acquisition_status == "failed"
     assert evaluator.requests[0].failure_reason == "tool_error"
-    assert result.family_execution_result.error_info == "family boom"
+    assert result.retrieval_trace["family_exception"] == "family boom"
 
 
 def test_evaluation_failed_returns_failed_with_family_result() -> None:
@@ -454,7 +463,7 @@ def test_evaluation_failed_returns_failed_with_family_result() -> None:
 
     assert result.execution_status == "failed"
     assert result.error_info == "evaluation failed"
-    assert result.family_execution_result is not None
+    assert result.normalized_items == [{"item_id": "1"}]
 
 
 def test_family_request_mapping_for_all_families() -> None:
@@ -482,7 +491,7 @@ def test_family_request_mapping_for_all_families() -> None:
             ToolExecutionLayerRequest(
                 target_problem="Map request",
                 preferred_tool="executor_tool",
-                freshness_requirement="fresh_required",
+                evidence_shape=EvidenceShape(freshness_requirement="fresh_required"),
                 source_names=["docs"],
                 include_domains=["example.com"],
                 exclude_domains=["bad.example"],
