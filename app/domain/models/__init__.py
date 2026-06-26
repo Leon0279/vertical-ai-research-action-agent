@@ -74,6 +74,8 @@ from app.domain.models.tool_execution_layer import (
     RequestCompletionEvaluationResult,
     RetrievalQueryGenerationRequest,
     RetrievalQueryGenerationResult,
+    ToolExecutionLayerRequest,
+    ToolExecutionLayerResult,
 )
 from app.domain.models.tools import (
     ArxivPaperSearchToolRequest,
@@ -161,6 +163,8 @@ __all__ = [
     "TaskInterpretationResult",
     "TavilyWebSearchToolRequest",
     "TavilyWebSearchToolResult",
+    "ToolExecutionLayerRequest",
+    "ToolExecutionLayerResult",
     "WebContentFetchFailedResult",
     "WebContentFetchRequest",
     "WebContentFetchResponse",

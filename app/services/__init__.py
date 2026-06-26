@@ -17,6 +17,8 @@ from app.services.tool_execution_layer import (
     RequestCompletionEvaluationServiceProtocol,
     RetrievalQueryGenerationService,
     RetrievalQueryGenerationServiceProtocol,
+    ToolExecutionLayerService,
+    ToolExecutionLayerServiceProtocol,
 )
 from app.services.tools import (
     ArxivPaperSearchTool,
@@ -46,6 +48,8 @@ __all__ = [
     "RetrievalQueryGenerationServiceProtocol",
     "TavilyWebSearchTool",
     "TavilyWebSearchToolProtocol",
+    "ToolExecutionLayerService",
+    "ToolExecutionLayerServiceProtocol",
     "WebSearchFamilyService",
     "WebSearchFamilyServiceProtocol",
 ]

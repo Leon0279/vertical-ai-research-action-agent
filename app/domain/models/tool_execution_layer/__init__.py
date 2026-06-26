@@ -19,6 +19,12 @@ from app.domain.models.tool_execution_layer.retrieval_query_generation_request i
 from app.domain.models.tool_execution_layer.retrieval_query_generation_result import (
     RetrievalQueryGenerationResult,
 )
+from app.domain.models.tool_execution_layer.tool_execution_layer_request import (
+    ToolExecutionLayerRequest,
+)
+from app.domain.models.tool_execution_layer.tool_execution_layer_result import (
+    ToolExecutionLayerResult,
+)
 
 __all__ = [
     "EvidenceShape",
@@ -28,4 +34,6 @@ __all__ = [
     "RequestCompletionEvaluationResult",
     "RetrievalQueryGenerationRequest",
     "RetrievalQueryGenerationResult",
+    "ToolExecutionLayerRequest",
+    "ToolExecutionLayerResult",
 ]

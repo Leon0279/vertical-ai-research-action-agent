@@ -9,12 +9,18 @@ from app.services.tool_execution_layer.contracts.request_completion_evaluation_s
 from app.services.tool_execution_layer.contracts.retrieval_query_generation_service_protocol import (
     RetrievalQueryGenerationServiceProtocol,
 )
+from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
+    ToolExecutionLayerServiceProtocol,
+)
 from app.services.tool_execution_layer.family_selection_service import FamilySelectionService
 from app.services.tool_execution_layer.request_completion_evaluation_service import (
     RequestCompletionEvaluationService,
 )
 from app.services.tool_execution_layer.retrieval_query_generation_service import (
     RetrievalQueryGenerationService,
+)
+from app.services.tool_execution_layer.tool_execution_layer_service import (
+    ToolExecutionLayerService,
 )
 
 __all__ = [
@@ -24,4 +30,6 @@ __all__ = [
     "RequestCompletionEvaluationServiceProtocol",
     "RetrievalQueryGenerationService",
     "RetrievalQueryGenerationServiceProtocol",
+    "ToolExecutionLayerService",
+    "ToolExecutionLayerServiceProtocol",
 ]
