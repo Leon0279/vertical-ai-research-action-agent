@@ -137,7 +137,11 @@ from app.adapters.memory.redis_session_memory_store import RedisSessionMemorySto
 from app.adapters.memory.redis_session_memory_store_config import RedisSessionMemoryStoreConfig
 from app.adapters.retrieval.contracts.retriever_protocol import RetrieverProtocol
 from app.adapters.retrieval.stub_retriever import StubRetriever
+from app.services.evidence.contracts.evidence_processing_service_protocol import (
+    EvidenceProcessingServiceProtocol,
+)
 from app.services.evidence.contracts.evidence_processor_protocol import EvidenceProcessorProtocol
+from app.services.evidence.evidence_processing_service import EvidenceProcessingService
 from app.services.evidence.evidence_processor_service import EvidenceProcessorService
 from app.services.memory.context_memory_loader_service import ContextMemoryLoaderService
 from app.services.memory.contracts.context_memory_loader_protocol import ContextMemoryLoaderProtocol
@@ -270,6 +274,7 @@ def test_adapter_protocol_conformance() -> None:
 def test_service_protocol_conformance() -> None:
     assert isinstance(TaskInterpreterService(), TaskInterpreterProtocol)
     assert isinstance(DecompositionPlannerService(), DecompositionPlannerProtocol)
+    assert isinstance(EvidenceProcessingService(), EvidenceProcessingServiceProtocol)
     assert isinstance(EvidenceProcessorService(), EvidenceProcessorProtocol)
     assert isinstance(ConclusionGeneratorService(), ConclusionGeneratorProtocol)
     assert isinstance(FamilySelectionService(), FamilySelectionServiceProtocol)

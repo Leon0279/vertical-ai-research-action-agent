@@ -19,7 +19,10 @@ from app.domain.models.docs_search import (
 )
 from app.domain.models.embedding_result import EmbeddingResult
 from app.domain.models.evidence.evidence_item import EvidenceItem
+from app.domain.models.evidence.evidence_processing_request import EvidenceProcessingRequest
+from app.domain.models.evidence.evidence_processing_result import EvidenceProcessingResult
 from app.domain.models.evidence.evidence_summary import EvidenceSummary
+from app.domain.models.evidence.processed_evidence_unit import ProcessedEvidenceUnit
 from app.domain.models.execution_state import ExecutionState
 from app.domain.models.families import (
     BaseFamilyExecutionResult,
@@ -118,6 +121,8 @@ __all__ = [
     "DocsSearchResult",
     "EmbeddingResult",
     "EvidenceItem",
+    "EvidenceProcessingRequest",
+    "EvidenceProcessingResult",
     "EvidenceSummary",
     "EvidenceShape",
     "FamilySelectionRequest",
@@ -140,6 +145,7 @@ __all__ = [
     "PaperSearchResponse",
     "PaperSearchResult",
     "PreferencePolicyMemoryRecord",
+    "ProcessedEvidenceUnit",
     "ProjectProfileMemoryRecord",
     "RequestCompletionEvaluationRequest",
     "RequestCompletionEvaluationResult",
