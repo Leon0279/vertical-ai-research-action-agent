@@ -30,8 +30,7 @@ class DocsSearchResponse(BaseModel):
     source_summary: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "optional 字段，默认空 dict。对本次 docs 搜索来源与结果的摘要信息，"
-            "当前主要包含：selected_family、selected_tool、searched_sub_source_types、"
-            "normalized_count。"
+            "optional 字段，默认空 dict。对本次 docs 搜索来源与结果的 adapter-level 摘要信息，"
+            "当前主要包含：searched_sub_source_types、normalized_count。"
         ),
     )

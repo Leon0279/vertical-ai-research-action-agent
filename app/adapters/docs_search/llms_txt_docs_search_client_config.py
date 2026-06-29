@@ -16,7 +16,7 @@ from app.config.env_loader import load_env_file
 class LlmsTxtDocsSourceConfig(BaseModel):
     """Single llms.txt documentation source configuration."""
 
-    source_name: str = Field(min_length=1)
+    sub_source_type: str = Field(min_length=1)
     llms_txt_url: str = Field(min_length=1)
     allowed_url_prefixes: list[str] = Field(default_factory=list)
 
@@ -90,7 +90,7 @@ class LlmsTxtDocsSearchClientConfig(BaseModel):
     def _default_sources(cls) -> list[LlmsTxtDocsSourceConfig]:
         return [
             LlmsTxtDocsSourceConfig(
-                source_name="openai_api",
+                sub_source_type="openai_api",
                 llms_txt_url="https://platform.openai.com/docs/llms.txt",
                 allowed_url_prefixes=[
                     "https://platform.openai.com/docs",
@@ -98,12 +98,12 @@ class LlmsTxtDocsSearchClientConfig(BaseModel):
                 ],
             ),
             LlmsTxtDocsSourceConfig(
-                source_name="anthropic_api",
+                sub_source_type="anthropic_api",
                 llms_txt_url="https://docs.anthropic.com/llms.txt",
                 allowed_url_prefixes=["https://docs.anthropic.com"],
             ),
             LlmsTxtDocsSourceConfig(
-                source_name="claude_code",
+                sub_source_type="claude_code",
                 llms_txt_url="https://code.claude.com/docs/llms.txt",
                 allowed_url_prefixes=["https://code.claude.com/docs"],
             ),

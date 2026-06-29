@@ -36,7 +36,7 @@ class _ManifestEntry:
     title: str
     url: str
     summary: str | None
-    source_name: str
+    sub_source_type: str
     section: str | None
 
 
@@ -68,18 +68,18 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
                 if value
             )
         )
-        entries, dropped_item_count, searched_sources = await self._load_entries(normalized_query)
+        entries, dropped_item_count, searched_sub_source_types = await self._load_entries(
+            normalized_query
+        )
         scored_entries = self._score_entries(entries, tokens)
-        top_entries = scored_entries[: normalized_query.limit]
-        results = await self._build_results(top_entries, tokens)
+        top_scored_entries = scored_entries[: normalized_query.limit]
+        results = await self._build_results(top_scored_entries, tokens)
 
         return DocsSearchResponse(
             results=results,
             dropped_item_count=dropped_item_count,
             source_summary={
-                "selected_family": "docs_search",
-                "selected_tool": "llms_txt_docs_search_v1",
-                "searched_sub_source_types": searched_sources,
+                "searched_sub_source_types": searched_sub_source_types,
                 "normalized_count": len(results),
             },
         )
@@ -109,30 +109,55 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
         self,
         query: DocsSearchQuery,
     ) -> tuple[list[_ManifestEntry], int, list[str]]:
-        selected_sources = self._select_sources(query.sub_source_types)
+        selected_sub_source_configs = self._select_sub_source_configs(
+            query.sub_source_types
+        )
         entries: list[_ManifestEntry] = []
         dropped_item_count = 0
 
-        for source in selected_sources:
-            manifest_text = await self._get_text(source.llms_txt_url)
-            parsed_entries, dropped_count = self._parse_manifest(source, manifest_text)
+        for sub_source_config in selected_sub_source_configs:
+            manifest_text = await self._get_text(sub_source_config.llms_txt_url)
+            parsed_entries, dropped_count = self._parse_manifest(
+                sub_source_config,
+                manifest_text,
+            )
             entries.extend(parsed_entries)
             dropped_item_count += dropped_count
-        return entries, dropped_item_count, [source.source_name for source in selected_sources]
+        return (
+            entries,
+            dropped_item_count,
+            [
+                sub_source_config.sub_source_type
+                for sub_source_config in selected_sub_source_configs
+            ],
+        )
 
-    def _select_sources(self, sub_source_types: list[str]) -> list[LlmsTxtDocsSourceConfig]:
+    def _select_sub_source_configs(
+        self,
+        sub_source_types: list[str],
+    ) -> list[LlmsTxtDocsSourceConfig]:
         if not self._config.sources:
             raise LlmsTxtDocsSearchClientError("At least one docs search source is required.")
         if not sub_source_types:
             return self._config.sources
 
-        configured = {source.source_name: source for source in self._config.sources}
-        missing = [name for name in sub_source_types if name not in configured]
+        source_configs_by_sub_source_type = {
+            source_config.sub_source_type: source_config
+            for source_config in self._config.sources
+        }
+        missing = [
+            sub_source_type
+            for sub_source_type in sub_source_types
+            if sub_source_type not in source_configs_by_sub_source_type
+        ]
         if missing:
             raise LlmsTxtDocsSearchClientError(
                 f"Unknown docs search sub_source_types: {', '.join(missing)}."
             )
-        return [configured[name] for name in sub_source_types]
+        return [
+            source_configs_by_sub_source_type[sub_source_type]
+            for sub_source_type in sub_source_types
+        ]
 
     async def _get_text(self, url: str) -> str:
         try:
@@ -159,7 +184,7 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
 
     def _parse_manifest(
         self,
-        source: LlmsTxtDocsSourceConfig,
+        sub_source_config: LlmsTxtDocsSourceConfig,
         manifest_text: str,
     ) -> tuple[list[_ManifestEntry], int]:
         entries: list[_ManifestEntry] = []
@@ -183,8 +208,8 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
             title = self._normalize_text(match.group(1))
             raw_url = match.group(2).strip()
             summary = self._normalize_text(match.group(3))
-            url = urljoin(source.llms_txt_url, raw_url)
-            if not title or not url or not self._url_allowed(source, url):
+            url = urljoin(sub_source_config.llms_txt_url, raw_url)
+            if not title or not url or not self._url_allowed(sub_source_config, url):
                 dropped_item_count += 1
                 continue
 
@@ -193,7 +218,7 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
                     title=title,
                     url=url,
                     summary=summary,
-                    source_name=source.source_name,
+                    sub_source_type=sub_source_config.sub_source_type,
                     section=current_section,
                 )
             )
@@ -262,7 +287,7 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
             item_id = self._item_id(scored_entry.entry)
             source_reference = SourceReference(
                 source_type="document",
-                sub_source_type=scored_entry.entry.source_name,
+                sub_source_type=scored_entry.entry.sub_source_type,
                 source_id=item_id,
                 source_id_type="docs_entry_id",
                 source_url=scored_entry.entry.url,
@@ -318,7 +343,9 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
         return best
 
     def _item_id(self, entry: _ManifestEntry) -> str:
-        digest = hashlib.sha256(f"{entry.source_name}:{entry.url}".encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(
+            f"{entry.sub_source_type}:{entry.url}".encode("utf-8")
+        ).hexdigest()
         return f"docs_{digest[:16]}"
 
     def _tokens(self, value: str) -> set[str]:

@@ -47,7 +47,7 @@ class DocsSearchQuery(BaseModel):
         default_factory=list,
         description=(
             "optional 字段，默认空列表。允许检索的 docs 子来源类型白名单，"
-            "例如 openai_api、anthropic_api，底层会映射到 adapter 配置中的 source_name；"
+            "例如 openai_api、anthropic_api，底层会映射到 adapter 配置中的 sub_source_type；"
             "为空时表示使用全部已配置 docs source。"
         ),
     )

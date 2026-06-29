@@ -55,12 +55,12 @@ def _config() -> LlmsTxtDocsSearchClientConfig:
     return LlmsTxtDocsSearchClientConfig(
         sources=[
             LlmsTxtDocsSourceConfig(
-                source_name="openai_api",
+                sub_source_type="openai_api",
                 llms_txt_url="https://platform.openai.com/docs/llms.txt",
                 allowed_url_prefixes=["https://developers.openai.com/api/docs"],
             ),
             LlmsTxtDocsSourceConfig(
-                source_name="anthropic_api",
+                sub_source_type="anthropic_api",
                 llms_txt_url="https://docs.anthropic.com/llms.txt",
                 allowed_url_prefixes=["https://docs.anthropic.com"],
             ),
@@ -73,7 +73,7 @@ def _config() -> LlmsTxtDocsSearchClientConfig:
 def test_config_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
         "DOCS_SEARCH_SOURCES_JSON",
-        '[{"source_name":"test","llms_txt_url":"https://example.test/llms.txt","allowed_url_prefixes":["https://example.test/docs"]}]',
+        '[{"sub_source_type":"test","llms_txt_url":"https://example.test/llms.txt","allowed_url_prefixes":["https://example.test/docs"]}]',
     )
     monkeypatch.setenv("DOCS_SEARCH_TIMEOUT_SECONDS", "7.5")
     monkeypatch.setenv("DOCS_SEARCH_DEFAULT_LIMIT", "4")
@@ -84,7 +84,7 @@ def test_config_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     config = LlmsTxtDocsSearchClientConfig.from_env()
 
     assert len(config.sources) == 1
-    assert config.sources[0].source_name == "test"
+    assert config.sources[0].sub_source_type == "test"
     assert config.sources[0].allowed_url_prefixes == ["https://example.test/docs"]
     assert config.timeout_seconds == 7.5
     assert config.default_limit == 4
@@ -98,8 +98,8 @@ def test_config_uses_vertical_docs_default_sources(monkeypatch: pytest.MonkeyPat
 
     config = LlmsTxtDocsSearchClientConfig.from_env()
 
-    source_names = {source.source_name for source in config.sources}
-    assert {"openai_api", "anthropic_api", "claude_code"} <= source_names
+    sub_source_types = {source.sub_source_type for source in config.sources}
+    assert {"openai_api", "anthropic_api", "claude_code"} <= sub_source_types
 
 
 def test_config_rejects_invalid_sources_json(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,8 +161,10 @@ def test_search_docs_fetches_manifest_pages_and_normalizes_snippets() -> None:
     assert "Recommended retrieval baseline" in result.content
     assert result.score > 0
     assert response.dropped_item_count == 2
-    assert response.source_summary["selected_family"] == "docs_search"
-    assert response.source_summary["selected_tool"] == "llms_txt_docs_search_v1"
+    assert response.source_summary["searched_sub_source_types"] == [
+        "openai_api",
+        "anthropic_api",
+    ]
     assert response.source_summary["normalized_count"] == 1
 
 
