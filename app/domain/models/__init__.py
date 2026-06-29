@@ -76,6 +76,10 @@ from app.domain.models.retrieval import (
     RetrievalTrace,
 )
 from app.domain.models.request_context import RequestContext
+from app.domain.models.source import (
+    SourceEvidenceSpan,
+    SourceReference,
+)
 from app.domain.models.structured_output import StructuredOutput
 from app.domain.models.task_interpretation_result import TaskInterpretationResult
 from app.domain.models.tool_execution_layer import (
@@ -180,6 +184,8 @@ __all__ = [
     "RuntimeContext",
     "SessionMemory",
     "SessionTurnSummary",
+    "SourceReference",
+    "SourceEvidenceSpan",
     "StructuredOutput",
     "SupplementalContext",
     "TaskInterpretationResult",
