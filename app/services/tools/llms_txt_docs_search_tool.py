@@ -11,6 +11,7 @@ from app.domain.models import (
     DocsSearchResult,
     LlmsTxtDocsSearchToolRequest,
     LlmsTxtDocsSearchToolResult,
+    RetrievalSourceSummary,
 )
 from app.domain.models.retrieval import NormalizedRetrievalItem
 from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
@@ -130,18 +131,14 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
         *,
         normalized_count: int,
         search_response: DocsSearchResponse,
-    ) -> dict[str, object]:
-        source_summary = {
-            "selected_family": "docs_search",
-            "selected_tool": "llms_txt_docs_search_v1",
-            "normalized_count": normalized_count,
-        }
-        searched_sub_source_types = search_response.source_summary.get(
-            "searched_sub_source_types"
+    ) -> RetrievalSourceSummary:
+        return search_response.source_summary.model_copy(
+            update={
+                "selected_family": "docs_search",
+                "selected_tool": "llms_txt_docs_search_v1",
+                "normalized_count": normalized_count,
+            }
         )
-        if isinstance(searched_sub_source_types, list):
-            source_summary["searched_sub_source_types"] = searched_sub_source_types
-        return source_summary
 
     def _retrieval_trace(
         self,
@@ -171,11 +168,11 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             normalized_items=[],
             acquisition_status="failed",
             dropped_item_count=0,
-            source_summary={
-                "selected_family": "docs_search",
-                "selected_tool": "llms_txt_docs_search_v1",
-                "normalized_count": 0,
-            },
+            source_summary=RetrievalSourceSummary(
+                selected_family="docs_search",
+                selected_tool="llms_txt_docs_search_v1",
+                normalized_count=0,
+            ),
             execution_summary={
                 "search_result_count": 0,
                 "normalized_count": 0,

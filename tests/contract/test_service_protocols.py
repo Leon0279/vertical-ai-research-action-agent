@@ -194,7 +194,7 @@ def test_adapter_protocol_conformance() -> None:
             config=LlmsTxtDocsSearchClientConfig(
                 sources=[
                     LlmsTxtDocsSourceConfig(
-                        source_name="test_docs",
+                        sub_source_type="test_docs",
                         llms_txt_url="https://example.test/llms.txt",
                     )
                 ]
@@ -322,7 +322,7 @@ def test_service_protocol_conformance() -> None:
                 config=LlmsTxtDocsSearchClientConfig(
                     sources=[
                         LlmsTxtDocsSourceConfig(
-                            source_name="test_docs",
+                            sub_source_type="test_docs",
                             llms_txt_url="https://example.test/llms.txt",
                         )
                     ]
@@ -365,7 +365,7 @@ def test_service_protocol_conformance() -> None:
                     config=LlmsTxtDocsSearchClientConfig(
                         sources=[
                             LlmsTxtDocsSourceConfig(
-                                source_name="test_docs",
+                                sub_source_type="test_docs",
                                 llms_txt_url="https://example.test/llms.txt",
                             )
                         ]

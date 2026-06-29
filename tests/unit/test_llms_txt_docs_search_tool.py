@@ -8,6 +8,7 @@ from app.domain.models import (
     DocsSearchResponse,
     DocsSearchResult,
     LlmsTxtDocsSearchToolRequest,
+    RetrievalSourceSummary,
     SourceEvidenceSpan,
     SourceReference,
 )
@@ -64,9 +65,10 @@ SEARCH_RESPONSE = DocsSearchResponse(
         ),
     ],
     dropped_item_count=1,
-    source_summary={
-        "searched_sub_source_types": ["openai_api", "anthropic_api"],
-    },
+    source_summary=RetrievalSourceSummary(
+        normalized_count=2,
+        metadata={"searched_sub_source_types": ["openai_api", "anthropic_api"]},
+    ),
 )
 
 
@@ -144,7 +146,9 @@ def test_run_returns_no_result_for_empty_docs_results() -> None:
             DocsSearchResponse(
                 results=[],
                 dropped_item_count=0,
-                source_summary={"searched_sub_source_types": ["openai_api"]},
+                source_summary=RetrievalSourceSummary(
+                    metadata={"searched_sub_source_types": ["openai_api"]}
+                ),
             )
         )
     )
@@ -186,7 +190,10 @@ def test_run_marks_success_when_no_items_are_dropped() -> None:
             DocsSearchResponse(
                 results=[SEARCH_RESPONSE.results[0]],
                 dropped_item_count=0,
-                source_summary={"searched_sub_source_types": ["openai_api"]},
+                source_summary=RetrievalSourceSummary(
+                    normalized_count=1,
+                    metadata={"searched_sub_source_types": ["openai_api"]}
+                ),
             )
         )
     )

@@ -18,7 +18,7 @@ from app.adapters.docs_search.llms_txt_docs_search_client_config import (
 from app.adapters.docs_search.llms_txt_docs_search_client_error import (
     LlmsTxtDocsSearchClientError,
 )
-from app.domain.models import DocsSearchQuery, SourceReference
+from app.domain.models import DocsSearchQuery, RetrievalSourceSummary, SourceReference
 
 
 OPENAI_MANIFEST = """\
@@ -161,6 +161,7 @@ def test_search_docs_fetches_manifest_pages_and_normalizes_snippets() -> None:
     assert "Recommended retrieval baseline" in result.content
     assert result.score > 0
     assert response.dropped_item_count == 2
+    assert isinstance(response.source_summary, RetrievalSourceSummary)
     assert response.source_summary["searched_sub_source_types"] == [
         "openai_api",
         "anthropic_api",

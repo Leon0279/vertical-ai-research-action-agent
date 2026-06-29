@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import BaseModel, Field
 
 from app.domain.models.docs_search.docs_search_result import DocsSearchResult
+from app.domain.models.retrieval import RetrievalSourceSummary
 
 
 class DocsSearchResponse(BaseModel):
@@ -27,10 +26,10 @@ class DocsSearchResponse(BaseModel):
             "通常表示 llms.txt 中存在格式不合法、URL 不允许或缺关键字段的条目。"
         ),
     )
-    source_summary: dict[str, Any] = Field(
-        default_factory=dict,
+    source_summary: RetrievalSourceSummary = Field(
+        default_factory=RetrievalSourceSummary,
         description=(
-            "optional 字段，默认空 dict。对本次 docs 搜索来源与结果的 adapter-level 摘要信息，"
-            "当前主要包含：searched_sub_source_types、normalized_count。"
+            "optional 字段，默认空 RetrievalSourceSummary。"
+            "表示本次 docs 搜索来源与结果的 adapter-level typed 摘要信息。"
         ),
     )

@@ -23,6 +23,7 @@ from app.domain.models import (
     DocsSearchQuery,
     DocsSearchResponse,
     DocsSearchResult,
+    RetrievalSourceSummary,
     SourceEvidenceSpan,
     SourceReference,
 )
@@ -78,10 +79,12 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
         return DocsSearchResponse(
             results=results,
             dropped_item_count=dropped_item_count,
-            source_summary={
-                "searched_sub_source_types": searched_sub_source_types,
-                "normalized_count": len(results),
-            },
+            source_summary=RetrievalSourceSummary(
+                normalized_count=len(results),
+                metadata={
+                    "searched_sub_source_types": searched_sub_source_types,
+                },
+            ),
         )
 
     def _normalize_query(self, query: DocsSearchQuery) -> DocsSearchQuery:
