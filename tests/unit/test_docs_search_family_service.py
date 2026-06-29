@@ -53,7 +53,7 @@ def test_run_selects_default_tool_and_wraps_result() -> None:
                 query_text="responses api",
                 target_problem="Find official guidance",
                 freshness_requirement="fresh_preferred",
-                source_names=["openai_api"],
+                sub_source_types=["openai_api"],
             )
         )
     )
@@ -62,7 +62,7 @@ def test_run_selects_default_tool_and_wraps_result() -> None:
     assert tool.last_request.query_text == "responses api"
     assert tool.last_request.target_problem == "Find official guidance"
     assert tool.last_request.freshness_requirement == "fresh_preferred"
-    assert tool.last_request.source_names == ["openai_api"]
+    assert tool.last_request.sub_source_types == ["openai_api"]
     assert tool.last_request.max_search_results == 5
     assert result.selected_family == "docs_search"
     assert result.candidate_tools == ["llms_txt_docs_search_v1"]

@@ -31,6 +31,7 @@ class DocsSearchResponse(BaseModel):
         default_factory=dict,
         description=(
             "optional 字段，默认空 dict。对本次 docs 搜索来源与结果的摘要信息，"
-            "当前主要包含：selected_family、selected_tool、searched_sources、normalized_count。"
+            "当前主要包含：selected_family、selected_tool、searched_sub_source_types、"
+            "normalized_count。"
         ),
     )

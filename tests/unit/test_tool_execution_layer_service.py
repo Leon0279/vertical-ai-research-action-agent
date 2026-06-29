@@ -509,7 +509,7 @@ def test_family_request_mapping_for_all_families() -> None:
             ),
         )
 
-    assert docs.requests[-1].source_names == ["docs"]
+    assert docs.requests[-1].sub_source_types == ["docs"]
     assert docs.requests[-1].freshness_requirement == "fresh_required"
     assert docs.requests[-1].max_search_results == 7
     assert paper.requests[-1].max_content_fetches == 2

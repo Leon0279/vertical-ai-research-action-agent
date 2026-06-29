@@ -146,16 +146,16 @@ def test_search_docs_fetches_manifest_pages_and_normalizes_snippets() -> None:
     assert len(response.results) == 1
     result = response.results[0]
     assert result.title == "Retrieval Guide"
-    assert result.source_name == "openai_api"
     assert isinstance(result.source_reference, SourceReference)
     assert result.source_reference.source_type == "document"
+    assert result.source_reference.sub_source_type == "openai_api"
     assert result.source_reference.source_id == result.item_id
     assert result.source_reference.source_id_type == "docs_entry_id"
     assert result.source_reference.source_url == "https://developers.openai.com/api/docs/retrieval"
     assert result.source_reference.title == "Retrieval Guide"
     assert result.source_reference.publisher is None
     assert result.source_reference.citation_text == "Retrieval Guide"
-    assert result.source_reference.metadata == {"source_name": "openai_api"}
+    assert result.source_reference.metadata == {}
     assert result.source_reference.evidence_span is not None
     assert result.source_reference.evidence_span.section == "Guides"
     assert "Recommended retrieval baseline" in result.content
@@ -187,7 +187,7 @@ def test_search_docs_filters_to_requested_sources() -> None:
                 DocsSearchQuery(
                     query_text="Claude Code hooks permissions",
                     limit=3,
-                    source_names=["anthropic_api"],
+                    sub_source_types=["anthropic_api"],
                 )
             )
 
@@ -196,7 +196,7 @@ def test_search_docs_filters_to_requested_sources() -> None:
     assert seen_urls[0] == "https://docs.anthropic.com/llms.txt"
     assert "https://platform.openai.com/docs/llms.txt" not in seen_urls
     assert len(response.results) == 1
-    assert response.results[0].source_name == "anthropic_api"
+    assert response.results[0].source_reference.sub_source_type == "anthropic_api"
 
 
 def test_search_docs_falls_back_to_manifest_summary_when_page_fetch_fails() -> None:
@@ -263,10 +263,12 @@ def test_search_docs_rejects_bad_inputs_and_unknown_sources() -> None:
         asyncio.run(docs_client.search_docs(DocsSearchQuery(query_text="docs", limit=0)))
     with pytest.raises(LlmsTxtDocsSearchClientError, match="must not exceed 2"):
         asyncio.run(docs_client.search_docs(DocsSearchQuery(query_text="docs", limit=3)))
-    with pytest.raises(LlmsTxtDocsSearchClientError, match="Unknown docs search source_names"):
+    with pytest.raises(
+        LlmsTxtDocsSearchClientError, match="Unknown docs search sub_source_types"
+    ):
         asyncio.run(
             docs_client.search_docs(
-                DocsSearchQuery(query_text="docs", limit=1, source_names=["missing"])
+                DocsSearchQuery(query_text="docs", limit=1, sub_source_types=["missing"])
             )
         )
 

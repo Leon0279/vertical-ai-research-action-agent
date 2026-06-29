@@ -59,7 +59,7 @@ class DocsSearchFamilyService(DocsSearchFamilyServiceProtocol):
                 query_text=normalized_request.query_text,
                 target_problem=normalized_request.target_problem,
                 freshness_requirement=normalized_request.freshness_requirement,
-                source_names=normalized_request.source_names,
+                sub_source_types=normalized_request.sub_source_types,
                 max_search_results=normalized_request.max_search_results,
             )
         )
@@ -75,7 +75,9 @@ class DocsSearchFamilyService(DocsSearchFamilyServiceProtocol):
             query_text=request.query_text.strip(),
             target_problem=(request.target_problem or "").strip() or None,
             freshness_requirement=(request.freshness_requirement or "").strip() or None,
-            source_names=[value.strip() for value in request.source_names if value.strip()],
+            sub_source_types=[
+                value.strip() for value in request.sub_source_types if value.strip()
+            ],
             max_search_results=request.max_search_results,
             preferred_tool=(request.preferred_tool or "").strip() or None,
         )
@@ -174,7 +176,7 @@ class DocsSearchFamilyService(DocsSearchFamilyServiceProtocol):
                 "query_text": normalized_request.query_text,
                 "target_problem": normalized_request.target_problem,
                 "freshness_requirement": normalized_request.freshness_requirement,
-                "source_names": normalized_request.source_names,
+                "sub_source_types": normalized_request.sub_source_types,
                 "family_error": error_info,
             },
             error_info=error_info,

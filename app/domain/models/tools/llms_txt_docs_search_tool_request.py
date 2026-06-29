@@ -20,9 +20,9 @@ class LlmsTxtDocsSearchToolRequest(BaseModel):
         default=None,
         description="Optional freshness hint forwarded to docs search.",
     )
-    source_names: list[str] = Field(
+    sub_source_types: list[str] = Field(
         default_factory=list,
-        description="Optional configured docs sources to restrict the search to.",
+        description="Optional configured docs sub-source types to restrict the search to.",
     )
     max_search_results: int = Field(
         default=5,

@@ -25,6 +25,14 @@ class SourceReference(BaseModel):
             "不使用 enum，以保持未来来源类型可扩展。"
         ),
     )
+    sub_source_type: str | None = Field(
+        default=None,
+        description=(
+            "可选字段。source_type 之下的子来源类型或子来源标识，例如 docs_search 中的 "
+            "openai_api、anthropic_api、claude_code。当前主要用于区分同一大类来源下的"
+            "具体子来源；本轮 docs_search adapter 会填充该字段，其它 adapter 当前可为空。"
+        ),
+    )
     source_id: str | None = Field(
         default=None,
         description=(
@@ -139,6 +147,7 @@ class SourceReference(BaseModel):
 
     @field_validator(
         "source_type",
+        "sub_source_type",
         "source_id",
         "source_id_type",
         "source_url",

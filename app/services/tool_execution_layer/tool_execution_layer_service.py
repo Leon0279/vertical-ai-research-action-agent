@@ -488,7 +488,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 query_text=generated_query,
                 target_problem=request.target_problem,
                 freshness_requirement=freshness_requirement,
-                source_names=request.source_names,
+                sub_source_types=request.source_names,
                 max_search_results=request.max_search_results,
                 preferred_tool=request.preferred_tool,
             )

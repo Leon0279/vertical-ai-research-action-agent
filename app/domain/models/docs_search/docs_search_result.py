@@ -33,17 +33,10 @@ class DocsSearchResult(BaseModel):
             "这是下游 tool 层会直接消费的核心文本。"
         ),
     )
-    source_name: str = Field(
-        min_length=1,
-        description=(
-            "必填字段。命中该结果的 docs source 配置名。"
-            "它对应 adapter 配置中的 source_name，不等同于 publisher。"
-        ),
-    )
     source_reference: SourceReference = Field(
         description=(
             "必填字段。当前 docs 结果的 canonical provenance，"
-            "指向原始 docs 页面或章节来源，替代旧的 source_ref/url/section 字段。"
+            "指向原始 docs 页面或章节来源，并通过 sub_source_type 表达具体 docs 子来源。"
         ),
     )
     score: float = Field(

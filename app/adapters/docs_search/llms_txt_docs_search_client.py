@@ -79,7 +79,7 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
             source_summary={
                 "selected_family": "docs_search",
                 "selected_tool": "llms_txt_docs_search_v1",
-                "searched_sources": searched_sources,
+                "searched_sub_source_types": searched_sources,
                 "normalized_count": len(results),
             },
         )
@@ -100,14 +100,16 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
             limit=query.limit or self._config.default_limit,
             freshness_requirement=(query.freshness_requirement or "").strip() or None,
             breadth=(query.breadth or "").strip() or None,
-            source_names=[source.strip() for source in query.source_names if source.strip()],
+            sub_source_types=[
+                source.strip() for source in query.sub_source_types if source.strip()
+            ],
         )
 
     async def _load_entries(
         self,
         query: DocsSearchQuery,
     ) -> tuple[list[_ManifestEntry], int, list[str]]:
-        selected_sources = self._select_sources(query.source_names)
+        selected_sources = self._select_sources(query.sub_source_types)
         entries: list[_ManifestEntry] = []
         dropped_item_count = 0
 
@@ -118,19 +120,19 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
             dropped_item_count += dropped_count
         return entries, dropped_item_count, [source.source_name for source in selected_sources]
 
-    def _select_sources(self, source_names: list[str]) -> list[LlmsTxtDocsSourceConfig]:
+    def _select_sources(self, sub_source_types: list[str]) -> list[LlmsTxtDocsSourceConfig]:
         if not self._config.sources:
             raise LlmsTxtDocsSearchClientError("At least one docs search source is required.")
-        if not source_names:
+        if not sub_source_types:
             return self._config.sources
 
         configured = {source.source_name: source for source in self._config.sources}
-        missing = [name for name in source_names if name not in configured]
+        missing = [name for name in sub_source_types if name not in configured]
         if missing:
             raise LlmsTxtDocsSearchClientError(
-                f"Unknown docs search source_names: {', '.join(missing)}."
+                f"Unknown docs search sub_source_types: {', '.join(missing)}."
             )
-        return [configured[name] for name in source_names]
+        return [configured[name] for name in sub_source_types]
 
     async def _get_text(self, url: str) -> str:
         try:
@@ -260,6 +262,7 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
             item_id = self._item_id(scored_entry.entry)
             source_reference = SourceReference(
                 source_type="document",
+                sub_source_type=scored_entry.entry.source_name,
                 source_id=item_id,
                 source_id_type="docs_entry_id",
                 source_url=scored_entry.entry.url,
@@ -269,7 +272,6 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
                 if scored_entry.entry.section
                 else None,
                 citation_text=scored_entry.entry.title,
-                metadata={"source_name": scored_entry.entry.source_name},
             )
 
             results.append(
@@ -277,7 +279,6 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
                     item_id=item_id,
                     title=scored_entry.entry.title,
                     content=content,
-                    source_name=scored_entry.entry.source_name,
                     source_reference=source_reference,
                     score=scored_entry.score,
                     metadata=metadata,

@@ -38,7 +38,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
                     target_problem=normalized_request.target_problem,
                     limit=normalized_request.max_search_results,
                     freshness_requirement=normalized_request.freshness_requirement,
-                    source_names=normalized_request.source_names,
+                    sub_source_types=normalized_request.sub_source_types,
                 )
             )
         except Exception as exc:
@@ -84,7 +84,9 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             query_text=request.query_text.strip(),
             target_problem=(request.target_problem or "").strip() or None,
             freshness_requirement=(request.freshness_requirement or "").strip() or None,
-            source_names=[value.strip() for value in request.source_names if value.strip()],
+            sub_source_types=[
+                value.strip() for value in request.sub_source_types if value.strip()
+            ],
             max_search_results=request.max_search_results,
         )
 
@@ -95,7 +97,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             evidence_span = source_reference.evidence_span
             metadata = {
                 "title": result.title,
-                "source_name": result.source_name,
+                "sub_source_type": source_reference.sub_source_type,
                 "url": source_reference.source_url,
                 "section": evidence_span.section if evidence_span else None,
                 "source_reference": source_reference.model_dump(mode="json"),
@@ -134,9 +136,11 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             "selected_tool": "llms_txt_docs_search_v1",
             "normalized_count": normalized_count,
         }
-        searched_sources = search_response.source_summary.get("searched_sources")
-        if isinstance(searched_sources, list):
-            source_summary["searched_sources"] = searched_sources
+        searched_sub_source_types = search_response.source_summary.get(
+            "searched_sub_source_types"
+        )
+        if isinstance(searched_sub_source_types, list):
+            source_summary["searched_sub_source_types"] = searched_sub_source_types
         return source_summary
 
     def _retrieval_trace(
@@ -145,13 +149,15 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
         normalized_request: LlmsTxtDocsSearchToolRequest,
         search_response: DocsSearchResponse,
     ) -> dict[str, object]:
-        selected_sources = search_response.source_summary.get("searched_sources")
-        if not isinstance(selected_sources, list):
-            selected_sources = normalized_request.source_names
+        selected_sub_source_types = search_response.source_summary.get(
+            "searched_sub_source_types"
+        )
+        if not isinstance(selected_sub_source_types, list):
+            selected_sub_source_types = normalized_request.sub_source_types
         return {
             "query_text": normalized_request.query_text,
             "target_problem": normalized_request.target_problem,
-            "selected_sources": selected_sources,
+            "selected_sub_source_types": selected_sub_source_types,
             "returned_refs": [self._source_ref(result) for result in search_response.results],
         }
 
@@ -178,7 +184,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             retrieval_trace={
                 "query_text": normalized_request.query_text,
                 "target_problem": normalized_request.target_problem,
-                "selected_sources": normalized_request.source_names,
+                "selected_sub_source_types": normalized_request.sub_source_types,
                 "returned_refs": [],
                 "search_error": error_info,
             },
