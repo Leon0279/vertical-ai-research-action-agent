@@ -8,6 +8,8 @@ from app.domain.models import (
     DocsSearchResponse,
     DocsSearchResult,
     LlmsTxtDocsSearchToolRequest,
+    SourceEvidenceSpan,
+    SourceReference,
 )
 from app.services.tools.llms_txt_docs_search_tool import LlmsTxtDocsSearchTool
 
@@ -31,9 +33,16 @@ SEARCH_RESPONSE = DocsSearchResponse(
             title="Retrieval Guide",
             content="Use hybrid retrieval as a strong practical baseline.",
             source_name="openai_api",
-            source_ref="https://developers.openai.com/api/docs/retrieval",
-            url="https://developers.openai.com/api/docs/retrieval",
-            section="Guides",
+            source_reference=SourceReference(
+                source_type="document",
+                source_id="doc-1",
+                source_id_type="docs_entry_id",
+                source_url="https://developers.openai.com/api/docs/retrieval",
+                title="Retrieval Guide",
+                evidence_span=SourceEvidenceSpan(section="Guides"),
+                citation_text="Retrieval Guide",
+                metadata={"source_name": "openai_api"},
+            ),
             score=7.5,
             metadata={"manifest_summary": "Recommended retrieval baseline."},
         ),
@@ -42,9 +51,16 @@ SEARCH_RESPONSE = DocsSearchResponse(
             title="Responses API",
             content="Build agent workflows with hosted tools and structured outputs.",
             source_name="openai_api",
-            source_ref="https://developers.openai.com/api/docs/responses",
-            url="https://developers.openai.com/api/docs/responses",
-            section="Guides",
+            source_reference=SourceReference(
+                source_type="document",
+                source_id="doc-2",
+                source_id_type="docs_entry_id",
+                source_url="https://developers.openai.com/api/docs/responses",
+                title="Responses API",
+                evidence_span=SourceEvidenceSpan(section="Guides"),
+                citation_text="Responses API",
+                metadata={"source_name": "openai_api"},
+            ),
             score=4.0,
             metadata={"manifest_summary": "Build agent workflows with tools."},
         ),
@@ -108,6 +124,13 @@ def test_run_normal_path_maps_docs_results_to_normalized_items() -> None:
     assert first["metadata"]["source_name"] == "openai_api"
     assert first["metadata"]["url"] == "https://developers.openai.com/api/docs/retrieval"
     assert first["metadata"]["section"] == "Guides"
+    assert first["metadata"]["source_reference"]["source_type"] == "document"
+    assert first["metadata"]["source_reference"]["source_id"] == "doc-1"
+    assert first["metadata"]["source_reference"]["source_id_type"] == "docs_entry_id"
+    assert first["metadata"]["source_reference"]["source_url"] == (
+        "https://developers.openai.com/api/docs/retrieval"
+    )
+    assert first["metadata"]["source_reference"]["evidence_span"]["section"] == "Guides"
     assert first["metadata"]["rank"] == 1
     assert first["metadata"]["score"] == 7.5
     assert first["metadata"]["manifest_summary"] == "Recommended retrieval baseline."

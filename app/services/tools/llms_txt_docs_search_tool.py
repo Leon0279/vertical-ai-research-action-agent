@@ -91,11 +91,14 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
     def _normalize_items(self, results: list[DocsSearchResult]) -> list[NormalizedRetrievalItem]:
         normalized_items: list[NormalizedRetrievalItem] = []
         for rank, result in enumerate(results, start=1):
+            source_reference = result.source_reference
+            evidence_span = source_reference.evidence_span
             metadata = {
                 "title": result.title,
                 "source_name": result.source_name,
-                "url": result.url,
-                "section": result.section,
+                "url": source_reference.source_url,
+                "section": evidence_span.section if evidence_span else None,
+                "source_reference": source_reference.model_dump(mode="json"),
                 "rank": rank,
                 "score": result.score,
             }
@@ -105,13 +108,20 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
                     item_id=result.item_id,
                     source_family="docs_search",
                     source_type="document",
-                    source_ref=result.source_ref,
+                    source_ref=self._source_ref(result),
                     content=result.content,
                     content_type="text_snippet",
                     metadata=metadata,
                 )
             )
         return normalized_items
+
+    def _source_ref(self, result: DocsSearchResult) -> str:
+        return (
+            result.source_reference.source_url
+            or result.source_reference.source_id
+            or result.item_id
+        )
 
     def _source_summary(
         self,
@@ -142,7 +152,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             "query_text": normalized_request.query_text,
             "target_problem": normalized_request.target_problem,
             "selected_sources": selected_sources,
-            "returned_refs": [result.source_ref for result in search_response.results],
+            "returned_refs": [self._source_ref(result) for result in search_response.results],
         }
 
     def _failed_result(

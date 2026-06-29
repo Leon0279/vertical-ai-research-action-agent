@@ -19,7 +19,13 @@ from app.adapters.docs_search.llms_txt_docs_search_client_config import (
 from app.adapters.docs_search.llms_txt_docs_search_client_error import (
     LlmsTxtDocsSearchClientError,
 )
-from app.domain.models import DocsSearchQuery, DocsSearchResponse, DocsSearchResult
+from app.domain.models import (
+    DocsSearchQuery,
+    DocsSearchResponse,
+    DocsSearchResult,
+    SourceEvidenceSpan,
+    SourceReference,
+)
 
 LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)(?::\s*(.*))?")
 TOKEN_PATTERN = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*")
@@ -251,15 +257,28 @@ class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
             if fetch_error:
                 metadata["page_fetch_error"] = fetch_error
 
+            item_id = self._item_id(scored_entry.entry)
+            source_reference = SourceReference(
+                source_type="document",
+                source_id=item_id,
+                source_id_type="docs_entry_id",
+                source_url=scored_entry.entry.url,
+                title=scored_entry.entry.title,
+                publisher=None,
+                evidence_span=SourceEvidenceSpan(section=scored_entry.entry.section)
+                if scored_entry.entry.section
+                else None,
+                citation_text=scored_entry.entry.title,
+                metadata={"source_name": scored_entry.entry.source_name},
+            )
+
             results.append(
                 DocsSearchResult(
-                    item_id=self._item_id(scored_entry.entry),
+                    item_id=item_id,
                     title=scored_entry.entry.title,
                     content=content,
                     source_name=scored_entry.entry.source_name,
-                    source_ref=scored_entry.entry.url,
-                    url=scored_entry.entry.url,
-                    section=scored_entry.entry.section,
+                    source_reference=source_reference,
                     score=scored_entry.score,
                     metadata=metadata,
                 )

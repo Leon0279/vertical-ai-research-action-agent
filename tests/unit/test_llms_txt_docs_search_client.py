@@ -18,7 +18,7 @@ from app.adapters.docs_search.llms_txt_docs_search_client_config import (
 from app.adapters.docs_search.llms_txt_docs_search_client_error import (
     LlmsTxtDocsSearchClientError,
 )
-from app.domain.models import DocsSearchQuery
+from app.domain.models import DocsSearchQuery, SourceReference
 
 
 OPENAI_MANIFEST = """\
@@ -147,9 +147,18 @@ def test_search_docs_fetches_manifest_pages_and_normalizes_snippets() -> None:
     result = response.results[0]
     assert result.title == "Retrieval Guide"
     assert result.source_name == "openai_api"
-    assert result.source_ref == "https://developers.openai.com/api/docs/retrieval"
+    assert isinstance(result.source_reference, SourceReference)
+    assert result.source_reference.source_type == "document"
+    assert result.source_reference.source_id == result.item_id
+    assert result.source_reference.source_id_type == "docs_entry_id"
+    assert result.source_reference.source_url == "https://developers.openai.com/api/docs/retrieval"
+    assert result.source_reference.title == "Retrieval Guide"
+    assert result.source_reference.publisher is None
+    assert result.source_reference.citation_text == "Retrieval Guide"
+    assert result.source_reference.metadata == {"source_name": "openai_api"}
+    assert result.source_reference.evidence_span is not None
+    assert result.source_reference.evidence_span.section == "Guides"
     assert "Recommended retrieval baseline" in result.content
-    assert result.section == "Guides"
     assert result.score > 0
     assert response.dropped_item_count == 2
     assert response.source_summary["selected_family"] == "docs_search"

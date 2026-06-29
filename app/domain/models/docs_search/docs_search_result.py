@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.domain.models.source import SourceReference
+
 
 class DocsSearchResult(BaseModel):
     """Normalized docs search result returned by docs adapters."""
@@ -26,17 +28,8 @@ class DocsSearchResult(BaseModel):
         min_length=1,
         description="Configured docs source name.",
     )
-    source_ref: str = Field(
-        min_length=1,
-        description="Original documentation reference, usually a URL.",
-    )
-    url: str | None = Field(
-        default=None,
-        description="Documentation URL when available.",
-    )
-    section: str | None = Field(
-        default=None,
-        description="Documentation section label when available.",
+    source_reference: SourceReference = Field(
+        description="Canonical source provenance for this docs search result.",
     )
     score: float = Field(
         default=0.0,
@@ -45,5 +38,5 @@ class DocsSearchResult(BaseModel):
     )
     metadata: dict[str, Any] = Field(
         default_factory=dict,
-        description="Lightweight source metadata for provenance.",
+        description="Lightweight adapter-local metadata for ranking and fetch diagnostics.",
     )
