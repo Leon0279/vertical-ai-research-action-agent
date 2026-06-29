@@ -14,6 +14,7 @@ from app.domain.models import (
     ResearchKnowledgeRecallQuery,
     ResearchKnowledgeRecallResult,
 )
+from app.domain.models.retrieval import NormalizedRetrievalItem
 from app.services.tools.contracts.research_knowledge_memory_tool_protocol import (
     ResearchKnowledgeMemoryToolProtocol,
 )
@@ -108,7 +109,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
                 "knowledge_types": normalized_request.knowledge_types,
                 "topic_tags": normalized_request.topic_tags,
                 "source_types": normalized_request.source_types,
-                "returned_refs": [item["source_ref"] for item in normalized_items],
+                "returned_refs": [item.source_ref for item in normalized_items],
             },
             error_info=None,
         )
@@ -143,22 +144,22 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
     def _normalize_items(
         self,
         results: list[ResearchKnowledgeRecallResult],
-    ) -> tuple[list[dict[str, Any]], int]:
-        normalized_items: list[dict[str, Any]] = []
+    ) -> tuple[list[NormalizedRetrievalItem], int]:
+        normalized_items: list[NormalizedRetrievalItem] = []
         dropped_item_count = 0
 
         for result in results:
             try:
                 unit = result.unit
                 normalized_items.append(
-                    {
-                        "item_id": unit.knowledge_id,
-                        "source_family": "research_knowledge_recall",
-                        "source_type": "knowledge_unit",
-                        "source_ref": unit.knowledge_id,
-                        "content": unit.summary,
-                        "content_type": "knowledge_summary",
-                        "metadata": {
+                    NormalizedRetrievalItem(
+                        item_id=unit.knowledge_id,
+                        source_family="research_knowledge_recall",
+                        source_type="knowledge_unit",
+                        source_ref=unit.knowledge_id,
+                        content=unit.summary,
+                        content_type="knowledge_summary",
+                        metadata={
                             "title": unit.title,
                             "knowledge_type": unit.knowledge_type,
                             "topic_tags": unit.topic_tags,
@@ -177,7 +178,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
                             "updated_at": unit.updated_at.isoformat() if unit.updated_at else None,
                             "relevance_score": result.relevance_score,
                         },
-                    }
+                    )
                 )
             except Exception:
                 dropped_item_count += 1

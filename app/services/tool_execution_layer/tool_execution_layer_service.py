@@ -19,6 +19,11 @@ from app.domain.models import (
     ToolExecutionLayerResult,
     WebSearchFamilyRequest,
 )
+from app.domain.models.retrieval import (
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
+)
 from app.services.families.contracts.docs_search_family_service_protocol import (
     DocsSearchFamilyServiceProtocol,
 )
@@ -697,18 +702,18 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         error_info: str | None,
         recovery_exhausted_reason: str | None,
     ) -> ToolExecutionLayerResult:
-        source_summary = (
-            dict(family_execution_result.source_summary)
+        source_summary_data = (
+            family_execution_result.source_summary.to_legacy_dict()
             if family_execution_result is not None
             else {}
         )
-        execution_summary = (
-            dict(family_execution_result.execution_summary)
+        execution_summary_data = (
+            family_execution_result.execution_summary.to_legacy_dict()
             if family_execution_result is not None
             else {}
         )
-        retrieval_trace = (
-            dict(family_execution_result.retrieval_trace)
+        retrieval_trace_data = (
+            family_execution_result.retrieval_trace.to_legacy_dict()
             if family_execution_result is not None
             else {}
         )
@@ -725,13 +730,13 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
             else None
         )
 
-        source_summary["selected_family"] = selected_family
-        source_summary["normalized_count"] = (
+        source_summary_data["selected_family"] = selected_family
+        source_summary_data["normalized_count"] = (
             len(family_execution_result.normalized_items)
             if family_execution_result is not None
             else 0
         )
-        execution_summary.update(
+        execution_summary_data.update(
             {
                 "policy": self._POLICY_NAME,
                 "execution_status": execution_status,
@@ -776,7 +781,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 "recovery_exhausted_reason": recovery_exhausted_reason,
             }
         )
-        retrieval_trace.update(
+        retrieval_trace_data.update(
             {
                 "target_problem": request.target_problem,
                 "selected_family": selected_family,
@@ -808,6 +813,9 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 ),
             }
         )
+        source_summary = RetrievalSourceSummary.model_validate(source_summary_data)
+        execution_summary = RetrievalExecutionSummary.model_validate(execution_summary_data)
+        retrieval_trace = RetrievalTrace.model_validate(retrieval_trace_data)
 
         return ToolExecutionLayerResult(
             execution_status=execution_status,

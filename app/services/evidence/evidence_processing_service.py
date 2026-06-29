@@ -10,8 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.domain.models import (
+    EvidenceProcessingSummary,
     EvidenceProcessingRequest,
     EvidenceProcessingResult,
+    NormalizedRetrievalItem,
+    ProcessedEvidenceSummary,
     ProcessedEvidenceUnit,
 )
 from app.domain.models.evidence.processed_evidence_unit import EvidenceType
@@ -158,9 +161,9 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
 
     def _dedup_materials(
         self,
-        materials: list[dict[str, Any]],
-    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-        kept: list[dict[str, Any]] = []
+        materials: list[NormalizedRetrievalItem],
+    ) -> tuple[list[NormalizedRetrievalItem], dict[str, int]]:
+        kept: list[NormalizedRetrievalItem] = []
         exact_duplicate_removed = 0
         high_overlap_removed = 0
 
@@ -186,8 +189,8 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
 
     def _find_duplicate(
         self,
-        kept: list[dict[str, Any]],
-        material: dict[str, Any],
+        kept: list[NormalizedRetrievalItem],
+        material: NormalizedRetrievalItem,
     ) -> tuple[int | None, str | None]:
         for index, existing in enumerate(kept):
             if self._is_same_identity_or_exact_duplicate(existing, material):
@@ -198,11 +201,11 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
 
     def _is_same_identity_or_exact_duplicate(
         self,
-        left: dict[str, Any],
-        right: dict[str, Any],
+        left: NormalizedRetrievalItem,
+        right: NormalizedRetrievalItem,
     ) -> bool:
-        left_item_id = self._string_value(left.get("item_id"))
-        right_item_id = self._string_value(right.get("item_id"))
+        left_item_id = left.item_id.strip()
+        right_item_id = right.item_id.strip()
         if left_item_id and left_item_id == right_item_id:
             return True
 
@@ -214,8 +217,8 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
 
     def _is_same_source_containment(
         self,
-        left: dict[str, Any],
-        right: dict[str, Any],
+        left: NormalizedRetrievalItem,
+        right: NormalizedRetrievalItem,
     ) -> bool:
         if self._source_ref(left) != self._source_ref(right):
             return False
@@ -227,8 +230,8 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
 
     def _should_replace_material(
         self,
-        existing: dict[str, Any],
-        candidate: dict[str, Any],
+        existing: NormalizedRetrievalItem,
+        candidate: NormalizedRetrievalItem,
     ) -> bool:
         existing_content = self._content(existing)
         candidate_content = self._content(candidate)
@@ -236,7 +239,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             return len(candidate_content) > len(existing_content)
         return len(self._metadata(candidate)) > len(self._metadata(existing))
 
-    def _is_quality_material(self, material: dict[str, Any]) -> bool:
+    def _is_quality_material(self, material: NormalizedRetrievalItem) -> bool:
         content = self._content(material).strip()
         if not content:
             return False
@@ -249,7 +252,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
     async def _structure_material(
         self,
         request: EvidenceProcessingRequest,
-        material: dict[str, Any],
+        material: NormalizedRetrievalItem,
     ) -> list[ProcessedEvidenceUnit]:
         if self._llm_client is None:
             return [self._fallback_evidence_unit(request, material)]
@@ -284,7 +287,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
     def _fallback_evidence_unit(
         self,
         request: EvidenceProcessingRequest,
-        material: dict[str, Any],
+        material: NormalizedRetrievalItem,
     ) -> ProcessedEvidenceUnit:
         source_ref = self._source_ref(material)
         return self._evidence_unit(
@@ -300,7 +303,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         self,
         *,
         request: EvidenceProcessingRequest,
-        material: dict[str, Any],
+        material: NormalizedRetrievalItem,
         content: str,
         evidence_type: EvidenceType,
         support_refs: list[str],
@@ -324,7 +327,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             gap=self._optional_trace_string(request, "gap"),
             metadata={
                 **metadata,
-                "item_id": self._string_value(material.get("item_id")),
+                "item_id": material.item_id,
                 "selected_tool": self._string_value(
                     request.retrieval_trace.get("selected_tool")
                     or request.source_summary.get("selected_tool")
@@ -338,7 +341,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
     def _build_prompt(
         self,
         request: EvidenceProcessingRequest,
-        material: dict[str, Any],
+        material: NormalizedRetrievalItem,
     ) -> str:
         prompt_input = {
             "target_problem": request.retrieval_trace.get("target_problem"),
@@ -487,7 +490,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
     def _evidence_summary(
         self,
         units: list[ProcessedEvidenceUnit],
-    ) -> dict[str, Any]:
+    ) -> ProcessedEvidenceSummary:
         type_breakdown: dict[str, int] = {}
         source_families: list[str] = []
         source_types: list[str] = []
@@ -499,14 +502,14 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             if unit.source_type and unit.source_type not in source_types:
                 source_types.append(unit.source_type)
 
-        return {
-            "new_evidence_count": len(units),
-            "evidence_type_breakdown": type_breakdown,
-            "source_coverage_summary": {
+        return ProcessedEvidenceSummary(
+            new_evidence_count=len(units),
+            evidence_type_breakdown=type_breakdown,
+            source_coverage_summary={
                 "source_families": source_families,
                 "source_types": source_types,
             },
-        }
+        )
 
     def _processing_status(
         self,
@@ -548,34 +551,29 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             error_info=None,
         )
 
-    def _source_ref(self, material: dict[str, Any]) -> str:
-        return (
-            self._string_value(material.get("source_ref"))
-            or self._string_value(material.get("item_id"))
-            or "unknown_source"
-        )
+    def _source_ref(self, material: NormalizedRetrievalItem) -> str:
+        return material.source_ref.strip() or material.item_id.strip() or "unknown_source"
 
     def _source_family(
         self,
         request: EvidenceProcessingRequest,
-        material: dict[str, Any],
+        material: NormalizedRetrievalItem,
     ) -> str:
         return (
-            self._string_value(material.get("source_family"))
+            material.source_family.strip()
             or self._string_value(request.retrieval_trace.get("selected_family"))
             or self._string_value(request.source_summary.get("selected_family"))
             or "unknown_family"
         )
 
-    def _source_type(self, material: dict[str, Any]) -> str:
-        return self._string_value(material.get("source_type")) or "unknown_source_type"
+    def _source_type(self, material: NormalizedRetrievalItem) -> str:
+        return material.source_type.strip() or "unknown_source_type"
 
-    def _content(self, material: dict[str, Any]) -> str:
-        return self._string_value(material.get("content"))
+    def _content(self, material: NormalizedRetrievalItem) -> str:
+        return material.content
 
-    def _metadata(self, material: dict[str, Any]) -> dict[str, Any]:
-        metadata = material.get("metadata")
-        return metadata if isinstance(metadata, dict) else {}
+    def _metadata(self, material: NormalizedRetrievalItem) -> dict[str, Any]:
+        return material.metadata
 
     def _optional_trace_string(
         self,

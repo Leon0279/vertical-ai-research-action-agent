@@ -18,6 +18,7 @@ from app.domain.models import (
     WebSearchQuery,
     WebSearchResult,
 )
+from app.domain.models.retrieval import NormalizedRetrievalItem
 from app.services.tools.contracts.tavily_web_search_tool_protocol import (
     TavilyWebSearchToolProtocol,
 )
@@ -194,7 +195,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
         selected_candidates: list[WebSearchResult],
         fetch_response: WebContentFetchResponse | None,
         fetch_error: str | None,
-    ) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, Any]]:
+    ) -> tuple[list[NormalizedRetrievalItem], dict[str, int], dict[str, Any]]:
         fetch_results_by_url = {
             result.url: result for result in (fetch_response.results if fetch_response else [])
         }
@@ -203,7 +204,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
         }
         selected_urls = {candidate.url for candidate in selected_candidates}
 
-        normalized_items: list[dict[str, Any]] = []
+        normalized_items: list[NormalizedRetrievalItem] = []
         fetch_success_count = 0
         fetch_empty_count = 0
         fetch_failed_count = 0

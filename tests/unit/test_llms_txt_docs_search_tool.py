@@ -86,11 +86,9 @@ def test_run_normal_path_maps_docs_results_to_normalized_items() -> None:
     assert result.source_summary["selected_tool"] == "llms_txt_docs_search_v1"
     assert result.source_summary["normalized_count"] == 2
     assert result.source_summary["searched_sources"] == ["openai_api", "anthropic_api"]
-    assert result.execution_summary == {
-        "search_result_count": 2,
-        "normalized_count": 2,
-        "dropped_item_count": 1,
-    }
+    assert result.execution_summary.metrics["search_result_count"] == 2
+    assert result.execution_summary.normalized_count == 2
+    assert result.execution_summary.dropped_item_count == 1
     assert result.retrieval_trace["query_text"] == "retrieval baseline"
     assert result.retrieval_trace["target_problem"] == "Need current implementation guidance."
     assert result.retrieval_trace["selected_sources"] == ["openai_api", "anthropic_api"]

@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
 
 from pydantic import BaseModel, Field
+
+from app.domain.models.retrieval import (
+    NormalizedRetrievalItem,
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
+)
 
 from app.domain.models.families.base_family_execution_result import (
     AcquisitionStatus,
@@ -20,7 +26,7 @@ class ToolExecutionLayerResult(BaseModel):
     execution_status: ExecutionStatus = Field(
         description="Whether the layer flow completed or failed before final evaluation.",
     )
-    normalized_items: list[dict[str, Any]] = Field(
+    normalized_items: list[NormalizedRetrievalItem] = Field(
         default_factory=list,
         description="Final candidate materials returned by the executed family.",
     )
@@ -32,16 +38,16 @@ class ToolExecutionLayerResult(BaseModel):
         ge=0,
         description="Final dropped item count from family execution.",
     )
-    source_summary: dict[str, Any] = Field(
-        default_factory=dict,
+    source_summary: RetrievalSourceSummary = Field(
+        default_factory=RetrievalSourceSummary,
         description="Final source summary plus layer-level metadata.",
     )
-    execution_summary: dict[str, Any] = Field(
-        default_factory=dict,
+    execution_summary: RetrievalExecutionSummary = Field(
+        default_factory=RetrievalExecutionSummary,
         description="Layer-level execution summary.",
     )
-    retrieval_trace: dict[str, Any] = Field(
-        default_factory=dict,
+    retrieval_trace: RetrievalTrace = Field(
+        default_factory=RetrievalTrace,
         description="Layer-level retrieval trace for Research Executor continuity.",
     )
     error_info: str | None = Field(

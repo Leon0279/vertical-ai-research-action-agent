@@ -21,6 +21,8 @@ from app.domain.models.embedding_result import EmbeddingResult
 from app.domain.models.evidence.evidence_item import EvidenceItem
 from app.domain.models.evidence.evidence_processing_request import EvidenceProcessingRequest
 from app.domain.models.evidence.evidence_processing_result import EvidenceProcessingResult
+from app.domain.models.evidence.processed_evidence_summary import ProcessedEvidenceSummary
+from app.domain.models.evidence.evidence_processing_summary import EvidenceProcessingSummary
 from app.domain.models.evidence.evidence_summary import EvidenceSummary
 from app.domain.models.evidence.processed_evidence_unit import ProcessedEvidenceUnit
 from app.domain.models.execution_state import ExecutionState
@@ -66,6 +68,13 @@ from app.domain.models.paper_content_fetch import (
 )
 from app.domain.models.planning.execution_plan import ExecutionPlan
 from app.domain.models.planning.plan_step import PlanStep
+from app.domain.models.retrieval import (
+    NormalizedRetrievalItem,
+    RetrievalAttemptTrace,
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
+)
 from app.domain.models.request_context import RequestContext
 from app.domain.models.structured_output import StructuredOutput
 from app.domain.models.task_interpretation_result import TaskInterpretationResult
@@ -153,6 +162,13 @@ __all__ = [
     "ResearchKnowledgeRecallResult",
     "ResearchKnowledgeUnitRecord",
     "PlanStep",
+    "EvidenceProcessingSummary",
+    "NormalizedRetrievalItem",
+    "ProcessedEvidenceSummary",
+    "RetrievalAttemptTrace",
+    "RetrievalExecutionSummary",
+    "RetrievalSourceSummary",
+    "RetrievalTrace",
     "RequestContext",
     "ResearchKnowledgeMemoryToolRequest",
     "ResearchKnowledgeMemoryToolResult",

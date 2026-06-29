@@ -12,6 +12,7 @@ from app.domain.models import (
     LlmsTxtDocsSearchToolRequest,
     LlmsTxtDocsSearchToolResult,
 )
+from app.domain.models.retrieval import NormalizedRetrievalItem
 from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
     LlmsTxtDocsSearchToolProtocol,
 )
@@ -87,8 +88,8 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             max_search_results=request.max_search_results,
         )
 
-    def _normalize_items(self, results: list[DocsSearchResult]) -> list[dict[str, object]]:
-        normalized_items: list[dict[str, object]] = []
+    def _normalize_items(self, results: list[DocsSearchResult]) -> list[NormalizedRetrievalItem]:
+        normalized_items: list[NormalizedRetrievalItem] = []
         for rank, result in enumerate(results, start=1):
             metadata = {
                 "title": result.title,
@@ -100,15 +101,15 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             }
             metadata.update(result.metadata)
             normalized_items.append(
-                {
-                    "item_id": result.item_id,
-                    "source_family": "docs_search",
-                    "source_type": "document",
-                    "source_ref": result.source_ref,
-                    "content": result.content,
-                    "content_type": "text_snippet",
-                    "metadata": metadata,
-                }
+                NormalizedRetrievalItem(
+                    item_id=result.item_id,
+                    source_family="docs_search",
+                    source_type="document",
+                    source_ref=result.source_ref,
+                    content=result.content,
+                    content_type="text_snippet",
+                    metadata=metadata,
+                )
             )
         return normalized_items
 

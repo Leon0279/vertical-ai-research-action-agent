@@ -18,6 +18,7 @@ from app.domain.models import (
     PaperSearchQuery,
     PaperSearchResult,
 )
+from app.domain.models.retrieval import NormalizedRetrievalItem
 from app.services.tools.contracts.arxiv_paper_search_tool_protocol import (
     ArxivPaperSearchToolProtocol,
 )
@@ -138,10 +139,10 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
         selected_candidates: list[PaperSearchResult],
         fetch_results: dict[str, PaperContentFetchResult],
         fetch_failures: dict[str, dict[str, Any]],
-    ) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, Any]]:
+    ) -> tuple[list[NormalizedRetrievalItem], dict[str, int], dict[str, Any]]:
         selected_refs = {self._source_ref(candidate) for candidate in selected_candidates}
 
-        normalized_items: list[dict[str, Any]] = []
+        normalized_items: list[NormalizedRetrievalItem] = []
         fetch_success_count = 0
         fetch_empty_count = 0
         fetch_failed_count = 0
@@ -241,15 +242,15 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                 metadata["content_fetch_status"] = "not_requested"
 
             normalized_items.append(
-                {
-                    "item_id": candidate.paper_id,
-                    "source_family": "paper_search",
-                    "source_type": "paper",
-                    "source_ref": source_ref,
-                    "content": content,
-                    "content_type": content_type,
-                    "metadata": metadata,
-                }
+                NormalizedRetrievalItem(
+                    item_id=candidate.paper_id,
+                    source_family="paper_search",
+                    source_type="paper",
+                    source_ref=source_ref,
+                    content=content,
+                    content_type=content_type,
+                    metadata=metadata,
+                )
             )
 
         execution_summary = {

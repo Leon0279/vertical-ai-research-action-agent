@@ -118,19 +118,37 @@ class ResearchKnowledgeRecallFamilyService(ResearchKnowledgeRecallFamilyServiceP
         selected_tool: str,
         tool_result: ResearchKnowledgeMemoryToolResult,
     ) -> ResearchKnowledgeRecallFamilyResult:
-        source_summary = dict(tool_result.source_summary)
-        source_summary["selected_family"] = self._FAMILY_NAME
-        source_summary["selected_tool"] = selected_tool
+        source_summary = tool_result.source_summary.model_copy(
+            update={
+                "selected_family": self._FAMILY_NAME,
+                "selected_tool": selected_tool,
+            }
+        )
 
-        execution_summary = dict(tool_result.execution_summary)
-        execution_summary["candidate_tool_count"] = len(candidate_tools)
-        execution_summary["preferred_tool_requested"] = normalized_request.preferred_tool
+        execution_summary = tool_result.execution_summary.model_copy(
+            update={
+                "metrics": {
+                    **tool_result.execution_summary.metrics,
+                    "candidate_tool_count": len(candidate_tools),
+                },
+                "observability": {
+                    **tool_result.execution_summary.observability,
+                    "preferred_tool_requested": normalized_request.preferred_tool,
+                },
+            }
+        )
 
-        retrieval_trace = dict(tool_result.retrieval_trace)
-        retrieval_trace["selected_family"] = self._FAMILY_NAME
-        retrieval_trace["candidate_tools"] = candidate_tools
-        retrieval_trace["selected_tool"] = selected_tool
-        retrieval_trace["preferred_tool"] = normalized_request.preferred_tool
+        retrieval_trace = tool_result.retrieval_trace.model_copy(
+            update={
+                "selected_family": self._FAMILY_NAME,
+                "selected_tool": selected_tool,
+                "context": {
+                    **tool_result.retrieval_trace.context,
+                    "candidate_tools": candidate_tools,
+                    "preferred_tool": normalized_request.preferred_tool,
+                },
+            }
+        )
 
         return ResearchKnowledgeRecallFamilyResult(
             normalized_items=tool_result.normalized_items,
