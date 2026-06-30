@@ -11,7 +11,9 @@ from app.domain.models import (
     DocsSearchResult,
     LlmsTxtDocsSearchToolRequest,
     LlmsTxtDocsSearchToolResult,
+    RetrievalExecutionSummary,
     RetrievalSourceSummary,
+    RetrievalTrace,
 )
 from app.domain.models.retrieval import NormalizedRetrievalItem
 from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
@@ -43,38 +45,22 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
                 )
             )
         except Exception as exc:
-            return self._failed_result(
+            return self._create_failed_result(
                 normalized_request=normalized_request,
                 error_info=str(exc),
             )
 
         normalized_items = self._normalize_items(search_response.results)
         if not normalized_items:
-            return self._no_result(
+            return self._create_no_result(
                 normalized_request=normalized_request,
                 search_response=search_response,
             )
 
-        return LlmsTxtDocsSearchToolResult(
+        return self._create_result(
+            normalized_request=normalized_request,
+            search_response=search_response,
             normalized_items=normalized_items,
-            acquisition_status="partial_success"
-            if search_response.dropped_item_count > 0
-            else "success",
-            dropped_item_count=search_response.dropped_item_count,
-            source_summary=self._source_summary(
-                normalized_count=len(normalized_items),
-                search_response=search_response,
-            ),
-            execution_summary={
-                "search_result_count": len(search_response.results),
-                "normalized_count": len(normalized_items),
-                "dropped_item_count": search_response.dropped_item_count,
-            },
-            retrieval_trace=self._retrieval_trace(
-                normalized_request=normalized_request,
-                search_response=search_response,
-            ),
-            error_info=None,
         )
 
     def _normalize_request(
@@ -126,6 +112,35 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             or result.item_id
         )
 
+    def _create_result(
+        self,
+        *,
+        normalized_request: LlmsTxtDocsSearchToolRequest,
+        search_response: DocsSearchResponse,
+        normalized_items: list[NormalizedRetrievalItem],
+    ) -> LlmsTxtDocsSearchToolResult:
+        return LlmsTxtDocsSearchToolResult(
+            normalized_items=normalized_items,
+            acquisition_status="partial_success"
+            if search_response.dropped_item_count > 0
+            else "success",
+            dropped_item_count=search_response.dropped_item_count,
+            source_summary=self._source_summary(
+                normalized_count=len(normalized_items),
+                search_response=search_response,
+            ),
+            execution_summary=self._execution_summary(
+                search_result_count=len(search_response.results),
+                normalized_count=len(normalized_items),
+                dropped_item_count=search_response.dropped_item_count,
+            ),
+            retrieval_trace=self._retrieval_trace(
+                normalized_request=normalized_request,
+                search_response=search_response,
+            ),
+            error_info=None,
+        )
+
     def _source_summary(
         self,
         *,
@@ -140,25 +155,42 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             }
         )
 
+    def _execution_summary(
+        self,
+        *,
+        search_result_count: int,
+        normalized_count: int,
+        dropped_item_count: int,
+    ) -> RetrievalExecutionSummary:
+        return RetrievalExecutionSummary(
+            normalized_count=normalized_count,
+            dropped_item_count=dropped_item_count,
+            metrics={
+                "search_result_count": search_result_count,
+            },
+        )
+
     def _retrieval_trace(
         self,
         *,
         normalized_request: LlmsTxtDocsSearchToolRequest,
         search_response: DocsSearchResponse,
-    ) -> dict[str, object]:
+    ) -> RetrievalTrace:
         selected_sub_source_types = search_response.source_summary.get(
             "searched_sub_source_types"
         )
         if not isinstance(selected_sub_source_types, list):
             selected_sub_source_types = normalized_request.sub_source_types
-        return {
-            "query_text": normalized_request.query_text,
-            "target_problem": normalized_request.target_problem,
-            "selected_sub_source_types": selected_sub_source_types,
-            "returned_refs": [self._source_ref(result) for result in search_response.results],
-        }
+        return RetrievalTrace(
+            target_problem=normalized_request.target_problem,
+            returned_refs=[self._source_ref(result) for result in search_response.results],
+            context={
+                "query_text": normalized_request.query_text,
+                "selected_sub_source_types": selected_sub_source_types,
+            },
+        )
 
-    def _failed_result(
+    def _create_failed_result(
         self,
         *,
         normalized_request: LlmsTxtDocsSearchToolRequest,
@@ -173,22 +205,24 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
                 selected_tool="llms_txt_docs_search_v1",
                 normalized_count=0,
             ),
-            execution_summary={
-                "search_result_count": 0,
-                "normalized_count": 0,
-                "dropped_item_count": 0,
-            },
-            retrieval_trace={
-                "query_text": normalized_request.query_text,
-                "target_problem": normalized_request.target_problem,
-                "selected_sub_source_types": normalized_request.sub_source_types,
-                "returned_refs": [],
-                "search_error": error_info,
-            },
+            execution_summary=self._execution_summary(
+                search_result_count=0,
+                normalized_count=0,
+                dropped_item_count=0,
+            ),
+            retrieval_trace=RetrievalTrace(
+                target_problem=normalized_request.target_problem,
+                returned_refs=[],
+                context={
+                    "query_text": normalized_request.query_text,
+                    "selected_sub_source_types": normalized_request.sub_source_types,
+                },
+                errors={"search_error": error_info},
+            ),
             error_info=error_info,
         )
 
-    def _no_result(
+    def _create_no_result(
         self,
         *,
         normalized_request: LlmsTxtDocsSearchToolRequest,
@@ -202,11 +236,11 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
                 normalized_count=0,
                 search_response=search_response,
             ),
-            execution_summary={
-                "search_result_count": len(search_response.results),
-                "normalized_count": 0,
-                "dropped_item_count": search_response.dropped_item_count,
-            },
+            execution_summary=self._execution_summary(
+                search_result_count=len(search_response.results),
+                normalized_count=0,
+                dropped_item_count=search_response.dropped_item_count,
+            ),
             retrieval_trace=self._retrieval_trace(
                 normalized_request=normalized_request,
                 search_response=search_response,
