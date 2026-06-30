@@ -28,8 +28,10 @@ SUCCESS_RESULT = ResearchKnowledgeMemoryToolResult(
         {
             "item_id": "knowledge-1",
             "source_family": "research_knowledge_recall",
-            "source_type": "knowledge_unit",
-            "source_ref": "knowledge-1",
+            "source_reference": {
+                "source_type": "web_page",
+                "source_url": "https://example.test/source",
+            },
             "content": "Governed knowledge summary",
             "content_type": "knowledge_summary",
             "metadata": {"title": "Knowledge Title"},

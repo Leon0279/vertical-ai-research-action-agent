@@ -26,8 +26,11 @@ SUCCESS_RESULT = ArxivPaperSearchToolResult(
         {
             "item_id": "paper-1",
             "source_family": "paper_search",
-            "source_type": "paper",
-            "source_ref": "2501.00001",
+            "source_reference": {
+                "source_type": "paper",
+                "source_id": "2501.00001",
+                "source_id_type": "arxiv_id",
+            },
             "content": "Full text",
             "content_type": "document_chunk",
             "metadata": {"title": "Agent Research Systems"},

@@ -11,6 +11,7 @@ from app.adapters.web_search.contracts.web_search_client_protocol import (
     WebSearchClientProtocol,
 )
 from app.domain.models import (
+    SourceReference,
     TavilyWebSearchToolRequest,
     TavilyWebSearchToolResult,
     WebContentFetchRequest,
@@ -282,15 +283,21 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
                 metadata["content_fetch_status"] = "not_requested"
 
             normalized_items.append(
-                {
-                    "item_id": candidate.item_id,
-                    "source_family": "web_search",
-                    "source_type": "webpage",
-                    "source_ref": candidate.url,
-                    "content": content,
-                    "content_type": content_type,
-                    "metadata": metadata,
-                }
+                NormalizedRetrievalItem(
+                    item_id=candidate.item_id,
+                    source_family="web_search",
+                    source_reference=SourceReference(
+                        source_type="web_page",
+                        source_url=candidate.url,
+                        title=candidate.title,
+                        published_at=candidate.published_at,
+                        citation_text=candidate.title,
+                        metadata={"source_name": candidate.source_name},
+                    ),
+                    content=content,
+                    content_type=content_type,
+                    metadata=metadata,
+                )
             )
 
         execution_summary = {

@@ -55,9 +55,11 @@ def _item(
 ) -> dict:
     return {
         "item_id": item_id,
-        "source_ref": source_ref,
         "source_family": source_family,
-        "source_type": source_type,
+        "source_reference": {
+            "source_type": source_type,
+            "source_id": source_ref,
+        },
         "content": content,
         "metadata": metadata or {},
     }

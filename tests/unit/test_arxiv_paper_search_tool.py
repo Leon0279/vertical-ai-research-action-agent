@@ -141,6 +141,14 @@ def test_run_normal_path_uses_fetched_content_for_selected_papers() -> None:
     first = result.normalized_items[0]
     assert first["content"] == "Full text one"
     assert first["content_type"] == "document_chunk"
+    assert first["source_reference"].source_type == "paper"
+    assert first["source_reference"].source_id == "2501.00001"
+    assert first["source_reference"].source_id_type == "arxiv_id"
+    assert first["source_reference"].source_url == "https://arxiv.org/abs/2501.00001"
+    assert first["source_reference"].title == "Agent Research Systems"
+    assert first["source_reference"].authors == ["Alice", "Bob"]
+    assert "source_type" not in first.model_dump()
+    assert "source_ref" not in first.model_dump()
     assert first["metadata"]["content_fetch_status"] == "succeeded"
 
     third = result.normalized_items[2]

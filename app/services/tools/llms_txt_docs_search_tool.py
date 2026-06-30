@@ -87,7 +87,6 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
                 "sub_source_type": source_reference.sub_source_type,
                 "url": source_reference.source_url,
                 "section": evidence_span.section if evidence_span else None,
-                "source_reference": source_reference.model_dump(mode="json"),
                 "rank": rank,
                 "score": result.score,
             }
@@ -96,8 +95,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
                 NormalizedRetrievalItem(
                     item_id=result.item_id,
                     source_family="docs_search",
-                    source_type="document",
-                    source_ref=self._source_ref(result),
+                    source_reference=source_reference,
                     content=result.content,
                     content_type="text_snippet",
                     metadata=metadata,

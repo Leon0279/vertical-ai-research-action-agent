@@ -41,6 +41,18 @@ def _outcome(
     )
 
 
+def _item(item_id: str = "1") -> dict[str, object]:
+    return {
+        "item_id": item_id,
+        "source_family": "docs_search",
+        "source_reference": {
+            "source_type": "document",
+            "source_id": f"doc-{item_id}",
+        },
+        "content": "Useful content",
+    }
+
+
 def test_success_is_complete_and_stops() -> None:
     result = _evaluate(
         RequestCompletionEvaluationRequest(
@@ -99,7 +111,7 @@ def test_partial_success_at_max_results_stops() -> None:
             max_results=1,
             execution_outcome=_outcome(
                 acquisition_status="partial_success",
-                normalized_items=[{"item_id": "1"}],
+                normalized_items=[_item()],
             ),
         )
     )

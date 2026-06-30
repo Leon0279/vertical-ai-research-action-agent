@@ -17,6 +17,7 @@ from app.domain.models import (
     PaperContentFetchResult,
     PaperSearchQuery,
     PaperSearchResult,
+    SourceReference,
 )
 from app.domain.models.retrieval import NormalizedRetrievalItem
 from app.services.tools.contracts.arxiv_paper_search_tool_protocol import (
@@ -245,8 +246,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                 NormalizedRetrievalItem(
                     item_id=candidate.paper_id,
                     source_family="paper_search",
-                    source_type="paper",
-                    source_ref=source_ref,
+                    source_reference=self._source_reference(candidate),
                     content=content,
                     content_type=content_type,
                     metadata=metadata,
@@ -289,6 +289,26 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
 
     def _source_ref(self, candidate: PaperSearchResult) -> str:
         return candidate.arxiv_id or candidate.url or candidate.paper_id
+
+    def _source_reference(self, candidate: PaperSearchResult) -> SourceReference:
+        return SourceReference(
+            source_type="paper",
+            source_id=candidate.arxiv_id or candidate.paper_id,
+            source_id_type="arxiv_id" if candidate.arxiv_id else "paper_id",
+            source_url=candidate.url,
+            title=candidate.title,
+            authors=candidate.authors,
+            published_at=candidate.published_at,
+            citation_text=candidate.title,
+            metadata={
+                "paper_id": candidate.paper_id,
+                "primary_category": candidate.primary_category,
+                "categories": candidate.categories,
+                "pdf_url": candidate.pdf_url,
+                "doi_url": candidate.doi_url,
+                "source": candidate.source,
+            },
+        )
 
     def _failed_result(self, error_info: str) -> ArxivPaperSearchToolResult:
         return ArxivPaperSearchToolResult(

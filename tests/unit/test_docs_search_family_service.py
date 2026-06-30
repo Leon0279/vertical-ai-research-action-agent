@@ -23,8 +23,10 @@ SUCCESS_RESULT = LlmsTxtDocsSearchToolResult(
         {
             "item_id": "doc-1",
             "source_family": "docs_search",
-            "source_type": "document",
-            "source_ref": "openai_api/responses",
+            "source_reference": {
+                "source_type": "document",
+                "source_id": "openai_api/responses",
+            },
             "content": "Snippet",
             "content_type": "text_snippet",
             "metadata": {"title": "Responses Guide"},

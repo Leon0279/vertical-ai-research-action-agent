@@ -160,6 +160,18 @@ def _query_result(
     )
 
 
+def _item(item_id: str = "1") -> dict[str, Any]:
+    return {
+        "item_id": item_id,
+        "source_family": "docs_search",
+        "source_reference": {
+            "source_type": "document",
+            "source_id": f"doc-{item_id}",
+        },
+        "content": "Useful content",
+    }
+
+
 def _family_result(
     selected_family: str,
     *,
@@ -168,7 +180,7 @@ def _family_result(
     normalized_items: list[dict[str, Any]] | None = None,
 ) -> BaseFamilyExecutionResult:
     return BaseFamilyExecutionResult(
-        normalized_items=normalized_items or [{"item_id": "1"}],
+        normalized_items=normalized_items or [_item()],
         acquisition_status=acquisition_status,
         dropped_item_count=0,
         source_summary={

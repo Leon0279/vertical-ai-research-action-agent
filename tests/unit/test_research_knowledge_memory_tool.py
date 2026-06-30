@@ -160,12 +160,16 @@ def test_run_normalizes_recalled_items() -> None:
     item = result.normalized_items[0]
     assert item["item_id"] == "knowledge-1"
     assert item["source_family"] == "research_knowledge_recall"
-    assert item["source_type"] == "knowledge_unit"
-    assert item["source_ref"] == "knowledge-1"
+    assert item["source_reference"].source_type == "web_page"
+    assert item["source_reference"].source_url == "https://example.test/pgvector"
+    assert item["source_reference"].metadata["knowledge_id"] == "knowledge-1"
+    assert "source_type" not in item.model_dump()
+    assert "source_ref" not in item.model_dump()
     assert item["content"] == UNIT.summary
     assert item["content_type"] == "knowledge_summary"
     assert item["metadata"]["title"] == UNIT.title
     assert item["metadata"]["relevance_score"] == 0.91
+    assert result.retrieval_trace["returned_refs"] == ["https://example.test/pgvector"]
 
 
 def test_run_returns_no_result_for_empty_recall() -> None:

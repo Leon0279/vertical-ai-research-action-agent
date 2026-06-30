@@ -4,16 +4,21 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.domain.models.source import SourceReference
 
 
 class NormalizedRetrievalItem(BaseModel):
     """Unified candidate material item consumed by evidence processing."""
 
+    model_config = ConfigDict(extra="forbid")
+
     item_id: str = Field(default="", description="Stable item identifier within a retrieval result.")
     source_family: str = Field(default="", description="Retrieval family that produced this item.")
-    source_type: str = Field(default="", description="Type of source material, such as webpage or paper.")
-    source_ref: str = Field(default="", description="Stable source reference used for provenance.")
+    source_reference: SourceReference = Field(
+        description="Canonical source reference for provenance and downstream evidence processing."
+    )
     content: str = Field(default="", description="Candidate material content for evidence processing.")
     content_type: str | None = Field(default=None, description="Content shape, such as text_snippet or document_chunk.")
     metadata: dict[str, Any] = Field(

@@ -552,7 +552,13 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         )
 
     def _source_ref(self, material: NormalizedRetrievalItem) -> str:
-        return material.source_ref.strip() or material.item_id.strip() or "unknown_source"
+        source_reference = material.source_reference
+        return (
+            (source_reference.source_url or "").strip()
+            or (source_reference.source_id or "").strip()
+            or material.item_id.strip()
+            or "unknown_source"
+        )
 
     def _source_family(
         self,
@@ -567,7 +573,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         )
 
     def _source_type(self, material: NormalizedRetrievalItem) -> str:
-        return material.source_type.strip() or "unknown_source_type"
+        return material.source_reference.source_type.strip() or "unknown_source_type"
 
     def _content(self, material: NormalizedRetrievalItem) -> str:
         return material.content

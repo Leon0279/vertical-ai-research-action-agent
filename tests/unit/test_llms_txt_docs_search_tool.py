@@ -119,22 +119,24 @@ def test_run_normal_path_maps_docs_results_to_normalized_items() -> None:
     first = result.normalized_items[0]
     assert first["item_id"] == "doc-1"
     assert first["source_family"] == "docs_search"
-    assert first["source_type"] == "document"
-    assert first["source_ref"] == "https://developers.openai.com/api/docs/retrieval"
+    assert first["source_reference"].source_type == "document"
+    assert first["source_reference"].sub_source_type == "openai_api"
+    assert first["source_reference"].source_id == "doc-1"
+    assert first["source_reference"].source_id_type == "docs_entry_id"
+    assert first["source_reference"].source_url == (
+        "https://developers.openai.com/api/docs/retrieval"
+    )
+    assert first["source_reference"].evidence_span is not None
+    assert first["source_reference"].evidence_span.section == "Guides"
+    assert "source_type" not in first.model_dump()
+    assert "source_ref" not in first.model_dump()
     assert first["content"] == "Use hybrid retrieval as a strong practical baseline."
     assert first["content_type"] == "text_snippet"
     assert first["metadata"]["title"] == "Retrieval Guide"
     assert first["metadata"]["sub_source_type"] == "openai_api"
     assert first["metadata"]["url"] == "https://developers.openai.com/api/docs/retrieval"
     assert first["metadata"]["section"] == "Guides"
-    assert first["metadata"]["source_reference"]["source_type"] == "document"
-    assert first["metadata"]["source_reference"]["sub_source_type"] == "openai_api"
-    assert first["metadata"]["source_reference"]["source_id"] == "doc-1"
-    assert first["metadata"]["source_reference"]["source_id_type"] == "docs_entry_id"
-    assert first["metadata"]["source_reference"]["source_url"] == (
-        "https://developers.openai.com/api/docs/retrieval"
-    )
-    assert first["metadata"]["source_reference"]["evidence_span"]["section"] == "Guides"
+    assert "source_reference" not in first["metadata"]
     assert first["metadata"]["rank"] == 1
     assert first["metadata"]["score"] == 7.5
     assert first["metadata"]["manifest_summary"] == "Recommended retrieval baseline."

@@ -23,8 +23,10 @@ SUCCESS_RESULT = TavilyWebSearchToolResult(
         {
             "item_id": "web-1",
             "source_family": "web_search",
-            "source_type": "webpage",
-            "source_ref": "https://example.test/docs",
+            "source_reference": {
+                "source_type": "web_page",
+                "source_url": "https://example.test/docs",
+            },
             "content": "Fetched content",
             "content_type": "document_chunk",
             "metadata": {"title": "Example Docs"},
