@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import asyncio
 
-from app.domain.models import TavilyWebSearchToolResult, WebSearchFamilyRequest
+from app.domain.models import (
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
+    TavilyWebSearchToolResult,
+    WebSearchFamilyRequest,
+)
 from app.services.families.web_search_family_service import WebSearchFamilyService
 
 
@@ -34,13 +40,18 @@ SUCCESS_RESULT = TavilyWebSearchToolResult(
     ],
     acquisition_status="success",
     dropped_item_count=0,
-    source_summary={
-        "selected_family": "web_search",
-        "selected_tool": "tavily_web_search_v1",
-        "normalized_count": 1,
-    },
-    execution_summary={"search_result_count": 1},
-    retrieval_trace={"attempted_urls": ["https://example.test/docs"]},
+    source_summary=RetrievalSourceSummary(
+        selected_family="web_search",
+        selected_tool="tavily_web_search_v1",
+        normalized_count=1,
+    ),
+    execution_summary=RetrievalExecutionSummary(
+        normalized_count=1,
+        metrics={"search_result_count": 1},
+    ),
+    retrieval_trace=RetrievalTrace(
+        observability={"attempted_urls": ["https://example.test/docs"]}
+    ),
     error_info=None,
 )
 
@@ -132,9 +143,11 @@ def test_run_preserves_partial_success_no_result_and_failed_statuses() -> None:
                 normalized_items=[],
                 acquisition_status=status,
                 dropped_item_count=0,
-                source_summary={"selected_tool": "tavily_web_search_v1"},
-                execution_summary={},
-                retrieval_trace={},
+                source_summary=RetrievalSourceSummary(
+                    selected_tool="tavily_web_search_v1"
+                ),
+                execution_summary=RetrievalExecutionSummary(),
+                retrieval_trace=RetrievalTrace(),
                 error_info="boom" if status == "failed" else None,
             )
         )

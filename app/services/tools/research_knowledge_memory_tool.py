@@ -14,6 +14,9 @@ from app.domain.models import (
     ResearchKnowledgeRecallQuery,
     ResearchKnowledgeRecallResult,
     ResearchKnowledgeUnitRecord,
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
     SourceReference,
 )
 from app.domain.models.retrieval import NormalizedRetrievalItem
@@ -92,27 +95,29 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
             normalized_items=normalized_items,
             acquisition_status="partial_success" if dropped_item_count > 0 else "success",
             dropped_item_count=dropped_item_count,
-            source_summary={
-                "selected_family": "research_knowledge_recall",
-                "selected_tool": "research_knowledge_memory_v1",
-                "normalized_count": len(normalized_items),
-            },
-            execution_summary={
-                "recall_result_count": len(recall_results),
-                "normalized_count": len(normalized_items),
-                "dropped_item_count": dropped_item_count,
-                "used_precomputed_embedding": used_precomputed_embedding,
-            },
-            retrieval_trace={
-                "query_text": normalized_request.query_text,
-                "used_query_embedding": used_precomputed_embedding,
-                "project_scope_id": normalized_request.project_scope_id,
-                "allowed_visibility_scopes": normalized_request.allowed_visibility_scopes,
-                "knowledge_types": normalized_request.knowledge_types,
-                "topic_tags": normalized_request.topic_tags,
-                "source_types": normalized_request.source_types,
-                "returned_refs": [self._source_ref(item) for item in normalized_items],
-            },
+            source_summary=RetrievalSourceSummary(
+                selected_family="research_knowledge_recall",
+                selected_tool="research_knowledge_memory_v1",
+                normalized_count=len(normalized_items),
+            ),
+            execution_summary=RetrievalExecutionSummary(
+                normalized_count=len(normalized_items),
+                dropped_item_count=dropped_item_count,
+                metrics={"recall_result_count": len(recall_results)},
+                observability={"used_precomputed_embedding": used_precomputed_embedding},
+            ),
+            retrieval_trace=RetrievalTrace(
+                returned_refs=[self._source_ref(item) for item in normalized_items],
+                context={
+                    "query_text": normalized_request.query_text,
+                    "used_query_embedding": used_precomputed_embedding,
+                    "project_scope_id": normalized_request.project_scope_id,
+                    "allowed_visibility_scopes": normalized_request.allowed_visibility_scopes,
+                    "knowledge_types": normalized_request.knowledge_types,
+                    "topic_tags": normalized_request.topic_tags,
+                    "source_types": normalized_request.source_types,
+                },
+            ),
             error_info=None,
         )
 
@@ -245,28 +250,30 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
             normalized_items=[],
             acquisition_status="failed",
             dropped_item_count=0,
-            source_summary={
-                "selected_family": "research_knowledge_recall",
-                "selected_tool": "research_knowledge_memory_v1",
-                "normalized_count": 0,
-            },
-            execution_summary={
-                "recall_result_count": 0,
-                "normalized_count": 0,
-                "dropped_item_count": 0,
-                "used_precomputed_embedding": bool(used_query_embedding),
-            },
-            retrieval_trace={
-                "query_text": normalized_request.query_text,
-                "used_query_embedding": bool(used_query_embedding),
-                "project_scope_id": normalized_request.project_scope_id,
-                "allowed_visibility_scopes": normalized_request.allowed_visibility_scopes,
-                "knowledge_types": normalized_request.knowledge_types,
-                "topic_tags": normalized_request.topic_tags,
-                "source_types": normalized_request.source_types,
-                "returned_refs": [],
-                "recall_error": error_info,
-            },
+            source_summary=RetrievalSourceSummary(
+                selected_family="research_knowledge_recall",
+                selected_tool="research_knowledge_memory_v1",
+                normalized_count=0,
+            ),
+            execution_summary=RetrievalExecutionSummary(
+                normalized_count=0,
+                dropped_item_count=0,
+                metrics={"recall_result_count": 0},
+                observability={"used_precomputed_embedding": bool(used_query_embedding)},
+            ),
+            retrieval_trace=RetrievalTrace(
+                returned_refs=[],
+                errors={"recall_error": error_info},
+                context={
+                    "query_text": normalized_request.query_text,
+                    "used_query_embedding": bool(used_query_embedding),
+                    "project_scope_id": normalized_request.project_scope_id,
+                    "allowed_visibility_scopes": normalized_request.allowed_visibility_scopes,
+                    "knowledge_types": normalized_request.knowledge_types,
+                    "topic_tags": normalized_request.topic_tags,
+                    "source_types": normalized_request.source_types,
+                },
+            ),
             error_info=error_info,
         )
 
@@ -282,26 +289,28 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
             normalized_items=[],
             acquisition_status="no_result",
             dropped_item_count=dropped_item_count,
-            source_summary={
-                "selected_family": "research_knowledge_recall",
-                "selected_tool": "research_knowledge_memory_v1",
-                "normalized_count": 0,
-            },
-            execution_summary={
-                "recall_result_count": recall_result_count,
-                "normalized_count": 0,
-                "dropped_item_count": dropped_item_count,
-                "used_precomputed_embedding": used_query_embedding,
-            },
-            retrieval_trace={
-                "query_text": normalized_request.query_text,
-                "used_query_embedding": used_query_embedding,
-                "project_scope_id": normalized_request.project_scope_id,
-                "allowed_visibility_scopes": normalized_request.allowed_visibility_scopes,
-                "knowledge_types": normalized_request.knowledge_types,
-                "topic_tags": normalized_request.topic_tags,
-                "source_types": normalized_request.source_types,
-                "returned_refs": [],
-            },
+            source_summary=RetrievalSourceSummary(
+                selected_family="research_knowledge_recall",
+                selected_tool="research_knowledge_memory_v1",
+                normalized_count=0,
+            ),
+            execution_summary=RetrievalExecutionSummary(
+                normalized_count=0,
+                dropped_item_count=dropped_item_count,
+                metrics={"recall_result_count": recall_result_count},
+                observability={"used_precomputed_embedding": used_query_embedding},
+            ),
+            retrieval_trace=RetrievalTrace(
+                returned_refs=[],
+                context={
+                    "query_text": normalized_request.query_text,
+                    "used_query_embedding": used_query_embedding,
+                    "project_scope_id": normalized_request.project_scope_id,
+                    "allowed_visibility_scopes": normalized_request.allowed_visibility_scopes,
+                    "knowledge_types": normalized_request.knowledge_types,
+                    "topic_tags": normalized_request.topic_tags,
+                    "source_types": normalized_request.source_types,
+                },
+            ),
             error_info=None,
         )

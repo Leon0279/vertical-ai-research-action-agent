@@ -7,6 +7,9 @@ import asyncio
 from app.domain.models import (
     BaseFamilyExecutionResult,
     RequestCompletionEvaluationRequest,
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
 )
 from app.services.tool_execution_layer.request_completion_evaluation_service import (
     RequestCompletionEvaluationService,
@@ -31,9 +34,9 @@ def _outcome(
         normalized_items=normalized_items or [],
         acquisition_status=acquisition_status,
         dropped_item_count=0,
-        source_summary={},
-        execution_summary={},
-        retrieval_trace={},
+        source_summary=RetrievalSourceSummary(),
+        execution_summary=RetrievalExecutionSummary(),
+        retrieval_trace=RetrievalTrace(),
         error_info=None,
         selected_family=selected_family,
         candidate_tools=candidate_tools or ["llms_txt_docs_search_v1"],

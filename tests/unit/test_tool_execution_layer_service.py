@@ -12,8 +12,11 @@ from app.domain.models import (
     FamilySelectionResult,
     RequestCompletionEvaluationRequest,
     RequestCompletionEvaluationResult,
+    RetrievalExecutionSummary,
     RetrievalQueryGenerationRequest,
     RetrievalQueryGenerationResult,
+    RetrievalSourceSummary,
+    RetrievalTrace,
     ToolExecutionLayerRequest,
 )
 from app.services.tool_execution_layer.tool_execution_layer_service import (
@@ -183,12 +186,12 @@ def _family_result(
         normalized_items=normalized_items or [_item()],
         acquisition_status=acquisition_status,
         dropped_item_count=0,
-        source_summary={
-            "selected_family": selected_family,
-            "selected_tool": selected_tool,
-        },
-        execution_summary={},
-        retrieval_trace={},
+        source_summary=RetrievalSourceSummary(
+            selected_family=selected_family,
+            selected_tool=selected_tool,
+        ),
+        execution_summary=RetrievalExecutionSummary(),
+        retrieval_trace=RetrievalTrace(),
         error_info=None if acquisition_status != "failed" else "family failed",
         selected_family=selected_family,
         candidate_tools=[selected_tool] if selected_tool else [],

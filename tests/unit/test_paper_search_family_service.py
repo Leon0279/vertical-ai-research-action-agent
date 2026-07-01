@@ -7,6 +7,9 @@ import asyncio
 from app.domain.models import (
     ArxivPaperSearchToolResult,
     PaperSearchFamilyRequest,
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
 )
 from app.services.families.paper_search_family_service import PaperSearchFamilyService
 
@@ -38,13 +41,16 @@ SUCCESS_RESULT = ArxivPaperSearchToolResult(
     ],
     acquisition_status="success",
     dropped_item_count=0,
-    source_summary={
-        "selected_family": "paper_search",
-        "selected_tool": "arxiv_paper_search_v1",
-        "normalized_count": 1,
-    },
-    execution_summary={"search_result_count": 1},
-    retrieval_trace={"attempted_papers": ["2501.00001"]},
+    source_summary=RetrievalSourceSummary(
+        selected_family="paper_search",
+        selected_tool="arxiv_paper_search_v1",
+        normalized_count=1,
+    ),
+    execution_summary=RetrievalExecutionSummary(
+        normalized_count=1,
+        metrics={"search_result_count": 1},
+    ),
+    retrieval_trace=RetrievalTrace(observability={"attempted_papers": ["2501.00001"]}),
     error_info=None,
 )
 
@@ -121,9 +127,11 @@ def test_run_preserves_partial_success_no_result_and_failed_statuses() -> None:
                 normalized_items=[],
                 acquisition_status=status,
                 dropped_item_count=0,
-                source_summary={"selected_tool": "arxiv_paper_search_v1"},
-                execution_summary={},
-                retrieval_trace={},
+                source_summary=RetrievalSourceSummary(
+                    selected_tool="arxiv_paper_search_v1"
+                ),
+                execution_summary=RetrievalExecutionSummary(),
+                retrieval_trace=RetrievalTrace(),
                 error_info="boom" if status == "failed" else None,
             )
         )

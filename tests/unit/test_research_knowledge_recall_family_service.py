@@ -7,6 +7,9 @@ import asyncio
 from app.domain.models import (
     ResearchKnowledgeMemoryToolResult,
     ResearchKnowledgeRecallFamilyRequest,
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
 )
 from app.services.families.research_knowledge_recall_family_service import (
     ResearchKnowledgeRecallFamilyService,
@@ -39,13 +42,16 @@ SUCCESS_RESULT = ResearchKnowledgeMemoryToolResult(
     ],
     acquisition_status="success",
     dropped_item_count=0,
-    source_summary={
-        "selected_family": "research_knowledge_recall",
-        "selected_tool": "research_knowledge_memory_v1",
-        "normalized_count": 1,
-    },
-    execution_summary={"recall_result_count": 1},
-    retrieval_trace={"returned_refs": ["knowledge-1"]},
+    source_summary=RetrievalSourceSummary(
+        selected_family="research_knowledge_recall",
+        selected_tool="research_knowledge_memory_v1",
+        normalized_count=1,
+    ),
+    execution_summary=RetrievalExecutionSummary(
+        normalized_count=1,
+        metrics={"recall_result_count": 1},
+    ),
+    retrieval_trace=RetrievalTrace(returned_refs=["knowledge-1"]),
     error_info=None,
 )
 
@@ -154,9 +160,11 @@ def test_run_preserves_partial_success_no_result_and_failed_statuses() -> None:
                 normalized_items=[],
                 acquisition_status=status,
                 dropped_item_count=0,
-                source_summary={"selected_tool": "research_knowledge_memory_v1"},
-                execution_summary={},
-                retrieval_trace={},
+                source_summary=RetrievalSourceSummary(
+                    selected_tool="research_knowledge_memory_v1"
+                ),
+                execution_summary=RetrievalExecutionSummary(),
+                retrieval_trace=RetrievalTrace(),
                 error_info="boom" if status == "failed" else None,
             )
         )

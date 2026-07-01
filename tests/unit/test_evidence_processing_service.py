@@ -5,7 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 
-from app.domain.models import EvidenceProcessingRequest
+from app.domain.models import (
+    EvidenceProcessingRequest,
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
+)
 from app.services.evidence.evidence_processing_service import EvidenceProcessingService
 
 
@@ -32,15 +37,18 @@ def _request(
         normalized_items=items,
         acquisition_status=acquisition_status,
         dropped_item_count=1,
-        source_summary={"selected_family": "docs_search", "selected_tool": "tool_v1"},
-        execution_summary={"retry_count": 0},
-        retrieval_trace={
-            "target_problem": "Choose a retrieval baseline",
-            "selected_family": "docs_search",
-            "selected_tool": "tool_v1",
-            "generated_query": "retrieval baseline docs",
-            "evidence_goal": "establish_coverage",
-        },
+        source_summary=RetrievalSourceSummary(
+            selected_family="docs_search",
+            selected_tool="tool_v1",
+        ),
+        execution_summary=RetrievalExecutionSummary(retry_count=0),
+        retrieval_trace=RetrievalTrace(
+            target_problem="Choose a retrieval baseline",
+            selected_family="docs_search",
+            selected_tool="tool_v1",
+            generated_query="retrieval baseline docs",
+            context={"evidence_goal": "establish_coverage"},
+        ),
     )
 
 

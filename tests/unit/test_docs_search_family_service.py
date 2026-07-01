@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import asyncio
 
-from app.domain.models import DocsSearchFamilyRequest, LlmsTxtDocsSearchToolResult
+from app.domain.models import (
+    DocsSearchFamilyRequest,
+    LlmsTxtDocsSearchToolResult,
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
+)
 from app.services.families.docs_search_family_service import DocsSearchFamilyService
 
 
@@ -34,13 +40,16 @@ SUCCESS_RESULT = LlmsTxtDocsSearchToolResult(
     ],
     acquisition_status="success",
     dropped_item_count=0,
-    source_summary={
-        "selected_family": "docs_search",
-        "selected_tool": "llms_txt_docs_search_v1",
-        "normalized_count": 1,
-    },
-    execution_summary={"search_result_count": 1},
-    retrieval_trace={"returned_refs": ["openai_api/responses"]},
+    source_summary=RetrievalSourceSummary(
+        selected_family="docs_search",
+        selected_tool="llms_txt_docs_search_v1",
+        normalized_count=1,
+    ),
+    execution_summary=RetrievalExecutionSummary(
+        normalized_count=1,
+        metrics={"search_result_count": 1},
+    ),
+    retrieval_trace=RetrievalTrace(returned_refs=["openai_api/responses"]),
     error_info=None,
 )
 
@@ -128,9 +137,11 @@ def test_run_preserves_partial_success_no_result_and_failed_statuses() -> None:
                 normalized_items=[],
                 acquisition_status=status,
                 dropped_item_count=0,
-                source_summary={"selected_tool": "llms_txt_docs_search_v1"},
-                execution_summary={},
-                retrieval_trace={},
+                source_summary=RetrievalSourceSummary(
+                    selected_tool="llms_txt_docs_search_v1"
+                ),
+                execution_summary=RetrievalExecutionSummary(),
+                retrieval_trace=RetrievalTrace(),
                 error_info="boom" if status == "failed" else None,
             )
         )

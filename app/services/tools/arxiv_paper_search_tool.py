@@ -17,6 +17,9 @@ from app.domain.models import (
     PaperContentFetchResult,
     PaperSearchQuery,
     PaperSearchResult,
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
     SourceReference,
 )
 from app.domain.models.retrieval import NormalizedRetrievalItem
@@ -72,11 +75,11 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             normalized_items=normalized_items,
             acquisition_status=acquisition_status,
             dropped_item_count=0,
-            source_summary={
-                "selected_family": "paper_search",
-                "selected_tool": "arxiv_paper_search_v1",
-                "normalized_count": len(normalized_items),
-            },
+            source_summary=RetrievalSourceSummary(
+                selected_family="paper_search",
+                selected_tool="arxiv_paper_search_v1",
+                normalized_count=len(normalized_items),
+            ),
             execution_summary=execution_summary,
             retrieval_trace=retrieval_trace,
             error_info=None,
@@ -140,7 +143,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
         selected_candidates: list[PaperSearchResult],
         fetch_results: dict[str, PaperContentFetchResult],
         fetch_failures: dict[str, dict[str, Any]],
-    ) -> tuple[list[NormalizedRetrievalItem], dict[str, int], dict[str, Any]]:
+    ) -> tuple[list[NormalizedRetrievalItem], RetrievalExecutionSummary, RetrievalTrace]:
         selected_refs = {self._source_ref(candidate) for candidate in selected_candidates}
 
         normalized_items: list[NormalizedRetrievalItem] = []
@@ -253,26 +256,34 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                 )
             )
 
-        execution_summary = {
-            "search_result_count": len(candidates),
-            "selected_for_fetch_count": len(selected_candidates),
-            "fetch_success_count": fetch_success_count,
-            "fetch_empty_count": fetch_empty_count,
-            "fetch_failed_count": fetch_failed_count,
-        }
-        retrieval_trace = {
-            "attempted_papers": [self._source_ref(candidate) for candidate in candidates],
-            "selected_for_fetch": [self._source_ref(candidate) for candidate in selected_candidates],
-            "fetched_papers": fetched_papers,
-            "failed_fetches": failed_fetches,
-        }
+        execution_summary = RetrievalExecutionSummary(
+            normalized_count=len(normalized_items),
+            dropped_item_count=0,
+            metrics={
+                "search_result_count": len(candidates),
+                "selected_for_fetch_count": len(selected_candidates),
+                "fetch_success_count": fetch_success_count,
+                "fetch_empty_count": fetch_empty_count,
+                "fetch_failed_count": fetch_failed_count,
+            },
+        )
+        retrieval_trace = RetrievalTrace(
+            observability={
+                "attempted_papers": [self._source_ref(candidate) for candidate in candidates],
+                "selected_for_fetch": [
+                    self._source_ref(candidate) for candidate in selected_candidates
+                ],
+                "fetched_papers": fetched_papers,
+                "failed_fetches": failed_fetches,
+            },
+        )
         return normalized_items, execution_summary, retrieval_trace
 
     def _acquisition_status(
         self,
         *,
         selected_candidates: list[PaperSearchResult],
-        execution_summary: dict[str, int],
+        execution_summary: RetrievalExecutionSummary,
     ) -> str:
         if execution_summary["search_result_count"] == 0:
             return "no_result"
@@ -315,23 +326,29 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             normalized_items=[],
             acquisition_status="failed",
             dropped_item_count=0,
-            source_summary={
-                "selected_family": "paper_search",
-                "selected_tool": "arxiv_paper_search_v1",
-                "normalized_count": 0,
-            },
-            execution_summary={
-                "search_result_count": 0,
-                "selected_for_fetch_count": 0,
-                "fetch_success_count": 0,
-                "fetch_empty_count": 0,
-                "fetch_failed_count": 1,
-            },
-            retrieval_trace={
-                "search_error": error_info,
-                "attempted_papers": [],
-                "fetched_papers": [],
-            },
+            source_summary=RetrievalSourceSummary(
+                selected_family="paper_search",
+                selected_tool="arxiv_paper_search_v1",
+                normalized_count=0,
+            ),
+            execution_summary=RetrievalExecutionSummary(
+                normalized_count=0,
+                dropped_item_count=0,
+                metrics={
+                    "search_result_count": 0,
+                    "selected_for_fetch_count": 0,
+                    "fetch_success_count": 0,
+                    "fetch_empty_count": 0,
+                    "fetch_failed_count": 1,
+                },
+            ),
+            retrieval_trace=RetrievalTrace(
+                errors={"search_error": error_info},
+                observability={
+                    "attempted_papers": [],
+                    "fetched_papers": [],
+                },
+            ),
             error_info=error_info,
         )
 
@@ -340,23 +357,29 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             normalized_items=[],
             acquisition_status="no_result",
             dropped_item_count=0,
-            source_summary={
-                "selected_family": "paper_search",
-                "selected_tool": "arxiv_paper_search_v1",
-                "normalized_count": 0,
-            },
-            execution_summary={
-                "search_result_count": 0,
-                "selected_for_fetch_count": 0,
-                "fetch_success_count": 0,
-                "fetch_empty_count": 0,
-                "fetch_failed_count": 0,
-            },
-            retrieval_trace={
-                "attempted_papers": [],
-                "selected_for_fetch": [],
-                "fetched_papers": [],
-                "failed_fetches": [],
-            },
+            source_summary=RetrievalSourceSummary(
+                selected_family="paper_search",
+                selected_tool="arxiv_paper_search_v1",
+                normalized_count=0,
+            ),
+            execution_summary=RetrievalExecutionSummary(
+                normalized_count=0,
+                dropped_item_count=0,
+                metrics={
+                    "search_result_count": 0,
+                    "selected_for_fetch_count": 0,
+                    "fetch_success_count": 0,
+                    "fetch_empty_count": 0,
+                    "fetch_failed_count": 0,
+                },
+            ),
+            retrieval_trace=RetrievalTrace(
+                observability={
+                    "attempted_papers": [],
+                    "selected_for_fetch": [],
+                    "fetched_papers": [],
+                    "failed_fetches": [],
+                },
+            ),
             error_info=None,
         )

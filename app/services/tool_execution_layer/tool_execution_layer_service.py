@@ -545,21 +545,21 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
             normalized_items=[],
             acquisition_status="failed",
             dropped_item_count=0,
-            source_summary={
-                "selected_family": selected_family,
-                "selected_tool": None,
-                "normalized_count": 0,
-            },
-            execution_summary={
-                "normalized_count": 0,
-                "family_exception": error_info,
-            },
-            retrieval_trace={
-                "selected_family": selected_family,
-                "selected_tool": None,
-                "generated_query": generated_query,
-                "family_exception": error_info,
-            },
+            source_summary=RetrievalSourceSummary(
+                selected_family=selected_family,
+                selected_tool=None,
+                normalized_count=0,
+            ),
+            execution_summary=RetrievalExecutionSummary(
+                normalized_count=0,
+                observability={"family_exception": error_info},
+            ),
+            retrieval_trace=RetrievalTrace(
+                selected_family=selected_family,
+                selected_tool=None,
+                generated_query=generated_query,
+                errors={"family_exception": error_info},
+            ),
             error_info=error_info,
             selected_family=selected_family,
             candidate_tools=[],

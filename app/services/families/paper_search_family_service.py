@@ -7,6 +7,9 @@ from app.domain.models import (
     ArxivPaperSearchToolResult,
     PaperSearchFamilyRequest,
     PaperSearchFamilyResult,
+    RetrievalExecutionSummary,
+    RetrievalSourceSummary,
+    RetrievalTrace,
 )
 from app.services.families.contracts.paper_search_family_service_protocol import (
     PaperSearchFamilyServiceProtocol,
@@ -152,24 +155,26 @@ class PaperSearchFamilyService(PaperSearchFamilyServiceProtocol):
             normalized_items=[],
             acquisition_status="failed",
             dropped_item_count=0,
-            source_summary={
-                "selected_family": self._FAMILY_NAME,
-                "selected_tool": selected_tool,
-                "normalized_count": 0,
-            },
-            execution_summary={
-                "candidate_tool_count": len(candidate_tools),
-                "preferred_tool_requested": normalized_request.preferred_tool,
-                "normalized_count": 0,
-            },
-            retrieval_trace={
-                "selected_family": self._FAMILY_NAME,
-                "candidate_tools": candidate_tools,
-                "selected_tool": selected_tool,
-                "preferred_tool": normalized_request.preferred_tool,
-                "query_text": normalized_request.query_text,
-                "family_error": error_info,
-            },
+            source_summary=RetrievalSourceSummary(
+                selected_family=self._FAMILY_NAME,
+                selected_tool=selected_tool,
+                normalized_count=0,
+            ),
+            execution_summary=RetrievalExecutionSummary(
+                normalized_count=0,
+                metrics={"candidate_tool_count": len(candidate_tools)},
+                observability={"preferred_tool_requested": normalized_request.preferred_tool},
+            ),
+            retrieval_trace=RetrievalTrace(
+                selected_family=self._FAMILY_NAME,
+                selected_tool=selected_tool,
+                context={
+                    "candidate_tools": candidate_tools,
+                    "preferred_tool": normalized_request.preferred_tool,
+                    "query_text": normalized_request.query_text,
+                },
+                errors={"family_error": error_info},
+            ),
             error_info=error_info,
             selected_family=self._FAMILY_NAME,
             candidate_tools=candidate_tools,
