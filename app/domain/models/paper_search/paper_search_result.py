@@ -18,9 +18,19 @@ class PaperSearchResult(BaseModel):
     paper_id: str = Field(
         min_length=1,
         description=(
-            "必填字段。当前 provider/adapter 语境下的稳定 paper result 标识，不能为空字符串。"
-            "当前项目中有用：arXiv adapter 通常可用 arXiv ID 或 provider item id 填充；ArxivPaperSearchTool 会把它作为 "
-            "`NormalizedRetrievalItem.item_id`，也会放入 item metadata，并在 content fetch request 中作为 `paper_id` 透传。"
+            "必填字段。论文在 `paper_id_type` 所指定命名空间内的稳定 ID 值，不能为空字符串。"
+            "当前项目中有用：arXiv adapter 会填 arXiv ID，例如 `2501.12345v2`；ArxivPaperSearchTool 会把它作为 "
+            "`NormalizedRetrievalItem.item_id`，也会放入 item metadata，并在需要 arXiv content fetch 时派生为 "
+            "`PaperContentFetchRequest.arxiv_id`。"
+        ),
+    )
+    paper_id_type: str = Field(
+        min_length=1,
+        description=(
+            "必填字段。`paper_id` 的 ID 命名空间或类型，不能为空字符串，例如 `arxiv_id`、`doi`、"
+            "`semantic_scholar_id`、`openalex_id`。当前项目中有用：arXiv adapter 固定填 `arxiv_id`；"
+            "ArxivPaperSearchTool 会用它决定是否可以把 `paper_id` 传给 arXiv-specific content fetch adapter。"
+            "注意它不同于 `source`：`paper_id_type` 描述 ID 类型，`source` 描述返回该结果的 search provider。"
         ),
     )
     title: str = Field(
@@ -58,14 +68,6 @@ class PaperSearchResult(BaseModel):
         description=(
             "可选字段。provider 返回的论文最后更新时间。当前项目中有用：ArxivPaperSearchTool 会以 ISO 字符串写入 "
             "normalized item metadata，用于 freshness/provenance 判断；当前不会直接写入 SourceReference.published_at。"
-        ),
-    )
-    arxiv_id: str = Field(
-        min_length=1,
-        description=(
-            "必填字段。论文的 canonical arXiv ID，不能为空字符串。当前项目中有用："
-            "ArxivPaperSearchTool 会优先用它构造 `SourceReference.source_id`，并设置 `source_id_type='arxiv_id'`；"
-            "content fetch request 也会用它解析 PDF URL。"
         ),
     )
     primary_category: str | None = Field(
@@ -110,6 +112,7 @@ class PaperSearchResult(BaseModel):
         description=(
             "可选字段，默认 `arxiv`。paper search provider 名称。当前项目中有用："
             "ArxivPaperSearchTool 会把它写入 `SourceReference.metadata['source']` 和 normalized item metadata 的 "
-            "`paper_source_name`。它表示检索 provider，不是论文 publisher，也不应写入 `SourceReference.publisher`。"
+            "`paper_source_name`。它表示检索 provider，不是论文 publisher，也不是 `paper_id_type`；例如未来某个 "
+            "Semantic Scholar adapter 也可能返回 `paper_id_type='arxiv_id'` 的论文。"
         ),
     )

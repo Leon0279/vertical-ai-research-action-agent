@@ -30,7 +30,8 @@ class ArxivPaperSearchToolResult(BaseModel):
         description=(
             "可选字段，默认空列表。paper tool 输出的标准化候选材料主数据。当前项目中有用："
             "每个 item 通常对应一篇 paper 的摘要或抓取后的全文片段，`source_reference` 会指向 paper 原始来源，"
-            "`metadata` 会保留 paper_id、arxiv_id、category、PDF URL、fetch 状态等 paper-specific 信息。"
+            "`metadata` 会保留 paper_id、paper_id_type、arxiv_id（当 paper_id_type 为 arxiv_id 时）、category、PDF URL、"
+            "fetch 状态等 paper-specific 信息。"
             "下游 family/TEL/EvidenceProcessing 会继续消费这个字段。"
         ),
     )

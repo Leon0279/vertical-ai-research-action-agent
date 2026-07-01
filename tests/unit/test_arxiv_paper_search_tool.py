@@ -46,13 +46,13 @@ class FakePaperContentFetchClient:
 SEARCH_RESULTS = PaperSearchResponse(
     results=[
         PaperSearchResult(
-            paper_id="paper-1",
+            paper_id="2501.00001",
+            paper_id_type="arxiv_id",
             title="Agent Research Systems",
             authors=["Alice", "Bob"],
             summary="Summary one",
             published_at=datetime(2025, 1, 5, tzinfo=UTC),
             updated_at=datetime(2025, 1, 7, tzinfo=UTC),
-            arxiv_id="2501.00001",
             primary_category="cs.AI",
             categories=["cs.AI", "cs.CL"],
             url="https://arxiv.org/abs/2501.00001",
@@ -61,13 +61,13 @@ SEARCH_RESULTS = PaperSearchResponse(
             source="arxiv",
         ),
         PaperSearchResult(
-            paper_id="paper-2",
+            paper_id="2502.00002",
+            paper_id_type="arxiv_id",
             title="Tool Use in Agents",
             authors=["Carol"],
             summary="Summary two",
             published_at=datetime(2025, 2, 1, tzinfo=UTC),
             updated_at=datetime(2025, 2, 2, tzinfo=UTC),
-            arxiv_id="2502.00002",
             primary_category="cs.LG",
             categories=["cs.LG"],
             url="https://arxiv.org/abs/2502.00002",
@@ -76,13 +76,13 @@ SEARCH_RESULTS = PaperSearchResponse(
             source="arxiv",
         ),
         PaperSearchResult(
-            paper_id="paper-3",
+            paper_id="2503.00003",
+            paper_id_type="arxiv_id",
             title="Planning Benchmarks",
             authors=["Dana"],
             summary="Summary three",
             published_at=None,
             updated_at=None,
-            arxiv_id="2503.00003",
             primary_category="cs.AI",
             categories=["cs.AI"],
             url="https://arxiv.org/abs/2503.00003",
@@ -101,16 +101,16 @@ def test_run_normal_path_uses_fetched_content_for_selected_papers() -> None:
     search_client = FakePaperSearchClient(SEARCH_RESULTS)
     content_client = FakePaperContentFetchClient(
         {
-            "paper-1": PaperContentFetchResult(
-                paper_id="paper-1",
+            "2501.00001": PaperContentFetchResult(
+                paper_id="2501.00001",
                 arxiv_id="2501.00001",
                 source_url="https://arxiv.org/pdf/2501.00001.pdf",
                 extracted_text="Full text one",
                 extraction_status="succeeded",
                 metadata={"page_count": 12},
             ),
-            "paper-2": PaperContentFetchResult(
-                paper_id="paper-2",
+            "2502.00002": PaperContentFetchResult(
+                paper_id="2502.00002",
                 arxiv_id="2502.00002",
                 source_url="https://arxiv.org/pdf/2502.00002.pdf",
                 extracted_text="Full text two",
@@ -132,7 +132,15 @@ def test_run_normal_path_uses_fetched_content_for_selected_papers() -> None:
 
     assert search_client.last_query is not None
     assert search_client.last_query.limit == 5
-    assert [request.paper_id for request in content_client.requests] == ["paper-1", "paper-2"]
+    assert [request.paper_id for request in content_client.requests] == [
+        "2501.00001",
+        "2502.00002",
+    ]
+    assert [request.arxiv_id for request in content_client.requests] == [
+        "2501.00001",
+        "2502.00002",
+    ]
+    assert [request.pdf_url for request in content_client.requests] == [None, None]
     assert result.acquisition_status == "success"
     assert len(result.normalized_items) == 3
     assert result.execution_summary["fetch_success_count"] == 2
@@ -149,6 +157,9 @@ def test_run_normal_path_uses_fetched_content_for_selected_papers() -> None:
     assert first["source_reference"].authors == ["Alice", "Bob"]
     assert "source_type" not in first.model_dump()
     assert "source_ref" not in first.model_dump()
+    assert first["metadata"]["paper_id"] == "2501.00001"
+    assert first["metadata"]["paper_id_type"] == "arxiv_id"
+    assert first["metadata"]["arxiv_id"] == "2501.00001"
     assert first["metadata"]["content_fetch_status"] == "succeeded"
 
     third = result.normalized_items[2]
@@ -161,8 +172,8 @@ def test_run_respects_max_search_results_and_max_content_fetches() -> None:
     search_client = FakePaperSearchClient(SEARCH_RESULTS)
     content_client = FakePaperContentFetchClient(
         {
-            "paper-1": PaperContentFetchResult(
-                paper_id="paper-1",
+            "2501.00001": PaperContentFetchResult(
+                paper_id="2501.00001",
                 arxiv_id="2501.00001",
                 source_url="https://arxiv.org/pdf/2501.00001.pdf",
                 extracted_text="Full text one",
@@ -183,7 +194,9 @@ def test_run_respects_max_search_results_and_max_content_fetches() -> None:
     )
 
     assert len(result.normalized_items) == 2
-    assert [request.paper_id for request in content_client.requests] == ["paper-1"]
+    assert [request.paper_id for request in content_client.requests] == ["2501.00001"]
+    assert [request.arxiv_id for request in content_client.requests] == ["2501.00001"]
+    assert [request.pdf_url for request in content_client.requests] == [None]
     assert result.execution_summary["selected_for_fetch_count"] == 1
 
 
@@ -216,15 +229,15 @@ def test_run_handles_failed_empty_and_exception_content_with_summary_fallback() 
     search_client = FakePaperSearchClient(SEARCH_RESULTS)
     content_client = FakePaperContentFetchClient(
         {
-            "paper-1": PaperContentFetchResult(
-                paper_id="paper-1",
+            "2501.00001": PaperContentFetchResult(
+                paper_id="2501.00001",
                 arxiv_id="2501.00001",
                 source_url="https://arxiv.org/pdf/2501.00001.pdf",
                 extracted_text=None,
                 extraction_status="empty_text",
                 error_info="No extractable text",
             ),
-            "paper-2": RuntimeError("download boom"),
+            "2502.00002": RuntimeError("download boom"),
         }
     )
     tool = ArxivPaperSearchTool(search_client, content_client)
@@ -257,8 +270,8 @@ def test_run_uses_fallback_when_fetch_returns_failed_status() -> None:
     search_client = FakePaperSearchClient(SEARCH_RESULTS)
     content_client = FakePaperContentFetchClient(
         {
-            "paper-1": PaperContentFetchResult(
-                paper_id="paper-1",
+            "2501.00001": PaperContentFetchResult(
+                paper_id="2501.00001",
                 arxiv_id="2501.00001",
                 source_url="https://arxiv.org/pdf/2501.00001.pdf",
                 extracted_text=None,

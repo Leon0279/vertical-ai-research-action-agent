@@ -68,7 +68,7 @@ class NormalizedRetrievalItem(BaseModel):
             "用于承接不同 tool 的差异信息。docs tool 当前会写入：title（docs 页面标题）、sub_source_type（docs 子来源类型）、"
             "url（docs 页面 URL）、section（docs section）、rank（排序位置）、score（adapter 相关性分数），并合并 adapter result metadata，"
             "例如 manifest_summary、page_fetch_error。web tool 可能写入 search_snippet、content_fetch_status、fetched_images、"
-            "fetched_favicon 等；paper tool 可能写入 authors、arxiv_id、categories、content_fetch_status 等；memory tool 可能写入 "
+            "fetched_favicon 等；paper tool 可能写入 authors、paper_id_type、arxiv_id、categories、content_fetch_status 等；memory tool 可能写入 "
             "knowledge_type、topic_tags、confidence、freshness_status 等。不要把已经稳定建模的主字段长期塞在这里。"
         ),
     )

@@ -17,7 +17,8 @@ class PaperContentFetchRequest(BaseModel):
         default=None,
         description=(
             "可选字段。arXiv 论文 ID，例如 `2501.12345` 或 `2501.12345v2`。当前项目中有用："
-            "ArxivPaperSearchTool 会从 `PaperSearchResult.arxiv_id` 填充它；arXiv content fetch adapter 可用它解析出 PDF URL。"
+            "ArxivPaperSearchTool 会在 `PaperSearchResult.paper_id_type == 'arxiv_id'` 时从 `paper_id` 派生并填充它；"
+            "arXiv content fetch adapter 可用它解析出 PDF URL。"
             "当调用方直接提供 `pdf_url` 时，该字段可以为空。"
         ),
     )

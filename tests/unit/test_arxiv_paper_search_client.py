@@ -175,7 +175,7 @@ def test_search_papers_sends_expected_query_and_normalizes_results() -> None:
 
     first = response.results[0]
     assert first.paper_id == "2501.12345v2"
-    assert first.arxiv_id == "2501.12345v2"
+    assert first.paper_id_type == "arxiv_id"
     assert first.title == "Retrieval Baselines for Agentic RAG"
     assert first.authors == ["Alice Smith", "Bob Jones"]
     assert first.summary == "This paper studies retrieval baselines."

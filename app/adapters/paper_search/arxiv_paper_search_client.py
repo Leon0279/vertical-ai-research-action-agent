@@ -192,12 +192,12 @@ class ArxivPaperSearchClient(PaperSearchClientProtocol):
 
         return PaperSearchResult(
             paper_id=arxiv_id,
+            paper_id_type="arxiv_id",
             title=title,
             authors=authors,
             summary=summary,
             published_at=published_at,
             updated_at=updated_at,
-            arxiv_id=arxiv_id,
             primary_category=primary_category,
             categories=categories,
             url=abstract_url,

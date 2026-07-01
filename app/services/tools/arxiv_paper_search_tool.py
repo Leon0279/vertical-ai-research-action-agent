@@ -106,8 +106,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
         eligible_candidates = [
             candidate
             for candidate in candidates
-            if (candidate.arxiv_id and candidate.arxiv_id.strip())
-            or (candidate.pdf_url and candidate.pdf_url.strip())
+            if self._arxiv_id(candidate) or (candidate.pdf_url and candidate.pdf_url.strip())
         ]
         return eligible_candidates[: request.max_content_fetches]
 
@@ -123,8 +122,8 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             try:
                 request = PaperContentFetchRequest(
                     paper_id=candidate.paper_id,
-                    arxiv_id=candidate.arxiv_id,
-                    pdf_url=candidate.pdf_url,
+                    arxiv_id=self._arxiv_id(candidate),
+                    pdf_url=None if self._arxiv_id(candidate) else candidate.pdf_url,
                 )
                 response = await self._paper_content_fetch_client.fetch_content(request)
             except Exception as exc:
@@ -159,7 +158,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                 "title": candidate.title,
                 "authors": candidate.authors,
                 "paper_id": candidate.paper_id,
-                "arxiv_id": candidate.arxiv_id,
+                "paper_id_type": candidate.paper_id_type,
                 "primary_category": candidate.primary_category,
                 "categories": candidate.categories,
                 "paper_url": candidate.url,
@@ -175,6 +174,9 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                 "paper_source_name": candidate.source,
                 "paper_summary": candidate.summary,
             }
+            arxiv_id = self._arxiv_id(candidate)
+            if arxiv_id:
+                metadata["arxiv_id"] = arxiv_id
 
             content = candidate.summary or ""
             content_type = "text_snippet"
@@ -299,13 +301,13 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
         return "success"
 
     def _source_ref(self, candidate: PaperSearchResult) -> str:
-        return candidate.arxiv_id or candidate.url or candidate.paper_id
+        return candidate.paper_id or candidate.url
 
     def _source_reference(self, candidate: PaperSearchResult) -> SourceReference:
         return SourceReference(
             source_type="paper",
-            source_id=candidate.arxiv_id or candidate.paper_id,
-            source_id_type="arxiv_id" if candidate.arxiv_id else "paper_id",
+            source_id=candidate.paper_id,
+            source_id_type=candidate.paper_id_type,
             source_url=candidate.url,
             title=candidate.title,
             authors=candidate.authors,
@@ -320,6 +322,11 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                 "source": candidate.source,
             },
         )
+
+    def _arxiv_id(self, candidate: PaperSearchResult) -> str | None:
+        if candidate.paper_id_type != "arxiv_id":
+            return None
+        return candidate.paper_id.strip() or None
 
     def _failed_result(self, error_info: str) -> ArxivPaperSearchToolResult:
         return ArxivPaperSearchToolResult(
