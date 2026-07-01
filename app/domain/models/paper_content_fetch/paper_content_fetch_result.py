@@ -25,16 +25,17 @@ class PaperContentFetchResult(BaseModel):
     paper_id: str = Field(
         min_length=1,
         description=(
-            "必填字段。被抓取论文的稳定标识，不能为空字符串。当前项目中有用："
-            "content fetch adapter 会优先沿用 `PaperContentFetchRequest.paper_id`，若缺失则可由 arXiv ID 或 PDF URL 派生；"
+            "必填字段。被抓取论文在 `paper_id_type` 命名空间内的稳定 ID 值，不能为空字符串。"
+            "当前项目中有用：content fetch adapter 会沿用 `PaperContentFetchRequest.paper_id`；"
             "ArxivPaperSearchTool 用它帮助关联 fetch result 和原始 paper search 候选。"
         ),
     )
-    arxiv_id: str | None = Field(
-        default=None,
+    paper_id_type: str = Field(
+        min_length=1,
         description=(
-            "可选字段。论文的 arXiv ID。当前项目中有用：当 request 或解析过程知道 arXiv ID 时填充，"
-            "用于 provenance、metadata 和调试；如果 content fetch 是通过非 arXiv PDF URL 发起，则可以为空。"
+            "必填字段。`paper_id` 的 ID 类型或命名空间，不能为空字符串。当前项目中有用："
+            "ArxivPaperContentFetchClient 当前固定返回 `arxiv_id`；ArxivPaperSearchTool 会保留该字段作为 "
+            "content fetch provenance。"
         ),
     )
     source_url: str = Field(

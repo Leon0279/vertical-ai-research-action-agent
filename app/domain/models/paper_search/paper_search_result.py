@@ -21,7 +21,7 @@ class PaperSearchResult(BaseModel):
             "必填字段。论文在 `paper_id_type` 所指定命名空间内的稳定 ID 值，不能为空字符串。"
             "当前项目中有用：arXiv adapter 会填 arXiv ID，例如 `2501.12345v2`；ArxivPaperSearchTool 会把它作为 "
             "`NormalizedRetrievalItem.item_id`，也会放入 item metadata，并在需要 arXiv content fetch 时派生为 "
-            "`PaperContentFetchRequest.arxiv_id`。"
+            "`PaperContentFetchRequest.paper_id`。"
         ),
     )
     paper_id_type: str = Field(
@@ -95,8 +95,9 @@ class PaperSearchResult(BaseModel):
         default=None,
         description=(
             "可选字段。provider 返回的 PDF 下载 URL。当前项目中有用：ArxivPaperSearchTool 会把它传给 "
-            "`PaperContentFetchRequest.pdf_url`，并写入 `SourceReference.metadata['pdf_url']` 和 normalized item metadata。"
-            "如果为空但有 arXiv ID，content fetch adapter 仍可尝试由 arXiv ID 解析 PDF URL。"
+            "`SourceReference.metadata['pdf_url']` 和 normalized item metadata，作为 provenance/展示/调试信息。"
+            "当前 ArxivPaperContentFetchClient 不再把该字段作为 fetch locator；content fetch 统一通过 `paper_id + paper_id_type` "
+            "构造 arXiv PDF URL。"
         ),
     )
     doi_url: str | None = Field(

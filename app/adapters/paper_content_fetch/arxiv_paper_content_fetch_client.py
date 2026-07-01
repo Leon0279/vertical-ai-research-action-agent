@@ -62,7 +62,7 @@ class ArxivPaperContentFetchClient(PaperContentFetchClientProtocol):
 
         return PaperContentFetchResult(
             paper_id=normalized["paper_id"],
-            arxiv_id=normalized["arxiv_id"],
+            paper_id_type=normalized["paper_id_type"],
             source_url=normalized["source_url"],
             extracted_text=extracted_text,
             extraction_status="succeeded",
@@ -75,22 +75,22 @@ class ArxivPaperContentFetchClient(PaperContentFetchClientProtocol):
         )
 
     def _normalize_request(self, request: PaperContentFetchRequest) -> dict[str, str | None]:
-        arxiv_id = (request.arxiv_id or "").strip() or None
-        pdf_url = (request.pdf_url or "").strip() or None
-        paper_id = (request.paper_id or "").strip() or None
-
-        if bool(arxiv_id) == bool(pdf_url):
+        paper_id = request.paper_id.strip()
+        paper_id_type = request.paper_id_type.strip()
+        if not paper_id:
+            raise ArxivPaperContentFetchClientError("paper_id must not be empty.")
+        if not paper_id_type:
+            raise ArxivPaperContentFetchClientError("paper_id_type must not be empty.")
+        if paper_id_type != "arxiv_id":
             raise ArxivPaperContentFetchClientError(
-                "Provide exactly one of arxiv_id or pdf_url for paper content fetch."
+                "ArxivPaperContentFetchClient only supports paper_id_type='arxiv_id'."
             )
 
-        source_url = pdf_url or self._build_pdf_url(arxiv_id or "")
+        source_url = self._build_pdf_url(paper_id)
         self._validate_pdf_url(source_url)
-
-        inferred_arxiv_id = arxiv_id or self._extract_arxiv_id_from_pdf_url(source_url)
         return {
-            "paper_id": paper_id or inferred_arxiv_id or source_url,
-            "arxiv_id": inferred_arxiv_id,
+            "paper_id": paper_id,
+            "paper_id_type": paper_id_type,
             "source_url": source_url,
         }
 
@@ -168,7 +168,7 @@ class ArxivPaperContentFetchClient(PaperContentFetchClientProtocol):
     ) -> PaperContentFetchResult:
         return PaperContentFetchResult(
             paper_id=normalized["paper_id"] or normalized["source_url"] or "unknown",
-            arxiv_id=normalized["arxiv_id"],
+            paper_id_type=normalized["paper_id_type"] or "arxiv_id",
             source_url=normalized["source_url"] or "",
             extracted_text=None,
             extraction_status=status,  # type: ignore[arg-type]
@@ -195,15 +195,6 @@ class ArxivPaperContentFetchClient(PaperContentFetchClientProtocol):
             return int(value.strip())
         except ValueError:
             return None
-
-    def _extract_arxiv_id_from_pdf_url(self, pdf_url: str) -> str | None:
-        path = urlparse(pdf_url).path.rstrip("/")
-        if not path:
-            return None
-        candidate = path.rsplit("/", maxsplit=1)[-1]
-        if candidate.endswith(".pdf"):
-            candidate = candidate[:-4]
-        return candidate or None
 
     def _normalize_text(self, value: str | None) -> str | None:
         if value is None:

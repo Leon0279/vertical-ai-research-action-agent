@@ -103,7 +103,7 @@ def test_run_normal_path_uses_fetched_content_for_selected_papers() -> None:
         {
             "2501.00001": PaperContentFetchResult(
                 paper_id="2501.00001",
-                arxiv_id="2501.00001",
+                paper_id_type="arxiv_id",
                 source_url="https://arxiv.org/pdf/2501.00001.pdf",
                 extracted_text="Full text one",
                 extraction_status="succeeded",
@@ -111,7 +111,7 @@ def test_run_normal_path_uses_fetched_content_for_selected_papers() -> None:
             ),
             "2502.00002": PaperContentFetchResult(
                 paper_id="2502.00002",
-                arxiv_id="2502.00002",
+                paper_id_type="arxiv_id",
                 source_url="https://arxiv.org/pdf/2502.00002.pdf",
                 extracted_text="Full text two",
                 extraction_status="succeeded",
@@ -136,15 +136,27 @@ def test_run_normal_path_uses_fetched_content_for_selected_papers() -> None:
         "2501.00001",
         "2502.00002",
     ]
-    assert [request.arxiv_id for request in content_client.requests] == [
-        "2501.00001",
-        "2502.00002",
+    assert [request.paper_id_type for request in content_client.requests] == [
+        "arxiv_id",
+        "arxiv_id",
     ]
-    assert [request.pdf_url for request in content_client.requests] == [None, None]
     assert result.acquisition_status == "success"
     assert len(result.normalized_items) == 3
     assert result.execution_summary["fetch_success_count"] == 2
     assert result.execution_summary["fetch_failed_count"] == 0
+    assert result.retrieval_trace["attempted_paper_ids"] == [
+        "2501.00001",
+        "2502.00002",
+        "2503.00003",
+    ]
+    assert result.retrieval_trace["selected_paper_ids"] == [
+        "2501.00001",
+        "2502.00002",
+    ]
+    assert result.retrieval_trace["fetched_paper_ids"] == [
+        "2501.00001",
+        "2502.00002",
+    ]
 
     first = result.normalized_items[0]
     assert first["content"] == "Full text one"
@@ -155,8 +167,6 @@ def test_run_normal_path_uses_fetched_content_for_selected_papers() -> None:
     assert first["source_reference"].source_url == "https://arxiv.org/abs/2501.00001"
     assert first["source_reference"].title == "Agent Research Systems"
     assert first["source_reference"].authors == ["Alice", "Bob"]
-    assert "source_type" not in first.model_dump()
-    assert "source_ref" not in first.model_dump()
     assert first["metadata"]["paper_id"] == "2501.00001"
     assert first["metadata"]["paper_id_type"] == "arxiv_id"
     assert first["metadata"]["arxiv_id"] == "2501.00001"
@@ -174,7 +184,7 @@ def test_run_respects_max_search_results_and_max_content_fetches() -> None:
         {
             "2501.00001": PaperContentFetchResult(
                 paper_id="2501.00001",
-                arxiv_id="2501.00001",
+                paper_id_type="arxiv_id",
                 source_url="https://arxiv.org/pdf/2501.00001.pdf",
                 extracted_text="Full text one",
                 extraction_status="succeeded",
@@ -195,8 +205,7 @@ def test_run_respects_max_search_results_and_max_content_fetches() -> None:
 
     assert len(result.normalized_items) == 2
     assert [request.paper_id for request in content_client.requests] == ["2501.00001"]
-    assert [request.arxiv_id for request in content_client.requests] == ["2501.00001"]
-    assert [request.pdf_url for request in content_client.requests] == [None]
+    assert [request.paper_id_type for request in content_client.requests] == ["arxiv_id"]
     assert result.execution_summary["selected_for_fetch_count"] == 1
 
 
@@ -231,7 +240,7 @@ def test_run_handles_failed_empty_and_exception_content_with_summary_fallback() 
         {
             "2501.00001": PaperContentFetchResult(
                 paper_id="2501.00001",
-                arxiv_id="2501.00001",
+                paper_id_type="arxiv_id",
                 source_url="https://arxiv.org/pdf/2501.00001.pdf",
                 extracted_text=None,
                 extraction_status="empty_text",
@@ -264,6 +273,20 @@ def test_run_handles_failed_empty_and_exception_content_with_summary_fallback() 
     assert second["metadata"]["fallback_to_paper_summary"] is True
     assert result.execution_summary["fetch_empty_count"] == 1
     assert result.execution_summary["fetch_failed_count"] == 1
+    assert result.retrieval_trace["failed_fetches"] == [
+        {
+            "paper_id": "2501.00001",
+            "paper_id_type": "arxiv_id",
+            "status": "empty_text",
+            "error_info": "No extractable text",
+        },
+        {
+            "paper_id": "2502.00002",
+            "paper_id_type": "arxiv_id",
+            "status": "exception",
+            "error_info": "download boom",
+        },
+    ]
 
 
 def test_run_uses_fallback_when_fetch_returns_failed_status() -> None:
@@ -272,7 +295,7 @@ def test_run_uses_fallback_when_fetch_returns_failed_status() -> None:
         {
             "2501.00001": PaperContentFetchResult(
                 paper_id="2501.00001",
-                arxiv_id="2501.00001",
+                paper_id_type="arxiv_id",
                 source_url="https://arxiv.org/pdf/2501.00001.pdf",
                 extracted_text=None,
                 extraction_status="download_failed",
@@ -298,6 +321,14 @@ def test_run_uses_fallback_when_fetch_returns_failed_status() -> None:
     assert first["content"] == "Summary one"
     assert first["metadata"]["content_fetch_status"] == "download_failed"
     assert first["metadata"]["content_fetch_error_info"] == "Timed out"
+    assert result.retrieval_trace["failed_fetches"] == [
+        {
+            "paper_id": "2501.00001",
+            "paper_id_type": "arxiv_id",
+            "status": "download_failed",
+            "error_info": "Timed out",
+        }
+    ]
 
 
 def test_run_skips_content_fetch_when_max_content_fetches_is_zero() -> None:

@@ -119,7 +119,10 @@ def test_fetch_content_resolves_arxiv_id_and_extracts_text() -> None:
                 http_client=client,
             )
             return await fetch_client.fetch_content(
-                PaperContentFetchRequest(arxiv_id="2501.12345v2")
+                PaperContentFetchRequest(
+                    paper_id="2501.12345v2",
+                    paper_id_type="arxiv_id",
+                )
             )
 
     result = asyncio.run(run_case())
@@ -130,7 +133,7 @@ def test_fetch_content_resolves_arxiv_id_and_extracts_text() -> None:
         "vaa-test-agent/1.0 contact:test@example.com"
     )
     assert result.paper_id == "2501.12345v2"
-    assert result.arxiv_id == "2501.12345v2"
+    assert result.paper_id_type == "arxiv_id"
     assert result.source_url == "https://example.test/pdf/2501.12345v2.pdf"
     assert result.extraction_status == "succeeded"
     assert result.extracted_text is not None
@@ -138,41 +141,6 @@ def test_fetch_content_resolves_arxiv_id_and_extracts_text() -> None:
     assert result.error_info is None
     assert result.metadata["download_bytes"] > 0
     assert result.source == "arxiv"
-
-
-def test_fetch_content_uses_direct_pdf_url() -> None:
-    seen_request: httpx.Request | None = None
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        nonlocal seen_request
-        seen_request = request
-        return httpx.Response(
-            200,
-            content=_minimal_pdf("Direct PDF content"),
-            headers={"content-type": "application/pdf"},
-        )
-
-    async def run_case():
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            fetch_client = ArxivPaperContentFetchClient(
-                config=ArxivPaperContentFetchClientConfig(user_agent="vaa-test-agent/1.0"),
-                http_client=client,
-            )
-            return await fetch_client.fetch_content(
-                PaperContentFetchRequest(
-                    pdf_url="https://arxiv.org/pdf/2502.99999.pdf",
-                    paper_id="paper-2502",
-                )
-            )
-
-    result = asyncio.run(run_case())
-
-    assert seen_request is not None
-    assert str(seen_request.url) == "https://arxiv.org/pdf/2502.99999.pdf"
-    assert result.paper_id == "paper-2502"
-    assert result.arxiv_id == "2502.99999"
-    assert result.extraction_status == "succeeded"
-    assert "Direct PDF content" in (result.extracted_text or "")
 
 
 def test_fetch_content_returns_empty_text_status() -> None:
@@ -191,7 +159,10 @@ def test_fetch_content_returns_empty_text_status() -> None:
                 http_client=client,
             )
             return await fetch_client.fetch_content(
-                PaperContentFetchRequest(arxiv_id="2501.00001")
+                PaperContentFetchRequest(
+                    paper_id="2501.00001",
+                    paper_id_type="arxiv_id",
+                )
             )
 
     result = asyncio.run(run_case())
@@ -238,7 +209,10 @@ def test_fetch_content_returns_download_failed_for_http_network_and_content_erro
                 http_client=client,
             )
             return await fetch_client.fetch_content(
-                PaperContentFetchRequest(arxiv_id="2501.00001")
+                PaperContentFetchRequest(
+                    paper_id="2501.00001",
+                    paper_id_type="arxiv_id",
+                )
             )
 
     cases = [
@@ -271,7 +245,10 @@ def test_fetch_content_returns_extraction_failed_for_malformed_pdf() -> None:
                 http_client=client,
             )
             return await fetch_client.fetch_content(
-                PaperContentFetchRequest(arxiv_id="2501.00001")
+                PaperContentFetchRequest(
+                    paper_id="2501.00001",
+                    paper_id_type="arxiv_id",
+                )
             )
 
     result = asyncio.run(run_case())
@@ -287,18 +264,30 @@ def test_fetch_content_rejects_invalid_inputs() -> None:
         config=ArxivPaperContentFetchClientConfig(user_agent="vaa-test-agent/1.0")
     )
 
-    with pytest.raises(ArxivPaperContentFetchClientError, match="exactly one"):
-        asyncio.run(fetch_client.fetch_content(PaperContentFetchRequest()))
-    with pytest.raises(ArxivPaperContentFetchClientError, match="exactly one"):
+    with pytest.raises(ArxivPaperContentFetchClientError, match="paper_id must not be empty"):
         asyncio.run(
             fetch_client.fetch_content(
                 PaperContentFetchRequest(
-                    arxiv_id="2501.00001",
-                    pdf_url="https://arxiv.org/pdf/2501.00001.pdf",
+                    paper_id=" ",
+                    paper_id_type="arxiv_id",
                 )
             )
         )
-    with pytest.raises(ArxivPaperContentFetchClientError, match="absolute HTTP"):
+    with pytest.raises(ArxivPaperContentFetchClientError, match="paper_id_type must not be empty"):
         asyncio.run(
-            fetch_client.fetch_content(PaperContentFetchRequest(pdf_url="file:///tmp/a.pdf"))
+            fetch_client.fetch_content(
+                PaperContentFetchRequest(
+                    paper_id="2501.00001",
+                    paper_id_type=" ",
+                )
+            )
+        )
+    with pytest.raises(ArxivPaperContentFetchClientError, match="only supports"):
+        asyncio.run(
+            fetch_client.fetch_content(
+                PaperContentFetchRequest(
+                    paper_id="10.1000/example",
+                    paper_id_type="doi",
+                )
+            )
         )

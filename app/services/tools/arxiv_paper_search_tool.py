@@ -106,7 +106,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
         eligible_candidates = [
             candidate
             for candidate in candidates
-            if self._arxiv_id(candidate) or (candidate.pdf_url and candidate.pdf_url.strip())
+            if self._arxiv_id(candidate)
         ]
         return eligible_candidates[: request.max_content_fetches]
 
@@ -118,21 +118,20 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
         fetch_failures: dict[str, dict[str, Any]] = {}
 
         for candidate in selected_candidates:
-            source_ref = self._source_ref(candidate)
+            paper_id = candidate.paper_id
             try:
                 request = PaperContentFetchRequest(
                     paper_id=candidate.paper_id,
-                    arxiv_id=self._arxiv_id(candidate),
-                    pdf_url=None if self._arxiv_id(candidate) else candidate.pdf_url,
+                    paper_id_type=candidate.paper_id_type,
                 )
                 response = await self._paper_content_fetch_client.fetch_content(request)
             except Exception as exc:
-                fetch_failures[source_ref] = {
+                fetch_failures[paper_id] = {
                     "status": "exception",
                     "error_info": str(exc),
                 }
                 continue
-            fetch_results[source_ref] = response
+            fetch_results[paper_id] = response
         return fetch_results, fetch_failures
 
     def _assemble_items(
@@ -143,17 +142,17 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
         fetch_results: dict[str, PaperContentFetchResult],
         fetch_failures: dict[str, dict[str, Any]],
     ) -> tuple[list[NormalizedRetrievalItem], RetrievalExecutionSummary, RetrievalTrace]:
-        selected_refs = {self._source_ref(candidate) for candidate in selected_candidates}
+        selected_paper_ids = {candidate.paper_id for candidate in selected_candidates}
 
         normalized_items: list[NormalizedRetrievalItem] = []
         fetch_success_count = 0
         fetch_empty_count = 0
         fetch_failed_count = 0
         failed_fetches: list[dict[str, Any]] = []
-        fetched_papers: list[str] = []
+        fetched_paper_ids: list[str] = []
 
         for rank, candidate in enumerate(candidates, start=1):
-            source_ref = self._source_ref(candidate)
+            paper_id = candidate.paper_id
             metadata: dict[str, Any] = {
                 "title": candidate.title,
                 "authors": candidate.authors,
@@ -180,9 +179,9 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
 
             content = candidate.summary or ""
             content_type = "text_snippet"
-            if source_ref in selected_refs:
-                fetched = fetch_results.get(source_ref)
-                failed = fetch_failures.get(source_ref)
+            if paper_id in selected_paper_ids:
+                fetched = fetch_results.get(paper_id)
+                failed = fetch_failures.get(paper_id)
                 if (
                     fetched is not None
                     and fetched.extraction_status == "succeeded"
@@ -194,7 +193,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                     metadata["content_fetch_source"] = fetched.source
                     metadata.update(fetched.metadata)
                     fetch_success_count += 1
-                    fetched_papers.append(source_ref)
+                    fetched_paper_ids.append(paper_id)
                 elif fetched is not None and fetched.extraction_status == "empty_text":
                     metadata["content_fetch_status"] = "empty_text"
                     metadata["fallback_to_paper_summary"] = True
@@ -203,7 +202,8 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                     fetch_empty_count += 1
                     failed_fetches.append(
                         {
-                            "source_ref": source_ref,
+                            "paper_id": paper_id,
+                            "paper_id_type": candidate.paper_id_type,
                             "status": "empty_text",
                             "error_info": fetched.error_info,
                         }
@@ -216,7 +216,8 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                     fetch_failed_count += 1
                     failed_fetches.append(
                         {
-                            "source_ref": source_ref,
+                            "paper_id": paper_id,
+                            "paper_id_type": candidate.paper_id_type,
                             "status": fetched.extraction_status,
                             "error_info": fetched.error_info,
                         }
@@ -228,7 +229,8 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                     fetch_failed_count += 1
                     failed_fetches.append(
                         {
-                            "source_ref": source_ref,
+                            "paper_id": paper_id,
+                            "paper_id_type": candidate.paper_id_type,
                             "status": failed["status"],
                             "error_info": failed["error_info"],
                         }
@@ -239,7 +241,8 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                     fetch_failed_count += 1
                     failed_fetches.append(
                         {
-                            "source_ref": source_ref,
+                            "paper_id": paper_id,
+                            "paper_id_type": candidate.paper_id_type,
                             "status": "not_returned",
                             "error_info": "Selected paper was not returned by paper_content_fetch.",
                         }
@@ -271,11 +274,9 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
         )
         retrieval_trace = RetrievalTrace(
             observability={
-                "attempted_papers": [self._source_ref(candidate) for candidate in candidates],
-                "selected_for_fetch": [
-                    self._source_ref(candidate) for candidate in selected_candidates
-                ],
-                "fetched_papers": fetched_papers,
+                "attempted_paper_ids": [candidate.paper_id for candidate in candidates],
+                "selected_paper_ids": [candidate.paper_id for candidate in selected_candidates],
+                "fetched_paper_ids": fetched_paper_ids,
                 "failed_fetches": failed_fetches,
             },
         )
@@ -299,9 +300,6 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
         if execution_summary["fetch_success_count"] == 0:
             return "partial_success"
         return "success"
-
-    def _source_ref(self, candidate: PaperSearchResult) -> str:
-        return candidate.paper_id or candidate.url
 
     def _source_reference(self, candidate: PaperSearchResult) -> SourceReference:
         return SourceReference(
@@ -352,8 +350,8 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             retrieval_trace=RetrievalTrace(
                 errors={"search_error": error_info},
                 observability={
-                    "attempted_papers": [],
-                    "fetched_papers": [],
+                    "attempted_paper_ids": [],
+                    "fetched_paper_ids": [],
                 },
             ),
             error_info=error_info,
@@ -382,9 +380,9 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             ),
             retrieval_trace=RetrievalTrace(
                 observability={
-                    "attempted_papers": [],
-                    "selected_for_fetch": [],
-                    "fetched_papers": [],
+                    "attempted_paper_ids": [],
+                    "selected_paper_ids": [],
+                    "fetched_paper_ids": [],
                     "failed_fetches": [],
                 },
             ),
