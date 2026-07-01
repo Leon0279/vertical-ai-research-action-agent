@@ -19,6 +19,7 @@ from app.domain.models import (
     ResearchKnowledgeRecallQuery,
     ResearchKnowledgeRecallResult,
     ResearchKnowledgeUnitRecord,
+    SourceReference,
 )
 
 
@@ -316,7 +317,7 @@ SET
             unit.knowledge_type,
             json.dumps(unit.topic_tags),
             unit.confidence,
-            json.dumps(unit.source_refs),
+            json.dumps(self._dump_source_refs(unit.source_refs)),
             unit.source_type,
             unit.derived_from_session_id,
             unit.derived_from_run_id,
@@ -360,7 +361,7 @@ SET
                 knowledge_type=row["knowledge_type"],
                 topic_tags=self._load_json_string_list(row["topic_tags"]),
                 confidence=row["confidence"],
-                source_refs=self._load_json_object_list(row["source_refs"]),
+                source_refs=self._load_source_refs(row["source_refs"]),
                 source_type=row["source_type"],
                 derived_from_session_id=row["derived_from_session_id"],
                 derived_from_run_id=row["derived_from_run_id"],
@@ -401,22 +402,29 @@ SET
             return [str(item) for item in parsed]
         raise TypeError("Expected a list-like JSON field.")
 
-    def _load_json_object_list(self, value: Any) -> list[dict[str, Any]]:
+    def _dump_source_refs(self, source_refs: list[SourceReference]) -> list[dict[str, Any]]:
+        return [source_ref.model_dump(mode="json") for source_ref in source_refs]
+
+    def _load_source_refs(self, value: Any) -> list[SourceReference]:
         if value is None:
             return []
         if isinstance(value, list):
-            return [self._coerce_json_object(item) for item in value]
+            return self._coerce_source_refs(value)
         if isinstance(value, str):
             parsed = json.loads(value)
             if not isinstance(parsed, list):
                 raise TypeError("Expected a JSON array.")
-            return [self._coerce_json_object(item) for item in parsed]
+            return self._coerce_source_refs(parsed)
         raise TypeError("Expected a list-like JSON field.")
 
-    def _coerce_json_object(self, value: Any) -> dict[str, Any]:
-        if not isinstance(value, dict):
-            raise TypeError("Expected a JSON object.")
-        return {str(key): item for key, item in value.items()}
+    def _coerce_source_refs(self, values: list[Any]) -> list[SourceReference]:
+        source_refs: list[SourceReference] = []
+        for value in values:
+            try:
+                source_refs.append(SourceReference.model_validate(value))
+            except Exception:
+                continue
+        return source_refs
 
     def _load_vector(self, value: Any) -> list[float] | None:
         if value is None:

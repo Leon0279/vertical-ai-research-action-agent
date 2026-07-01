@@ -10,6 +10,7 @@ from app.domain.models import (
     ResearchKnowledgeMemoryToolRequest,
     ResearchKnowledgeRecallResult,
     ResearchKnowledgeUnitRecord,
+    SourceReference,
 )
 from app.services.tools.research_knowledge_memory_tool import ResearchKnowledgeMemoryTool
 
@@ -61,7 +62,12 @@ UNIT = ResearchKnowledgeUnitRecord(
     knowledge_type="engineering_observation",
     topic_tags=["postgresql", "pgvector"],
     confidence=0.88,
-    source_refs=[{"source_type": "web_page", "source_uri": "https://example.test/pgvector"}],
+    source_refs=[
+        SourceReference(
+            source_type="web_page",
+            source_url="https://example.test/pgvector",
+        )
+    ],
     source_type="web_page",
     derived_from_session_id="session-1",
     derived_from_run_id="run-1",
@@ -169,6 +175,7 @@ def test_run_normalizes_recalled_items() -> None:
     assert item["content_type"] == "knowledge_summary"
     assert item["metadata"]["title"] == UNIT.title
     assert item["metadata"]["relevance_score"] == 0.91
+    assert item["metadata"]["source_refs"][0]["source_url"] == "https://example.test/pgvector"
     assert result.retrieval_trace["returned_refs"] == ["https://example.test/pgvector"]
 
 

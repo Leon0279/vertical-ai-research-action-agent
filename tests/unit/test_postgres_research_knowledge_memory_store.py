@@ -21,6 +21,7 @@ from app.adapters.memory.postgres_research_knowledge_memory_store_error import (
 from app.domain.models import (
     ResearchKnowledgeRecallQuery,
     ResearchKnowledgeUnitRecord,
+    SourceReference,
 )
 
 
@@ -107,11 +108,11 @@ def _unit() -> ResearchKnowledgeUnitRecord:
         topic_tags=["postgresql", "pgvector"],
         confidence=0.88,
         source_refs=[
-            {
-                "source_type": "web_page",
-                "source_uri": "https://example.test/pgvector",
-                "title": "pgvector notes",
-            }
+            SourceReference(
+                source_type="web_page",
+                source_url="https://example.test/pgvector",
+                title="pgvector notes",
+            )
         ],
         source_type="web_page",
         derived_from_session_id="session-1",
@@ -151,7 +152,9 @@ def _row(**overrides: object) -> dict[str, object]:
         "knowledge_type": unit.knowledge_type,
         "topic_tags": json.dumps(unit.topic_tags),
         "confidence": unit.confidence,
-        "source_refs": json.dumps(unit.source_refs),
+        "source_refs": json.dumps(
+            [source_ref.model_dump(mode="json") for source_ref in unit.source_refs]
+        ),
         "source_type": unit.source_type,
         "derived_from_session_id": unit.derived_from_session_id,
         "derived_from_run_id": unit.derived_from_run_id,
@@ -232,7 +235,9 @@ def test_get_knowledge_unit_maps_row() -> None:
     assert unit is not None
     assert unit.knowledge_id == "knowledge-1"
     assert unit.topic_tags == ["postgresql", "pgvector"]
-    assert unit.source_refs[0]["source_type"] == "web_page"
+    assert isinstance(unit.source_refs[0], SourceReference)
+    assert unit.source_refs[0].source_type == "web_page"
+    assert unit.source_refs[0].source_url == "https://example.test/pgvector"
     assert unit.embedding_vector == [0.1, 0.2, 0.3]
 
 
@@ -248,8 +253,69 @@ def test_upsert_knowledge_unit_writes_jsonb_and_vector_params() -> None:
     assert "$11::jsonb" in query
     assert "$31::vector" in query
     assert json.loads(args[8]) == ["postgresql", "pgvector"]
-    assert json.loads(args[10])[0]["source_uri"] == "https://example.test/pgvector"
+    assert json.loads(args[10])[0]["source_url"] == "https://example.test/pgvector"
     assert args[30] == "[0.1,0.2,0.3]"
+
+
+def test_get_knowledge_unit_maps_legacy_source_uri() -> None:
+    row = _row(
+        source_refs=json.dumps(
+            [
+                {
+                    "source_type": "web_page",
+                    "source_uri": "https://example.test/legacy-source-uri",
+                }
+            ]
+        )
+    )
+    store = PostgresResearchKnowledgeMemoryStore(
+        config=_config(),
+        pool=FakePool(FakeConnection(row=row)),
+    )
+
+    unit = asyncio.run(
+        store.get_knowledge_unit(owner_user_id="user-1", knowledge_id="knowledge-1")
+    )
+
+    assert unit is not None
+    assert unit.source_refs[0].source_url == "https://example.test/legacy-source-uri"
+
+
+def test_get_knowledge_unit_skips_malformed_source_ref_items() -> None:
+    row = _row(
+        source_refs=json.dumps(
+            [
+                {"bad": "shape"},
+                {"source_type": "web_page", "source_url": "https://example.test/valid"},
+            ]
+        )
+    )
+    store = PostgresResearchKnowledgeMemoryStore(
+        config=_config(),
+        pool=FakePool(FakeConnection(row=row)),
+    )
+
+    unit = asyncio.run(
+        store.get_knowledge_unit(owner_user_id="user-1", knowledge_id="knowledge-1")
+    )
+
+    assert unit is not None
+    assert len(unit.source_refs) == 1
+    assert unit.source_refs[0].source_url == "https://example.test/valid"
+
+
+def test_get_knowledge_unit_rejects_non_array_source_refs() -> None:
+    store = PostgresResearchKnowledgeMemoryStore(
+        config=_config(),
+        pool=FakePool(
+            FakeConnection(row=_row(source_refs=json.dumps({"bad": "shape"})))
+        ),
+    )
+
+    with pytest.raises(PostgresResearchKnowledgeMemoryStoreError, match="Failed to map"):
+        asyncio.run(
+            store.get_knowledge_unit(owner_user_id="user-1", knowledge_id="knowledge-1")
+        )
 
 
 def test_recall_knowledge_units_builds_filter_first_pgvector_query() -> None:

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.domain.models.source import SourceReference
 
 
 class ResearchKnowledgeUnitRecord(BaseModel):
@@ -56,9 +57,16 @@ class ResearchKnowledgeUnitRecord(BaseModel):
         default=None,
         description="Confidence score for this knowledge unit.",
     )
-    source_refs: list[dict[str, Any]] = Field(
+    source_refs: list[SourceReference] = Field(
         default_factory=list,
-        description="Evidence-level source references supporting this knowledge unit.",
+        description=(
+            "可选字段，默认空列表。支撑该 research knowledge unit 的 evidence-level "
+            "provenance，每个元素必须是 SourceReference。这里的 SourceReference 表示 "
+            "knowledge distill 前的原始来源，例如网页、论文、docs 页面、会话或 run output，"
+            "而不是 knowledge unit 本身；不要用 knowledge_id、knowledge title、owner_user_id "
+            "或 created_by 伪造成 source reference。该字段当前仍以内嵌 JSONB/JSON array "
+            "形式落库，由 PostgresResearchKnowledgeMemoryStore 在存储边界负责序列化和反序列化。"
+        ),
     )
     source_type: str | None = Field(
         default=None,

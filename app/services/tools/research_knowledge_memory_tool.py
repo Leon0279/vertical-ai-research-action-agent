@@ -169,7 +169,10 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
                             "title": unit.title,
                             "knowledge_type": unit.knowledge_type,
                             "topic_tags": unit.topic_tags,
-                            "source_refs": unit.source_refs,
+                            "source_refs": [
+                                source_ref.model_dump(mode="json")
+                                for source_ref in unit.source_refs
+                            ],
                             "source_type": unit.source_type,
                             "project_scope_id": unit.project_scope_id,
                             "visibility_scope": unit.visibility_scope,
@@ -191,11 +194,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
         return normalized_items, dropped_item_count
 
     def _source_reference(self, unit: ResearchKnowledgeUnitRecord) -> SourceReference:
-        for raw_reference in unit.source_refs:
-            try:
-                reference = SourceReference.model_validate(raw_reference)
-            except Exception:
-                continue
+        for reference in unit.source_refs:
             return reference.model_copy(
                 update={
                     "metadata": {
