@@ -138,8 +138,11 @@ def test_search_web_sends_expected_payload_and_normalizes_results() -> None:
 
     assert len(response.results) == 2
     assert response.source_summary["provider"] == "tavily"
+    assert response.source_summary["query_text"] == "responses api agent workflows"
     assert response.source_summary["normalized_count"] == 2
     assert response.source_summary["dropped_item_count"] == 0
+    assert "selected_family" not in response.source_summary
+    assert "selected_tool" not in response.source_summary
 
     first = response.results[0]
     assert first.title == "OpenAI Responses API guide"

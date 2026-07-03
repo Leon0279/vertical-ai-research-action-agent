@@ -156,8 +156,6 @@ class TavilyWebSearchClient(WebSearchClientProtocol):
         return WebSearchResponse(
             results=results,
             source_summary={
-                "selected_family": "web_search",
-                "selected_tool": "tavily_web_search_v1",
                 "provider": "tavily",
                 "query_text": query.query_text,
                 "normalized_count": len(results),
