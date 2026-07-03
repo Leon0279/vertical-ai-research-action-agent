@@ -60,8 +60,6 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
                 acquisition_status="failed",
                 dropped_item_count=0,
                 source_summary=RetrievalSourceSummary(
-                    selected_family="web_search",
-                    selected_tool="tavily_web_search_v1",
                     normalized_count=0,
                 ),
                 execution_summary=RetrievalExecutionSummary(
@@ -92,8 +90,6 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
                 acquisition_status="no_result",
                 dropped_item_count=0,
                 source_summary=RetrievalSourceSummary(
-                    selected_family="web_search",
-                    selected_tool="tavily_web_search_v1",
                     normalized_count=0,
                 ),
                 execution_summary=RetrievalExecutionSummary(
@@ -135,8 +131,6 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
             acquisition_status=acquisition_status,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
-                selected_family="web_search",
-                selected_tool="tavily_web_search_v1",
                 normalized_count=len(normalized_items),
             ),
             execution_summary=execution_summary,

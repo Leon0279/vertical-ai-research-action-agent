@@ -43,8 +43,6 @@ SUCCESS_RESULT = TavilyWebSearchToolResult(
     acquisition_status="success",
     dropped_item_count=0,
     source_summary=RetrievalSourceSummary(
-        selected_family="web_search",
-        selected_tool="tavily_web_search_v1",
         normalized_count=1,
     ),
     execution_summary=RetrievalExecutionSummary(
@@ -87,6 +85,8 @@ def test_run_selects_default_tool_and_wraps_result() -> None:
     assert result.candidate_tools == ["tavily_web_search_v1"]
     assert result.selected_tool == "tavily_web_search_v1"
     assert result.acquisition_status == "success"
+    assert result.source_summary["selected_family"] == "web_search"
+    assert result.source_summary["selected_tool"] == "tavily_web_search_v1"
     assert result.execution_summary["candidate_tool_count"] == 1
     assert result.retrieval_trace["selected_tool"] == "tavily_web_search_v1"
 

@@ -150,8 +150,6 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
             acquisition_status="partial_success" if dropped_item_count > 0 else "success",
             dropped_item_count=dropped_item_count,
             source_summary=RetrievalSourceSummary(
-                selected_family="research_knowledge_recall",
-                selected_tool="research_knowledge_memory_v1",
                 normalized_count=len(normalized_items),
             ),
             execution_summary=RetrievalExecutionSummary(
@@ -285,8 +283,6 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
             acquisition_status="failed",
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
-                selected_family="research_knowledge_recall",
-                selected_tool="research_knowledge_memory_v1",
                 normalized_count=0,
             ),
             execution_summary=RetrievalExecutionSummary(
@@ -324,8 +320,6 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
             acquisition_status="no_result",
             dropped_item_count=dropped_item_count,
             source_summary=RetrievalSourceSummary(
-                selected_family="research_knowledge_recall",
-                selected_tool="research_knowledge_memory_v1",
                 normalized_count=0,
             ),
             execution_summary=RetrievalExecutionSummary(

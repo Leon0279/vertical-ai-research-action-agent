@@ -76,8 +76,6 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             acquisition_status=acquisition_status,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
-                selected_family="paper_search",
-                selected_tool="arxiv_paper_search_v1",
                 normalized_count=len(normalized_items),
             ),
             execution_summary=execution_summary,
@@ -332,8 +330,6 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             acquisition_status="failed",
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
-                selected_family="paper_search",
-                selected_tool="arxiv_paper_search_v1",
                 normalized_count=0,
             ),
             execution_summary=RetrievalExecutionSummary(
@@ -363,8 +359,6 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             acquisition_status="no_result",
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
-                selected_family="paper_search",
-                selected_tool="arxiv_paper_search_v1",
                 normalized_count=0,
             ),
             execution_summary=RetrievalExecutionSummary(

@@ -98,8 +98,6 @@ def test_run_normal_path_maps_docs_results_to_normalized_items() -> None:
     assert result.acquisition_status == "partial_success"
     assert result.dropped_item_count == 1
     assert len(result.normalized_items) == 2
-    assert result.source_summary["selected_family"] == "docs_search"
-    assert result.source_summary["selected_tool"] == "llms_txt_docs_search_v1"
     assert result.source_summary["normalized_count"] == 2
     assert result.source_summary["searched_sub_source_types"] == ["openai_api", "anthropic_api"]
     assert result.execution_summary.metrics["search_result_count"] == 2

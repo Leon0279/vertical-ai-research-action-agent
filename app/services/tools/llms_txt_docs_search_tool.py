@@ -147,8 +147,6 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
     ) -> RetrievalSourceSummary:
         return search_response.source_summary.model_copy(
             update={
-                "selected_family": "docs_search",
-                "selected_tool": "llms_txt_docs_search_v1",
                 "normalized_count": normalized_count,
             }
         )
@@ -199,8 +197,6 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             acquisition_status="failed",
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
-                selected_family="docs_search",
-                selected_tool="llms_txt_docs_search_v1",
                 normalized_count=0,
             ),
             execution_summary=self._execution_summary(
