@@ -55,63 +55,11 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
                 )
             )
         except Exception as exc:
-            return TavilyWebSearchToolResult(
-                normalized_items=[],
-                acquisition_status="failed",
-                dropped_item_count=0,
-                source_summary=RetrievalSourceSummary(
-                    normalized_count=0,
-                ),
-                execution_summary=RetrievalExecutionSummary(
-                    normalized_count=0,
-                    dropped_item_count=0,
-                    metrics={
-                        "search_result_count": 0,
-                        "selected_for_fetch_count": 0,
-                        "fetch_success_count": 0,
-                        "fetch_empty_count": 0,
-                        "fetch_failed_count": 1,
-                    },
-                ),
-                retrieval_trace=RetrievalTrace(
-                    errors={"search_error": str(exc)},
-                    observability={
-                        "attempted_urls": [],
-                        "fetched_urls": [],
-                    },
-                ),
-                error_info=str(exc),
-            )
+            return self._failed_result(str(exc))
 
         candidates = search_response.results[: normalized_request.max_search_results]
         if not candidates:
-            return TavilyWebSearchToolResult(
-                normalized_items=[],
-                acquisition_status="no_result",
-                dropped_item_count=0,
-                source_summary=RetrievalSourceSummary(
-                    normalized_count=0,
-                ),
-                execution_summary=RetrievalExecutionSummary(
-                    normalized_count=0,
-                    dropped_item_count=0,
-                    metrics={
-                        "search_result_count": 0,
-                        "selected_for_fetch_count": 0,
-                        "fetch_success_count": 0,
-                        "fetch_empty_count": 0,
-                        "fetch_failed_count": 0,
-                    },
-                ),
-                retrieval_trace=RetrievalTrace(
-                    observability={
-                        "attempted_urls": [],
-                        "fetched_urls": [],
-                        "failed_fetches": [],
-                    },
-                ),
-                error_info=None,
-            )
+            return self._no_result()
 
         selected_candidates = self._select_fetch_candidates(candidates, normalized_request)
         fetch_response, fetch_error = await self._fetch_selected_candidates(selected_candidates)
@@ -126,16 +74,11 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
             execution_summary=execution_summary,
         )
 
-        return TavilyWebSearchToolResult(
+        return self._create_result(
             normalized_items=normalized_items,
             acquisition_status=acquisition_status,
-            dropped_item_count=0,
-            source_summary=RetrievalSourceSummary(
-                normalized_count=len(normalized_items),
-            ),
             execution_summary=execution_summary,
             retrieval_trace=retrieval_trace,
-            error_info=None,
         )
 
     def _normalize_request(
@@ -179,6 +122,84 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
             if len(selected) >= request.max_content_fetches:
                 break
         return selected
+
+    def _failed_result(self, error_info: str) -> TavilyWebSearchToolResult:
+        return TavilyWebSearchToolResult(
+            normalized_items=[],
+            acquisition_status="failed",
+            dropped_item_count=0,
+            source_summary=RetrievalSourceSummary(
+                normalized_count=0,
+            ),
+            execution_summary=RetrievalExecutionSummary(
+                normalized_count=0,
+                dropped_item_count=0,
+                metrics={
+                    "search_result_count": 0,
+                    "selected_for_fetch_count": 0,
+                    "fetch_success_count": 0,
+                    "fetch_empty_count": 0,
+                    "fetch_failed_count": 1,
+                },
+            ),
+            retrieval_trace=RetrievalTrace(
+                errors={"search_error": error_info},
+                observability={
+                    "attempted_urls": [],
+                    "fetched_urls": [],
+                },
+            ),
+            error_info=error_info,
+        )
+
+    def _no_result(self) -> TavilyWebSearchToolResult:
+        return TavilyWebSearchToolResult(
+            normalized_items=[],
+            acquisition_status="no_result",
+            dropped_item_count=0,
+            source_summary=RetrievalSourceSummary(
+                normalized_count=0,
+            ),
+            execution_summary=RetrievalExecutionSummary(
+                normalized_count=0,
+                dropped_item_count=0,
+                metrics={
+                    "search_result_count": 0,
+                    "selected_for_fetch_count": 0,
+                    "fetch_success_count": 0,
+                    "fetch_empty_count": 0,
+                    "fetch_failed_count": 0,
+                },
+            ),
+            retrieval_trace=RetrievalTrace(
+                observability={
+                    "attempted_urls": [],
+                    "fetched_urls": [],
+                    "failed_fetches": [],
+                },
+            ),
+            error_info=None,
+        )
+
+    def _create_result(
+        self,
+        *,
+        normalized_items: list[NormalizedRetrievalItem],
+        acquisition_status: str,
+        execution_summary: RetrievalExecutionSummary,
+        retrieval_trace: RetrievalTrace,
+    ) -> TavilyWebSearchToolResult:
+        return TavilyWebSearchToolResult(
+            normalized_items=normalized_items,
+            acquisition_status=acquisition_status,
+            dropped_item_count=0,
+            source_summary=RetrievalSourceSummary(
+                normalized_count=len(normalized_items),
+            ),
+            execution_summary=execution_summary,
+            retrieval_trace=retrieval_trace,
+            error_info=None,
+        )
 
     async def _fetch_selected_candidates(
         self,
