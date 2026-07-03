@@ -47,20 +47,15 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
         if validation_error:
             return self._failed_result(normalized_request=normalized_request, error_info=validation_error)
 
-        used_precomputed_embedding = bool(normalized_request.query_embedding)
-        query_embedding: list[float]
-        if normalized_request.query_embedding:
-            query_embedding = normalized_request.query_embedding
-        else:
-            try:
-                embedding = await self._embedding_client.embed_text(normalized_request.query_text or "")
-            except Exception as exc:
-                return self._failed_result(
-                    normalized_request=normalized_request,
-                    error_info=str(exc),
-                    used_query_embedding=False,
-                )
-            query_embedding = embedding.embedding
+        query_embedding, used_precomputed_embedding, embedding_error = (
+            await self._resolve_query_embedding(normalized_request)
+        )
+        if embedding_error or query_embedding is None:
+            return self._failed_result(
+                normalized_request=normalized_request,
+                error_info=embedding_error or "Failed to resolve query embedding.",
+                used_query_embedding=used_precomputed_embedding,
+            )
 
         try:
             recall_results = await self._research_knowledge_store.recall_knowledge_units(
@@ -91,6 +86,65 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
                 used_query_embedding=used_precomputed_embedding,
             )
 
+        return self._create_result(
+            normalized_request=normalized_request,
+            recall_results=recall_results,
+            normalized_items=normalized_items,
+            dropped_item_count=dropped_item_count,
+            used_precomputed_embedding=used_precomputed_embedding,
+        )
+
+    def _normalize_request(
+        self,
+        request: ResearchKnowledgeMemoryToolRequest,
+    ) -> ResearchKnowledgeMemoryToolRequest:
+        return ResearchKnowledgeMemoryToolRequest(
+            owner_user_id=request.owner_user_id.strip(),
+            query_text=(request.query_text or "").strip() or None,
+            query_embedding=request.query_embedding,
+            project_scope_id=(request.project_scope_id or "").strip() or None,
+            allowed_visibility_scopes=[
+                value.strip() for value in request.allowed_visibility_scopes if value.strip()
+            ],
+            knowledge_types=[value.strip() for value in request.knowledge_types if value.strip()],
+            topic_tags=[value.strip() for value in request.topic_tags if value.strip()],
+            source_types=[value.strip() for value in request.source_types if value.strip()],
+            limit=request.limit,
+        )
+
+    def _validate_request(self, request: ResearchKnowledgeMemoryToolRequest) -> str | None:
+        if not request.owner_user_id:
+            return "owner_user_id must not be empty."
+        if not request.allowed_visibility_scopes:
+            return "allowed_visibility_scopes must include at least one scope."
+        if not request.query_embedding and not request.query_text:
+            return "Either query_embedding or query_text must be provided."
+        return None
+
+    async def _resolve_query_embedding(
+        self,
+        normalized_request: ResearchKnowledgeMemoryToolRequest,
+    ) -> tuple[list[float] | None, bool, str | None]:
+        if normalized_request.query_embedding:
+            return normalized_request.query_embedding, True, None
+
+        try:
+            embedding = await self._embedding_client.embed_text(
+                normalized_request.query_text or ""
+            )
+        except Exception as exc:
+            return None, False, str(exc)
+        return embedding.embedding, False, None
+
+    def _create_result(
+        self,
+        *,
+        normalized_request: ResearchKnowledgeMemoryToolRequest,
+        recall_results: list[ResearchKnowledgeRecallResult],
+        normalized_items: list[NormalizedRetrievalItem],
+        dropped_item_count: int,
+        used_precomputed_embedding: bool,
+    ) -> ResearchKnowledgeMemoryToolResult:
         return ResearchKnowledgeMemoryToolResult(
             normalized_items=normalized_items,
             acquisition_status="partial_success" if dropped_item_count > 0 else "success",
@@ -120,33 +174,6 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
             ),
             error_info=None,
         )
-
-    def _normalize_request(
-        self,
-        request: ResearchKnowledgeMemoryToolRequest,
-    ) -> ResearchKnowledgeMemoryToolRequest:
-        return ResearchKnowledgeMemoryToolRequest(
-            owner_user_id=request.owner_user_id.strip(),
-            query_text=(request.query_text or "").strip() or None,
-            query_embedding=request.query_embedding,
-            project_scope_id=(request.project_scope_id or "").strip() or None,
-            allowed_visibility_scopes=[
-                value.strip() for value in request.allowed_visibility_scopes if value.strip()
-            ],
-            knowledge_types=[value.strip() for value in request.knowledge_types if value.strip()],
-            topic_tags=[value.strip() for value in request.topic_tags if value.strip()],
-            source_types=[value.strip() for value in request.source_types if value.strip()],
-            limit=request.limit,
-        )
-
-    def _validate_request(self, request: ResearchKnowledgeMemoryToolRequest) -> str | None:
-        if not request.owner_user_id:
-            return "owner_user_id must not be empty."
-        if not request.allowed_visibility_scopes:
-            return "allowed_visibility_scopes must include at least one scope."
-        if not request.query_embedding and not request.query_text:
-            return "Either query_embedding or query_text must be provided."
-        return None
 
     def _normalize_items(
         self,
