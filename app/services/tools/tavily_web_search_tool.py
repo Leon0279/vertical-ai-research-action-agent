@@ -301,14 +301,16 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
                 NormalizedRetrievalItem(
                     item_id=candidate.item_id,
                     source_family="web_search",
-                    source_reference=SourceReference(
-                        source_type="web_page",
-                        source_url=candidate.url,
-                        title=candidate.title,
-                        published_at=candidate.published_at,
-                        citation_text=candidate.title,
-                        metadata={"source_name": candidate.source_name},
-                    ),
+                    source_references=[
+                        SourceReference(
+                            source_type="web_page",
+                            source_url=candidate.url,
+                            title=candidate.title,
+                            published_at=candidate.published_at,
+                            citation_text=candidate.title,
+                            metadata={"source_name": candidate.source_name},
+                        )
+                    ],
                     content=content,
                     content_type=content_type,
                     metadata=metadata,

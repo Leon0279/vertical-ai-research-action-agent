@@ -119,17 +119,19 @@ def test_run_normal_path_maps_docs_results_to_normalized_items() -> None:
     first = result.normalized_items[0]
     assert first["item_id"] == "doc-1"
     assert first["source_family"] == "docs_search"
-    assert first["source_reference"].source_type == "document"
-    assert first["source_reference"].sub_source_type == "openai_api"
-    assert first["source_reference"].source_id == "doc-1"
-    assert first["source_reference"].source_id_type == "docs_entry_id"
-    assert first["source_reference"].source_url == (
+    assert len(first["source_references"]) == 1
+    assert first["source_references"][0].source_type == "document"
+    assert first["source_references"][0].sub_source_type == "openai_api"
+    assert first["source_references"][0].source_id == "doc-1"
+    assert first["source_references"][0].source_id_type == "docs_entry_id"
+    assert first["source_references"][0].source_url == (
         "https://developers.openai.com/api/docs/retrieval"
     )
-    assert first["source_reference"].evidence_span is not None
-    assert first["source_reference"].evidence_span.section == "Guides"
+    assert first["source_references"][0].evidence_span is not None
+    assert first["source_references"][0].evidence_span.section == "Guides"
     assert "source_type" not in first.model_dump()
     assert "source_ref" not in first.model_dump()
+    assert "source_reference" not in first.model_dump()
     assert first["content"] == "Use hybrid retrieval as a strong practical baseline."
     assert first["content_type"] == "text_snippet"
     assert first["metadata"]["title"] == "Retrieval Guide"

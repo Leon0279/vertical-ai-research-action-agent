@@ -162,7 +162,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
                     NormalizedRetrievalItem(
                         item_id=unit.knowledge_id,
                         source_family="research_knowledge_recall",
-                        source_reference=self._source_reference(unit),
+                        source_references=self._source_references(unit),
                         content=unit.summary,
                         content_type="knowledge_summary",
                         metadata={
@@ -193,48 +193,56 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
                 dropped_item_count += 1
         return normalized_items, dropped_item_count
 
-    def _source_reference(self, unit: ResearchKnowledgeUnitRecord) -> SourceReference:
-        for reference in unit.source_refs:
-            return reference.model_copy(
-                update={
-                    "metadata": {
-                        **reference.metadata,
-                        "knowledge_id": unit.knowledge_id,
-                        "knowledge_type": unit.knowledge_type,
+    def _source_references(self, unit: ResearchKnowledgeUnitRecord) -> list[SourceReference]:
+        if unit.source_refs:
+            return [
+                reference.model_copy(
+                    update={
+                        "metadata": {
+                            **reference.metadata,
+                            "knowledge_id": unit.knowledge_id,
+                            "knowledge_type": unit.knowledge_type,
+                        }
                     }
-                }
-            )
+                )
+                for reference in unit.source_refs
+            ]
 
         if unit.derived_from_run_id:
-            return SourceReference(
-                source_type="run_output",
-                source_id=unit.derived_from_run_id,
-                source_id_type="run_id",
-                metadata={
-                    "knowledge_id": unit.knowledge_id,
-                    "knowledge_type": unit.knowledge_type,
-                },
-            )
+            return [
+                SourceReference(
+                    source_type="run_output",
+                    source_id=unit.derived_from_run_id,
+                    source_id_type="run_id",
+                    metadata={
+                        "knowledge_id": unit.knowledge_id,
+                        "knowledge_type": unit.knowledge_type,
+                    },
+                )
+            ]
 
         if unit.derived_from_session_id:
-            return SourceReference(
-                source_type="conversation",
-                source_id=unit.derived_from_session_id,
-                source_id_type="session_id",
-                metadata={
-                    "knowledge_id": unit.knowledge_id,
-                    "knowledge_type": unit.knowledge_type,
-                },
-            )
+            return [
+                SourceReference(
+                    source_type="conversation",
+                    source_id=unit.derived_from_session_id,
+                    source_id_type="session_id",
+                    metadata={
+                        "knowledge_id": unit.knowledge_id,
+                        "knowledge_type": unit.knowledge_type,
+                    },
+                )
+            ]
 
         raise ValueError(
             "Research knowledge unit does not include a usable original source reference."
         )
 
     def _source_ref(self, item: NormalizedRetrievalItem) -> str:
+        source_reference = item.source_references[0]
         return (
-            item.source_reference.source_url
-            or item.source_reference.source_id
+            source_reference.source_url
+            or source_reference.source_id
             or item.item_id
         )
 

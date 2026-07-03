@@ -59,15 +59,19 @@ def _item(
     *,
     source_family: str = "docs_search",
     source_type: str = "document",
+    extra_source_refs: list[dict] | None = None,
     metadata: dict | None = None,
 ) -> dict:
     return {
         "item_id": item_id,
         "source_family": source_family,
-        "source_reference": {
-            "source_type": source_type,
-            "source_id": source_ref,
-        },
+        "source_references": [
+            {
+                "source_type": source_type,
+                "source_id": source_ref,
+            },
+            *(extra_source_refs or []),
+        ],
         "content": content,
         "metadata": metadata or {},
     }
@@ -180,8 +184,38 @@ def test_deterministic_fallback_generates_processed_evidence_unit() -> None:
     assert unit.source_family == "docs_search"
     assert unit.source_type == "document"
     assert unit.evidence_type == "supporting_signal"
+    assert unit.support_refs == ["doc1"]
     assert unit.target_problem == "Choose a retrieval baseline"
     assert unit.metadata["structuring_method"] == "deterministic_fallback"
+
+
+def test_deterministic_fallback_preserves_multiple_source_refs() -> None:
+    result = _process(
+        EvidenceProcessingService(),
+        _request(
+            [
+                _item(
+                    "1",
+                    "doc1",
+                    "Hybrid retrieval is a useful baseline.",
+                    extra_source_refs=[
+                        {
+                            "source_type": "paper",
+                            "source_id": "2501.00001",
+                            "source_id_type": "arxiv_id",
+                        }
+                    ],
+                )
+            ]
+        ),
+    )
+
+    unit = result.processed_evidence_units[0]
+    assert unit.source_ref == "doc1"
+    assert unit.source_type == "document"
+    assert unit.support_refs == ["doc1", "2501.00001"]
+    assert unit.metadata["source_references"][0]["source_id"] == "doc1"
+    assert unit.metadata["source_references"][1]["source_id"] == "2501.00001"
 
 
 def test_llm_json_successfully_structures_evidence() -> None:

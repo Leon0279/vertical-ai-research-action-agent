@@ -16,6 +16,7 @@ from app.domain.models import (
     NormalizedRetrievalItem,
     ProcessedEvidenceSummary,
     ProcessedEvidenceUnit,
+    SourceReference,
 )
 from app.domain.models.evidence.processed_evidence_unit import EvidenceType
 from app.services.evidence.contracts.evidence_processing_service_protocol import (
@@ -270,7 +271,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
                 continue
             support_refs = self._normalize_support_refs(
                 payload_unit.support_refs,
-                fallback_ref=self._source_ref(material),
+                fallback_refs=self._source_refs(material),
             )
             units.append(
                 self._evidence_unit(
@@ -289,13 +290,12 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         request: EvidenceProcessingRequest,
         material: NormalizedRetrievalItem,
     ) -> ProcessedEvidenceUnit:
-        source_ref = self._source_ref(material)
         return self._evidence_unit(
             request=request,
             material=material,
             content=self._content(material).strip(),
             evidence_type="supporting_signal",
-            support_refs=[source_ref],
+            support_refs=self._source_refs(material),
             metadata={"structuring_method": "deterministic_fallback"},
         )
 
@@ -328,6 +328,10 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             metadata={
                 **metadata,
                 "item_id": material.item_id,
+                "source_references": [
+                    source_reference.model_dump(mode="json")
+                    for source_reference in material.source_references
+                ],
                 "selected_tool": self._string_value(
                     request.retrieval_trace.get("selected_tool")
                     or request.source_summary.get("selected_tool")
@@ -354,6 +358,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             "gap": request.retrieval_trace.get("gap"),
             "material": {
                 "source_ref": self._source_ref(material),
+                "source_refs": self._source_refs(material),
                 "source_family": self._source_family(request, material),
                 "source_type": self._source_type(material),
                 "content": self._content(material),
@@ -552,13 +557,33 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         )
 
     def _source_ref(self, material: NormalizedRetrievalItem) -> str:
-        source_reference = material.source_reference
+        source_reference = self._primary_source_reference(material)
         return (
             (source_reference.source_url or "").strip()
             or (source_reference.source_id or "").strip()
             or material.item_id.strip()
             or "unknown_source"
         )
+
+    def _source_refs(self, material: NormalizedRetrievalItem) -> list[str]:
+        refs: list[str] = []
+        for source_reference in material.source_references:
+            ref = (
+                (source_reference.source_url or "").strip()
+                or (source_reference.source_id or "").strip()
+            )
+            if ref and ref not in refs:
+                refs.append(ref)
+
+        if not refs:
+            refs.append(material.item_id.strip() or "unknown_source")
+        return refs
+
+    def _primary_source_reference(
+        self,
+        material: NormalizedRetrievalItem,
+    ) -> SourceReference:
+        return material.source_references[0]
 
     def _source_family(
         self,
@@ -573,7 +598,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         )
 
     def _source_type(self, material: NormalizedRetrievalItem) -> str:
-        return material.source_reference.source_type.strip() or "unknown_source_type"
+        return self._primary_source_reference(material).source_type.strip() or "unknown_source_type"
 
     def _content(self, material: NormalizedRetrievalItem) -> str:
         return material.content
@@ -601,11 +626,13 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         self,
         refs: list[str],
         *,
-        fallback_ref: str,
+        fallback_refs: list[str],
     ) -> list[str]:
         normalized = [ref.strip() for ref in refs if ref.strip()]
         if not normalized:
-            normalized = [fallback_ref]
+            normalized = fallback_refs
+        else:
+            normalized = self._merge_ordered_refs(normalized, fallback_refs)
         return self._merge_ordered_refs([], normalized)
 
     def _merge_ordered_refs(self, left: list[str], right: list[str]) -> list[str]:

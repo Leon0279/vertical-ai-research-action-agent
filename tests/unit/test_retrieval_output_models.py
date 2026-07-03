@@ -16,18 +16,21 @@ def test_normalized_retrieval_item_supports_core_fields_and_metadata() -> None:
     item = NormalizedRetrievalItem(
         item_id="item-1",
         source_family="docs_search",
-        source_reference=SourceReference(
-            source_type="document",
-            source_url="https://example.test/docs",
-        ),
+        source_references=[
+            SourceReference(
+                source_type="document",
+                source_url="https://example.test/docs",
+            )
+        ],
         content="Use typed retrieval items.",
         content_type="text_snippet",
         metadata={"title": "Docs"},
     )
 
     dumped = item.model_dump()
-    assert item.source_reference.source_url == "https://example.test/docs"
-    assert "source_reference" in dumped
+    assert item.source_references[0].source_url == "https://example.test/docs"
+    assert "source_references" in dumped
+    assert "source_reference" not in dumped
     assert "source_ref" not in dumped
     assert "source_type" not in dumped
     assert item.metadata["title"] == "Docs"
@@ -40,6 +43,27 @@ def test_normalized_retrieval_item_rejects_legacy_source_fields() -> None:
             source_family="docs_search",
             source_type="document",
             source_ref="https://example.test/docs",
+            content="Use typed retrieval items.",
+        )
+
+    with pytest.raises(ValidationError):
+        NormalizedRetrievalItem(
+            item_id="item-1",
+            source_family="docs_search",
+            source_reference=SourceReference(
+                source_type="document",
+                source_url="https://example.test/docs",
+            ),
+            content="Use typed retrieval items.",
+        )
+
+
+def test_normalized_retrieval_item_requires_source_references() -> None:
+    with pytest.raises(ValidationError):
+        NormalizedRetrievalItem(
+            item_id="item-1",
+            source_family="docs_search",
+            source_references=[],
             content="Use typed retrieval items.",
         )
 

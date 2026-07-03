@@ -95,7 +95,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
                 NormalizedRetrievalItem(
                     item_id=result.item_id,
                     source_family="docs_search",
-                    source_reference=source_reference,
+                    source_references=[source_reference],
                     content=result.content,
                     content_type="text_snippet",
                     metadata=metadata,

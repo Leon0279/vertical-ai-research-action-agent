@@ -35,13 +35,14 @@ class NormalizedRetrievalItem(BaseModel):
             "ProcessedEvidenceUnit.source_family，并用于 evidence summary 的 source family coverage。"
         ),
     )
-    source_reference: SourceReference = Field(
+    source_references: list[SourceReference] = Field(
+        min_length=1,
         description=(
-            "必填字段。候选材料对应的正式来源引用。当前项目中该字段有用：它是 normalized item 的 canonical provenance，"
-            "已替代旧的 source_type/source_ref 字段；EvidenceProcessingService 会从 source_reference.source_type "
-            "派生 ProcessedEvidenceUnit.source_type，并优先从 source_reference.source_url，其次 source_reference.source_id "
-            "派生 ProcessedEvidenceUnit.source_ref / support_refs。docs tool 会直接使用 docs_search adapter 返回的 "
-            "SourceReference；web/paper/memory tool 会在 tool 层用现有 adapter 或 memory record 字段构造 SourceReference。"
+            "必填字段，至少包含 1 个 SourceReference。候选材料对应的正式来源引用列表。当前项目中该字段有用："
+            "它是 normalized item 的 canonical provenance list，已替代旧的 source_reference、source_type/source_ref 字段。"
+            "第一个元素是 primary source reference，用于保持 EvidenceProcessingService 现有去重、source_type 和 source_ref "
+            "派生语义稳定；完整列表用于 support_refs 和 provenance。单来源 tool 应传长度为 1 的列表；"
+            "research_knowledge_recall 可以把 ResearchKnowledgeUnitRecord.source_refs 中的多个 distill 前原始来源全部传入。"
         )
     )
     content: str = Field(
@@ -64,7 +65,7 @@ class NormalizedRetrievalItem(BaseModel):
         default_factory=dict,
         description=(
             "可选字段，默认空 dict。tool/provider-specific 附加信息，当前项目中有用，但它不是稳定主字段。"
-            "调用方应优先使用 item_id、source_family、source_reference、content、content_type 等正式字段；metadata "
+            "调用方应优先使用 item_id、source_family、source_references、content、content_type 等正式字段；metadata "
             "用于承接不同 tool 的差异信息。docs tool 当前会写入：title（docs 页面标题）、sub_source_type（docs 子来源类型）、"
             "url（docs 页面 URL）、section（docs section）、rank（排序位置）、score（adapter 相关性分数），并合并 adapter result metadata，"
             "例如 manifest_summary、page_fetch_error。web tool 可能写入 search_snippet、content_fetch_status、fetched_images、"

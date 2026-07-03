@@ -76,7 +76,7 @@ class RetrievalTrace(BaseModel):
             "可选字段，默认空列表。本次 retrieval 返回材料的可展示/可追踪引用。当前项目中该字段有用："
             "docs tool 当前会写入每条 DocsSearchResult 的 source_reference.source_url，若无 URL 则退化为 source_id，再退化为 item_id；"
             "web/paper/memory tool 也会写入 URL、paper id、原始 source ref 等。该字段用于 trace 和人工排查，不替代 "
-            "NormalizedRetrievalItem.source_reference。"
+            "NormalizedRetrievalItem.source_references。"
         ),
     )
     errors: dict[str, Any] = Field(

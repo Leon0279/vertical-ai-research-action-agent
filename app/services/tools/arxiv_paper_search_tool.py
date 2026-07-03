@@ -254,7 +254,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                 NormalizedRetrievalItem(
                     item_id=candidate.paper_id,
                     source_family="paper_search",
-                    source_reference=self._source_reference(candidate),
+                    source_references=[self._source_reference(candidate)],
                     content=content,
                     content_type=content_type,
                     metadata=metadata,

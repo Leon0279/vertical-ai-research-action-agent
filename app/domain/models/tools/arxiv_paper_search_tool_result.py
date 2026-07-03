@@ -29,7 +29,7 @@ class ArxivPaperSearchToolResult(BaseModel):
         default_factory=list,
         description=(
             "可选字段，默认空列表。paper tool 输出的标准化候选材料主数据。当前项目中有用："
-            "每个 item 通常对应一篇 paper 的摘要或抓取后的全文片段，`source_reference` 会指向 paper 原始来源，"
+            "每个 item 通常对应一篇 paper 的摘要或抓取后的全文片段，`source_references` 会指向 paper 原始来源，"
             "`metadata` 会保留 paper_id、paper_id_type、arxiv_id（当 paper_id_type 为 arxiv_id 时）、category、PDF URL、"
             "fetch 状态等 paper-specific 信息。"
             "下游 family/TEL/EvidenceProcessing 会继续消费这个字段。"
@@ -75,7 +75,7 @@ class ArxivPaperSearchToolResult(BaseModel):
             "可选字段，默认空 `RetrievalTrace` 对象。轻量检索轨迹。当前项目中有用："
             "ArxivPaperSearchTool 当前会把 paper-specific 过程信息放入 `observability`，包括 `attempted_papers`、"
             "`selected_for_fetch`、`fetched_papers`、`failed_fetches`；失败路径会在 `errors['search_error']` 中记录简短错误。"
-            "该字段用于调试和 provenance，不替代 `normalized_items[*].source_reference`。"
+            "该字段用于调试和 provenance，不替代 `normalized_items[*].source_references`。"
         ),
     )
     error_info: str | None = Field(

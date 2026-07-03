@@ -66,6 +66,11 @@ UNIT = ResearchKnowledgeUnitRecord(
         SourceReference(
             source_type="web_page",
             source_url="https://example.test/pgvector",
+        ),
+        SourceReference(
+            source_type="paper",
+            source_id="2501.00001",
+            source_id_type="arxiv_id",
         )
     ],
     source_type="web_page",
@@ -166,16 +171,22 @@ def test_run_normalizes_recalled_items() -> None:
     item = result.normalized_items[0]
     assert item["item_id"] == "knowledge-1"
     assert item["source_family"] == "research_knowledge_recall"
-    assert item["source_reference"].source_type == "web_page"
-    assert item["source_reference"].source_url == "https://example.test/pgvector"
-    assert item["source_reference"].metadata["knowledge_id"] == "knowledge-1"
+    assert len(item["source_references"]) == 2
+    assert item["source_references"][0].source_type == "web_page"
+    assert item["source_references"][0].source_url == "https://example.test/pgvector"
+    assert item["source_references"][0].metadata["knowledge_id"] == "knowledge-1"
+    assert item["source_references"][1].source_type == "paper"
+    assert item["source_references"][1].source_id == "2501.00001"
+    assert item["source_references"][1].metadata["knowledge_id"] == "knowledge-1"
     assert "source_type" not in item.model_dump()
     assert "source_ref" not in item.model_dump()
+    assert "source_reference" not in item.model_dump()
     assert item["content"] == UNIT.summary
     assert item["content_type"] == "knowledge_summary"
     assert item["metadata"]["title"] == UNIT.title
     assert item["metadata"]["relevance_score"] == 0.91
     assert item["metadata"]["source_refs"][0]["source_url"] == "https://example.test/pgvector"
+    assert item["metadata"]["source_refs"][1]["source_id"] == "2501.00001"
     assert result.retrieval_trace["returned_refs"] == ["https://example.test/pgvector"]
 
 

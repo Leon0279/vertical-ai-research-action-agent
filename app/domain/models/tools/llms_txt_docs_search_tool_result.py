@@ -31,7 +31,7 @@ class LlmsTxtDocsSearchToolResult(BaseModel):
             "可选字段，默认空列表。docs search tool 归一化后的候选材料主数据。当前项目中该字段有用："
             "DocsSearchFamilyService 会原样带入 family result，ToolExecutionLayerService 会将最终 "
             "normalized_items 暴露给 EvidenceProcessingService；EvidenceProcessingService 会读取每个 "
-            "NormalizedRetrievalItem 的 content、source_family、source_reference 和 metadata。"
+            "NormalizedRetrievalItem 的 content、source_family、source_references 和 metadata。"
             "当 acquisition_status 为 no_result 或 failed 时通常为空。"
         ),
     )

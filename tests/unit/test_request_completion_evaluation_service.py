@@ -48,10 +48,12 @@ def _item(item_id: str = "1") -> dict[str, object]:
     return {
         "item_id": item_id,
         "source_family": "docs_search",
-        "source_reference": {
-            "source_type": "document",
-            "source_id": f"doc-{item_id}",
-        },
+        "source_references": [
+            {
+                "source_type": "document",
+                "source_id": f"doc-{item_id}",
+            }
+        ],
         "content": "Useful content",
     }
 
