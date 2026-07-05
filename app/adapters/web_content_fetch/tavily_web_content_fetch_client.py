@@ -196,8 +196,6 @@ class TavilyWebContentFetchClient(WebContentFetchClientProtocol):
             request_id=self._normalize_text(payload.get("request_id")),
             usage=self._normalize_usage(payload.get("usage")),
             source_summary={
-                "selected_family": "web_content_fetch",
-                "selected_tool": "tavily_web_content_fetch_v1",
                 "provider": "tavily_extract",
                 "normalized_count": len(results),
                 "failed_count": len(failed_results),

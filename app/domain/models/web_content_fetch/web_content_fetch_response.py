@@ -69,13 +69,11 @@ class WebContentFetchResponse(BaseModel):
         description=(
             "可选字段，默认空 dict；adapter-level 摘要信息，用于说明本次 content fetch 的 provider "
             "和标准化计数。当前 `TavilyWebContentFetchClient` 会填入："
-            "`selected_family`（当前值为 `web_content_fetch`，adapter 自身写入的 provenance；"
-            "当前项目暂无稳定下游依赖，后续更适合由 tool/family 层表达）、"
-            "`selected_tool`（当前值为 `tavily_web_content_fetch_v1`，adapter 自身写入的 provenance；"
-            "当前项目暂无稳定下游依赖）、"
             "`provider`（当前为 `tavily_extract`，表示底层 content fetch provider）、"
             "`normalized_count`（成功标准化进入 `results` 的数量）、"
             "`failed_count`（进入 `failed_results` 的数量）。"
+            "`selected_family` / `selected_tool` 不属于 adapter-level 摘要，应该由上游 tool/family "
+            "result 表达，不应由 `TavilyWebContentFetchClient` 写入。"
             "该字段当前仍是 dict，因为 web content fetch adapter 的 summary 尚未收敛为 shared retrieval "
             "typed model；稳定业务主数据应优先读取 `results` / `failed_results`。"
         ),

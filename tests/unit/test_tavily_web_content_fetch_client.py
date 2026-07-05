@@ -169,6 +169,8 @@ def test_fetch_content_sends_expected_payload_and_normalizes_results() -> None:
     assert response.source_summary["provider"] == "tavily_extract"
     assert response.source_summary["normalized_count"] == 2
     assert response.source_summary["failed_count"] == 1
+    assert "selected_family" not in response.source_summary
+    assert "selected_tool" not in response.source_summary
 
     first = response.results[0]
     assert first.url == "https://platform.openai.com/docs/guides/responses"
