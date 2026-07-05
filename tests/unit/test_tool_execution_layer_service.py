@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from app.domain.enums import AcquisitionStatus
+
 from app.domain.models import (
     BaseFamilyExecutionResult,
     EvidenceShape,
@@ -100,7 +102,7 @@ class FakeFamilyService:
             raise self.raises
         if self.results:
             return self.results.pop(0)
-        return _family_result(self.selected_family, acquisition_status="success")
+        return _family_result(self.selected_family, acquisition_status=AcquisitionStatus.SUCCESS)
 
 
 def _execute(service: ToolExecutionLayerService, request: ToolExecutionLayerRequest):
@@ -180,7 +182,7 @@ def _item(item_id: str = "1") -> dict[str, Any]:
 def _family_result(
     selected_family: str,
     *,
-    acquisition_status: str,
+    acquisition_status: AcquisitionStatus,
     selected_tool: str | None = "tool_v1",
     normalized_items: list[dict[str, Any]] | None = None,
 ) -> BaseFamilyExecutionResult:
@@ -194,7 +196,7 @@ def _family_result(
         ),
         execution_summary=RetrievalExecutionSummary(),
         retrieval_trace=RetrievalTrace(),
-        error_info=None if acquisition_status != "failed" else "family failed",
+        error_info=None if acquisition_status != AcquisitionStatus.FAILED else "family failed",
         selected_family=selected_family,
         candidate_tools=[selected_tool] if selected_tool else [],
         selected_tool=selected_tool,
@@ -233,7 +235,7 @@ def test_happy_path_executes_docs_and_stops() -> None:
     )
 
     assert result.execution_status == "completed"
-    assert result.acquisition_status == "success"
+    assert result.acquisition_status == AcquisitionStatus.SUCCESS
     assert result.normalized_items == [{"item_id": "1"}]
     assert result.retrieval_trace["selected_family"] == "docs_search"
     assert result.retrieval_trace["generated_query"] == "docs_search query"
@@ -349,8 +351,8 @@ def test_retry_same_tool_reuses_same_family_query_and_original_preferred_tool() 
     docs = FakeFamilyService(
         selected_family="docs_search",
         results=[
-            _family_result("docs_search", acquisition_status="failed", selected_tool="tool_from_family"),
-            _family_result("docs_search", acquisition_status="success", selected_tool="tool_from_family"),
+            _family_result("docs_search", acquisition_status=AcquisitionStatus.FAILED, selected_tool="tool_from_family"),
+            _family_result("docs_search", acquisition_status=AcquisitionStatus.SUCCESS, selected_tool="tool_from_family"),
         ],
     )
     service = _service(selector=selector, query=query, evaluator=evaluator, docs=docs)
@@ -394,11 +396,11 @@ def test_broader_fallback_blocks_current_family_and_executes_new_family() -> Non
     )
     docs = FakeFamilyService(
         selected_family="docs_search",
-        results=[_family_result("docs_search", acquisition_status="no_result")],
+        results=[_family_result("docs_search", acquisition_status=AcquisitionStatus.NO_RESULT)],
     )
     web = FakeFamilyService(
         selected_family="web_search",
-        results=[_family_result("web_search", acquisition_status="success")],
+        results=[_family_result("web_search", acquisition_status=AcquisitionStatus.SUCCESS)],
     )
     service = _service(selector=selector, query=query, evaluator=evaluator, docs=docs, web=web)
 
@@ -427,7 +429,7 @@ def test_same_family_fallback_is_recorded_as_unavailable() -> None:
     )
     docs = FakeFamilyService(
         selected_family="docs_search",
-        results=[_family_result("docs_search", acquisition_status="no_result")],
+        results=[_family_result("docs_search", acquisition_status=AcquisitionStatus.NO_RESULT)],
     )
     service = _service(selector=selector, evaluator=evaluator, docs=docs)
 
@@ -460,7 +462,7 @@ def test_family_exception_is_evaluated_as_tool_error() -> None:
     )
 
     assert result.execution_status == "completed"
-    assert result.acquisition_status == "failed"
+    assert result.acquisition_status == AcquisitionStatus.FAILED
     assert evaluator.requests[0].failure_reason == "tool_error"
     assert result.retrieval_trace["family_exception"] == "family boom"
 

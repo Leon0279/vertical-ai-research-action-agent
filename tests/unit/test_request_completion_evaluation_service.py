@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
+from app.domain.enums import AcquisitionStatus
+
 from app.domain.models import (
     BaseFamilyExecutionResult,
     RequestCompletionEvaluationRequest,
@@ -24,7 +26,7 @@ def _evaluate(
 
 def _outcome(
     *,
-    acquisition_status: str,
+    acquisition_status: AcquisitionStatus,
     selected_family: str = "docs_search",
     selected_tool: str | None = "llms_txt_docs_search_v1",
     candidate_tools: list[str] | None = None,
@@ -63,7 +65,7 @@ def test_success_is_complete_and_stops() -> None:
         RequestCompletionEvaluationRequest(
             target_problem="Find official API guidance",
             selected_family="docs_search",
-            execution_outcome=_outcome(acquisition_status="success"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.SUCCESS),
         )
     )
 
@@ -81,7 +83,7 @@ def test_partial_success_with_continuation_continues() -> None:
             target_problem="Find official API guidance",
             selected_family="docs_search",
             continuation_available=True,
-            execution_outcome=_outcome(acquisition_status="partial_success"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.PARTIAL_SUCCESS),
         )
     )
 
@@ -97,7 +99,7 @@ def test_partial_success_without_continuation_is_complete() -> None:
         RequestCompletionEvaluationRequest(
             target_problem="Find official API guidance",
             selected_family="docs_search",
-            execution_outcome=_outcome(acquisition_status="partial_success"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.PARTIAL_SUCCESS),
         )
     )
 
@@ -115,7 +117,7 @@ def test_partial_success_at_max_results_stops() -> None:
             continuation_available=True,
             max_results=1,
             execution_outcome=_outcome(
-                acquisition_status="partial_success",
+                acquisition_status=AcquisitionStatus.PARTIAL_SUCCESS,
                 normalized_items=[_item()],
             ),
         )
@@ -132,7 +134,7 @@ def test_no_result_with_same_family_fallback_uses_same_family_hint() -> None:
             selected_family="docs_search",
             fallback_policy="fallback_within_same_family",
             execution_outcome=_outcome(
-                acquisition_status="no_result",
+                acquisition_status=AcquisitionStatus.NO_RESULT,
                 candidate_tools=["tool_a", "tool_b"],
                 selected_tool="tool_a",
             ),
@@ -152,7 +154,7 @@ def test_no_result_with_cross_family_fallback_uses_broader_hint() -> None:
             selected_family="docs_search",
             fallback_policy="fallback_to_broader_search",
             available_families=["docs_search", "web_search"],
-            execution_outcome=_outcome(acquisition_status="no_result"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.NO_RESULT),
         )
     )
 
@@ -167,7 +169,7 @@ def test_no_result_without_fallback_is_unrecoverable() -> None:
             target_problem="Find official API guidance",
             selected_family="docs_search",
             fallback_policy="no_fallback",
-            execution_outcome=_outcome(acquisition_status="no_result"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.NO_RESULT),
         )
     )
 
@@ -185,7 +187,7 @@ def test_failed_timeout_with_retry_budget_retries_same_tool() -> None:
             failure_reason="timeout",
             retry_budget=2,
             retry_count=0,
-            execution_outcome=_outcome(acquisition_status="failed"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.FAILED),
         )
     )
 
@@ -204,7 +206,7 @@ def test_failed_timeout_with_exhausted_retry_and_fallback_falls_back() -> None:
             retry_count=1,
             fallback_policy="fallback_to_broader_search",
             available_families=["docs_search", "web_search"],
-            execution_outcome=_outcome(acquisition_status="failed"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.FAILED),
         )
     )
 
@@ -222,7 +224,7 @@ def test_failed_tool_unavailable_prefers_fallback_without_retry() -> None:
             retry_count=0,
             fallback_policy="fallback_to_broader_search",
             available_families=["docs_search", "web_search"],
-            execution_outcome=_outcome(acquisition_status="failed"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.FAILED),
         )
     )
 
@@ -236,7 +238,7 @@ def test_failed_auth_error_stops() -> None:
             target_problem="Find official API guidance",
             selected_family="docs_search",
             failure_reason="auth_error",
-            execution_outcome=_outcome(acquisition_status="failed"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.FAILED),
         )
     )
 
@@ -250,7 +252,7 @@ def test_failed_invalid_request_stops() -> None:
             target_problem="Find official API guidance",
             selected_family="docs_search",
             failure_reason="invalid_request",
-            execution_outcome=_outcome(acquisition_status="failed"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.FAILED),
         )
     )
 
@@ -267,7 +269,7 @@ def test_failed_unknown_error_without_retry_or_fallback_stops() -> None:
             retry_budget=0,
             retry_count=0,
             fallback_policy="no_fallback",
-            execution_outcome=_outcome(acquisition_status="failed"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.FAILED),
         )
     )
 
@@ -286,7 +288,7 @@ def test_timeout_budget_exhausted_disables_continue_retry_and_fallback() -> None
             available_families=["docs_search", "web_search"],
             timeout_limit_ms=1000,
             request_elapsed_ms=1000,
-            execution_outcome=_outcome(acquisition_status="failed"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.FAILED),
         )
     )
 
@@ -301,7 +303,7 @@ def test_selected_family_mismatch_returns_failed() -> None:
             target_problem="Find official API guidance",
             selected_family="web_search",
             execution_outcome=_outcome(
-                acquisition_status="success",
+                acquisition_status=AcquisitionStatus.SUCCESS,
                 selected_family="docs_search",
             ),
         )
@@ -316,7 +318,7 @@ def test_empty_target_problem_returns_failed() -> None:
         RequestCompletionEvaluationRequest(
             target_problem="  ",
             selected_family="docs_search",
-            execution_outcome=_outcome(acquisition_status="success"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.SUCCESS),
         )
     )
 
@@ -341,7 +343,7 @@ def test_evaluation_summary_and_trace_have_expected_shape() -> None:
             max_results=5,
             timeout_limit_ms=1000,
             request_elapsed_ms=300,
-            execution_outcome=_outcome(acquisition_status="no_result"),
+            execution_outcome=_outcome(acquisition_status=AcquisitionStatus.NO_RESULT),
         )
     )
 

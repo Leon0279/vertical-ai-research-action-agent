@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from app.domain.enums import AcquisitionStatus
 from app.domain.models import (
     NormalizedRetrievalItem,
     RetrievalExecutionSummary,
@@ -117,7 +118,7 @@ def test_retrieval_trace_splits_context_errors_and_observability() -> None:
                 {
                     "selected_family": "docs_search",
                     "generated_query": "typed retrieval docs",
-                    "acquisition_status": "success",
+                    "acquisition_status": AcquisitionStatus.SUCCESS,
                 }
             ],
         }
@@ -128,4 +129,4 @@ def test_retrieval_trace_splits_context_errors_and_observability() -> None:
     assert trace.context["query_text"] == "typed retrieval docs"
     assert trace.errors["search_error"] == "temporary failure"
     assert trace.observability["attempted_urls"] == ["https://example.test"]
-    assert trace.attempts[0].acquisition_status == "success"
+    assert trace.attempts[0].acquisition_status == AcquisitionStatus.SUCCESS

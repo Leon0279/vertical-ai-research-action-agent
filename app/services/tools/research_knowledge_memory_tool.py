@@ -8,6 +8,7 @@ from app.adapters.embedding.contracts.embedding_client_protocol import Embedding
 from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
     ResearchKnowledgeMemoryStoreProtocol,
 )
+from app.domain.enums import AcquisitionStatus
 from app.domain.models import (
     ResearchKnowledgeMemoryToolRequest,
     ResearchKnowledgeMemoryToolResult,
@@ -147,7 +148,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
     ) -> ResearchKnowledgeMemoryToolResult:
         return ResearchKnowledgeMemoryToolResult(
             normalized_items=normalized_items,
-            acquisition_status="partial_success" if dropped_item_count > 0 else "success",
+            acquisition_status=AcquisitionStatus.PARTIAL_SUCCESS if dropped_item_count > 0 else AcquisitionStatus.SUCCESS,
             dropped_item_count=dropped_item_count,
             source_summary=RetrievalSourceSummary(
                 normalized_count=len(normalized_items),
@@ -280,7 +281,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
     ) -> ResearchKnowledgeMemoryToolResult:
         return ResearchKnowledgeMemoryToolResult(
             normalized_items=[],
-            acquisition_status="failed",
+            acquisition_status=AcquisitionStatus.FAILED,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
                 normalized_count=0,
@@ -317,7 +318,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
     ) -> ResearchKnowledgeMemoryToolResult:
         return ResearchKnowledgeMemoryToolResult(
             normalized_items=[],
-            acquisition_status="no_result",
+            acquisition_status=AcquisitionStatus.NO_RESULT,
             dropped_item_count=dropped_item_count,
             source_summary=RetrievalSourceSummary(
                 normalized_count=0,

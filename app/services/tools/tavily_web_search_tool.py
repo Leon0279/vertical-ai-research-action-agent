@@ -10,6 +10,7 @@ from app.adapters.web_content_fetch.contracts.web_content_fetch_client_protocol 
 from app.adapters.web_search.contracts.web_search_client_protocol import (
     WebSearchClientProtocol,
 )
+from app.domain.enums import AcquisitionStatus
 from app.domain.models import (
     RetrievalExecutionSummary,
     RetrievalSourceSummary,
@@ -128,7 +129,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
     def _failed_result(self, error_info: str) -> TavilyWebSearchToolResult:
         return TavilyWebSearchToolResult(
             normalized_items=[],
-            acquisition_status="failed",
+            acquisition_status=AcquisitionStatus.FAILED,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
                 normalized_count=0,
@@ -157,7 +158,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
     def _no_result(self) -> TavilyWebSearchToolResult:
         return TavilyWebSearchToolResult(
             normalized_items=[],
-            acquisition_status="no_result",
+            acquisition_status=AcquisitionStatus.NO_RESULT,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
                 normalized_count=0,
@@ -187,7 +188,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
         self,
         *,
         normalized_items: list[NormalizedRetrievalItem],
-        acquisition_status: str,
+        acquisition_status: AcquisitionStatus,
         execution_summary: RetrievalExecutionSummary,
         retrieval_trace: RetrievalTrace,
     ) -> TavilyWebSearchToolResult:
@@ -387,13 +388,13 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
         *,
         selected_candidates: list[WebSearchResult],
         execution_summary: RetrievalExecutionSummary,
-    ) -> str:
+    ) -> AcquisitionStatus:
         if execution_summary["search_result_count"] == 0:
-            return "no_result"
+            return AcquisitionStatus.NO_RESULT
         if not selected_candidates:
-            return "partial_success"
+            return AcquisitionStatus.PARTIAL_SUCCESS
         if execution_summary["fetch_failed_count"] > 0 or execution_summary["fetch_empty_count"] > 0:
-            return "partial_success"
+            return AcquisitionStatus.PARTIAL_SUCCESS
         if execution_summary["fetch_success_count"] > 0:
-            return "success"
-        return "partial_success"
+            return AcquisitionStatus.SUCCESS
+        return AcquisitionStatus.PARTIAL_SUCCESS

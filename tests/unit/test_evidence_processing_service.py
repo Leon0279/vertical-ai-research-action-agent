@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 
+from app.domain.enums import AcquisitionStatus
+
 from app.domain.models import (
     EvidenceProcessingRequest,
     RetrievalExecutionSummary,
@@ -31,7 +33,7 @@ def _process(service: EvidenceProcessingService, request: EvidenceProcessingRequ
 def _request(
     items: list[dict],
     *,
-    acquisition_status: str = "success",
+    acquisition_status: AcquisitionStatus = AcquisitionStatus.SUCCESS,
 ) -> EvidenceProcessingRequest:
     return EvidenceProcessingRequest(
         normalized_items=items,
@@ -82,11 +84,11 @@ def test_no_result_and_failed_acquisition_short_circuit() -> None:
 
     no_result = _process(
         service,
-        _request([], acquisition_status="no_result"),
+        _request([], acquisition_status=AcquisitionStatus.NO_RESULT),
     )
     failed = _process(
         service,
-        _request([_item("1", "doc1", "Useful content")], acquisition_status="failed"),
+        _request([_item("1", "doc1", "Useful content")], acquisition_status=AcquisitionStatus.FAILED),
     )
 
     assert no_result.processing_status == "no_result"

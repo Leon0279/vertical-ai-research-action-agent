@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.domain.enums import AcquisitionStatus
 from app.domain.models import (
     EvidenceProcessingSummary,
     EvidenceProcessingRequest,
@@ -71,7 +72,10 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         """Process one current-round candidate material set."""
 
         try:
-            if request.acquisition_status in {"no_result", "failed"}:
+            if request.acquisition_status in {
+                AcquisitionStatus.NO_RESULT,
+                AcquisitionStatus.FAILED,
+            }:
                 return self._empty_result(
                     request=request,
                     processing_status="no_result",

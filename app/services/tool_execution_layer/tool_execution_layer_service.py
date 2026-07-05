@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.domain.enums import AcquisitionStatus
 from app.domain.models import (
     BaseFamilyExecutionResult,
     DocsSearchFamilyRequest,
@@ -543,7 +544,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
     ) -> BaseFamilyExecutionResult:
         return BaseFamilyExecutionResult(
             normalized_items=[],
-            acquisition_status="failed",
+            acquisition_status=AcquisitionStatus.FAILED,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
                 selected_family=selected_family,
@@ -672,7 +673,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         return self._result(
             request=request,
             execution_status="failed",
-            acquisition_status="failed",
+            acquisition_status=AcquisitionStatus.FAILED,
             family_selection_result=family_selection_result,
             query_generation_result=query_generation_result,
             family_execution_result=family_execution_result,
@@ -690,7 +691,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         *,
         request: ToolExecutionLayerRequest,
         execution_status: str,
-        acquisition_status: str,
+        acquisition_status: AcquisitionStatus,
         family_selection_result: FamilySelectionResult | None,
         query_generation_result: RetrievalQueryGenerationResult | None,
         family_execution_result: BaseFamilyExecutionResult | None,

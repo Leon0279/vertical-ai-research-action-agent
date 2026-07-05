@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.domain.enums import AcquisitionStatus
 import asyncio
 
 from app.domain.models import (
@@ -95,7 +96,7 @@ def test_run_normal_path_maps_docs_results_to_normalized_items() -> None:
     assert docs_client.last_query.sub_source_types == ["openai_api", "anthropic_api"]
     assert docs_client.last_query.limit == 2
 
-    assert result.acquisition_status == "partial_success"
+    assert result.acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS
     assert result.dropped_item_count == 1
     assert len(result.normalized_items) == 2
     assert result.source_summary["normalized_count"] == 2
@@ -157,7 +158,7 @@ def test_run_returns_no_result_for_empty_docs_results() -> None:
 
     result = asyncio.run(tool.run(LlmsTxtDocsSearchToolRequest(query_text="missing topic")))
 
-    assert result.acquisition_status == "no_result"
+    assert result.acquisition_status == AcquisitionStatus.NO_RESULT
     assert result.normalized_items == []
     assert result.error_info is None
     assert result.execution_summary["normalized_count"] == 0
@@ -178,7 +179,7 @@ def test_run_returns_failed_when_adapter_raises() -> None:
         )
     )
 
-    assert result.acquisition_status == "failed"
+    assert result.acquisition_status == AcquisitionStatus.FAILED
     assert result.error_info == "docs boom"
     assert result.normalized_items == []
     assert result.source_summary["normalized_count"] == 0
@@ -202,5 +203,5 @@ def test_run_marks_success_when_no_items_are_dropped() -> None:
 
     result = asyncio.run(tool.run(LlmsTxtDocsSearchToolRequest(query_text="retrieval guide")))
 
-    assert result.acquisition_status == "success"
+    assert result.acquisition_status == AcquisitionStatus.SUCCESS
     assert result.dropped_item_count == 0

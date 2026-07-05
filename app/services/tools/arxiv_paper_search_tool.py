@@ -10,6 +10,7 @@ from app.adapters.paper_content_fetch.contracts.paper_content_fetch_client_proto
 from app.adapters.paper_search.contracts.paper_search_client_protocol import (
     PaperSearchClientProtocol,
 )
+from app.domain.enums import AcquisitionStatus
 from app.domain.models import (
     ArxivPaperSearchToolRequest,
     ArxivPaperSearchToolResult,
@@ -285,19 +286,19 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
         *,
         selected_candidates: list[PaperSearchResult],
         execution_summary: RetrievalExecutionSummary,
-    ) -> str:
+    ) -> AcquisitionStatus:
         if execution_summary["search_result_count"] == 0:
-            return "no_result"
+            return AcquisitionStatus.NO_RESULT
         if not selected_candidates:
-            return "partial_success"
+            return AcquisitionStatus.PARTIAL_SUCCESS
         if (
             execution_summary["fetch_failed_count"] > 0
             or execution_summary["fetch_empty_count"] > 0
         ):
-            return "partial_success"
+            return AcquisitionStatus.PARTIAL_SUCCESS
         if execution_summary["fetch_success_count"] == 0:
-            return "partial_success"
-        return "success"
+            return AcquisitionStatus.PARTIAL_SUCCESS
+        return AcquisitionStatus.SUCCESS
 
     def _source_reference(self, candidate: PaperSearchResult) -> SourceReference:
         return SourceReference(
@@ -327,7 +328,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
     def _failed_result(self, error_info: str) -> ArxivPaperSearchToolResult:
         return ArxivPaperSearchToolResult(
             normalized_items=[],
-            acquisition_status="failed",
+            acquisition_status=AcquisitionStatus.FAILED,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
                 normalized_count=0,
@@ -356,7 +357,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
     def _no_result(self) -> ArxivPaperSearchToolResult:
         return ArxivPaperSearchToolResult(
             normalized_items=[],
-            acquisition_status="no_result",
+            acquisition_status=AcquisitionStatus.NO_RESULT,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
                 normalized_count=0,

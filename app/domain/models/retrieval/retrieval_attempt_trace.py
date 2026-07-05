@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.domain.enums import AcquisitionStatus
+
 
 class RetrievalAttemptTrace(BaseModel):
     """Tool Execution Layer 中一次 family execution attempt 的摘要。
@@ -36,7 +38,7 @@ class RetrievalAttemptTrace(BaseModel):
             "用于解释 query 为什么这样写。"
         ),
     )
-    acquisition_status: str | None = Field(
+    acquisition_status: AcquisitionStatus | None = Field(
         default=None,
         description=(
             "可选字段。本次 family/tool 执行返回的 acquisition status。当前项目中有用：TEL 会记录 success、partial_success、"

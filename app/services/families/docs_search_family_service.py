@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.domain.enums import AcquisitionStatus
 from app.domain.models import (
     DocsSearchFamilyRequest,
     DocsSearchFamilyResult,
@@ -159,7 +160,7 @@ class DocsSearchFamilyService(DocsSearchFamilyServiceProtocol):
     ) -> DocsSearchFamilyResult:
         return DocsSearchFamilyResult(
             normalized_items=[],
-            acquisition_status="failed",
+            acquisition_status=AcquisitionStatus.FAILED,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
                 selected_family=self._FAMILY_NAME,

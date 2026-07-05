@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.domain.enums import AcquisitionStatus
+
 from app.adapters.docs_search.contracts.docs_search_client_protocol import (
     DocsSearchClientProtocol,
 )
@@ -119,9 +121,9 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
     ) -> LlmsTxtDocsSearchToolResult:
         return LlmsTxtDocsSearchToolResult(
             normalized_items=normalized_items,
-            acquisition_status="partial_success"
+            acquisition_status=AcquisitionStatus.PARTIAL_SUCCESS
             if search_response.dropped_item_count > 0
-            else "success",
+            else AcquisitionStatus.SUCCESS,
             dropped_item_count=search_response.dropped_item_count,
             source_summary=self._source_summary(
                 normalized_count=len(normalized_items),
@@ -194,7 +196,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
     ) -> LlmsTxtDocsSearchToolResult:
         return LlmsTxtDocsSearchToolResult(
             normalized_items=[],
-            acquisition_status="failed",
+            acquisition_status=AcquisitionStatus.FAILED,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
                 normalized_count=0,
@@ -224,7 +226,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
     ) -> LlmsTxtDocsSearchToolResult:
         return LlmsTxtDocsSearchToolResult(
             normalized_items=[],
-            acquisition_status="no_result",
+            acquisition_status=AcquisitionStatus.NO_RESULT,
             dropped_item_count=search_response.dropped_item_count,
             source_summary=self._source_summary(
                 normalized_count=0,

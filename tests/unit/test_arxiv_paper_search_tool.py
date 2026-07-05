@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.domain.enums import AcquisitionStatus
 import asyncio
 from datetime import UTC, datetime
 
@@ -140,7 +141,7 @@ def test_run_normal_path_uses_fetched_content_for_selected_papers() -> None:
         "arxiv_id",
         "arxiv_id",
     ]
-    assert result.acquisition_status == "success"
+    assert result.acquisition_status == AcquisitionStatus.SUCCESS
     assert len(result.normalized_items) == 3
     assert result.execution_summary["fetch_success_count"] == 2
     assert result.execution_summary["fetch_failed_count"] == 0
@@ -218,7 +219,7 @@ def test_run_returns_no_result_for_empty_search_results() -> None:
 
     result = asyncio.run(tool.run(ArxivPaperSearchToolRequest(query_text="missing topic")))
 
-    assert result.acquisition_status == "no_result"
+    assert result.acquisition_status == AcquisitionStatus.NO_RESULT
     assert result.normalized_items == []
 
 
@@ -230,7 +231,7 @@ def test_run_returns_failed_when_search_raises() -> None:
 
     result = asyncio.run(tool.run(ArxivPaperSearchToolRequest(query_text="topic")))
 
-    assert result.acquisition_status == "failed"
+    assert result.acquisition_status == AcquisitionStatus.FAILED
     assert result.error_info == "search boom"
     assert result.normalized_items == []
 
@@ -262,7 +263,7 @@ def test_run_handles_failed_empty_and_exception_content_with_summary_fallback() 
         )
     )
 
-    assert result.acquisition_status == "partial_success"
+    assert result.acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS
     first = result.normalized_items[0]
     assert first["content"] == "Summary one"
     assert first["metadata"]["content_fetch_status"] == "empty_text"
@@ -317,7 +318,7 @@ def test_run_uses_fallback_when_fetch_returns_failed_status() -> None:
         )
     )
 
-    assert result.acquisition_status == "partial_success"
+    assert result.acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS
     first = result.normalized_items[0]
     assert first["content"] == "Summary one"
     assert first["metadata"]["content_fetch_status"] == "download_failed"
@@ -347,5 +348,5 @@ def test_run_skips_content_fetch_when_max_content_fetches_is_zero() -> None:
     )
 
     assert content_client.requests == []
-    assert result.acquisition_status == "partial_success"
+    assert result.acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS
     assert result.execution_summary["selected_for_fetch_count"] == 0

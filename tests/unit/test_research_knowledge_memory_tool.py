@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.domain.enums import AcquisitionStatus
 import asyncio
 from datetime import UTC, datetime
 
@@ -130,7 +131,7 @@ def test_run_prefers_precomputed_embedding() -> None:
     assert store.last_query.topic_tags == ["pgvector"]
     assert store.last_query.source_types == ["web_page"]
     assert store.last_query.limit == 3
-    assert result.acquisition_status == "success"
+    assert result.acquisition_status == AcquisitionStatus.SUCCESS
     assert result.execution_summary["used_precomputed_embedding"] is True
 
 
@@ -153,7 +154,7 @@ def test_run_uses_query_text_when_embedding_missing() -> None:
     assert embedding_client.last_text == "postgres"
     assert store.last_query is not None
     assert store.last_query.query_embedding == [0.4, 0.5]
-    assert result.acquisition_status == "success"
+    assert result.acquisition_status == AcquisitionStatus.SUCCESS
     assert result.execution_summary["used_precomputed_embedding"] is False
 
 
@@ -200,7 +201,7 @@ def test_run_returns_no_result_for_empty_recall() -> None:
         tool.run(ResearchKnowledgeMemoryToolRequest(owner_user_id="user-1", query_text="postgres"))
     )
 
-    assert result.acquisition_status == "no_result"
+    assert result.acquisition_status == AcquisitionStatus.NO_RESULT
     assert result.normalized_items == []
 
 
@@ -214,7 +215,7 @@ def test_run_returns_failed_when_embedding_raises() -> None:
         tool.run(ResearchKnowledgeMemoryToolRequest(owner_user_id="user-1", query_text="postgres"))
     )
 
-    assert result.acquisition_status == "failed"
+    assert result.acquisition_status == AcquisitionStatus.FAILED
     assert result.error_info == "embed boom"
 
 
@@ -228,7 +229,7 @@ def test_run_returns_failed_when_recall_raises() -> None:
         tool.run(ResearchKnowledgeMemoryToolRequest(owner_user_id="user-1", query_text="postgres"))
     )
 
-    assert result.acquisition_status == "failed"
+    assert result.acquisition_status == AcquisitionStatus.FAILED
     assert result.error_info == "recall boom"
 
 
@@ -248,7 +249,7 @@ def test_run_returns_failed_for_missing_query_input() -> None:
         )
     )
 
-    assert result.acquisition_status == "failed"
+    assert result.acquisition_status == AcquisitionStatus.FAILED
     assert "Either query_embedding or query_text" in (result.error_info or "")
 
 
@@ -268,7 +269,7 @@ def test_run_returns_failed_for_empty_visibility_scopes_after_normalization() ->
         )
     )
 
-    assert result.acquisition_status == "failed"
+    assert result.acquisition_status == AcquisitionStatus.FAILED
     assert "allowed_visibility_scopes" in (result.error_info or "")
 
 
@@ -289,7 +290,7 @@ def test_run_drops_unmappable_results_and_returns_partial_success() -> None:
         tool.run(ResearchKnowledgeMemoryToolRequest(owner_user_id="user-1", query_text="postgres"))
     )
 
-    assert result.acquisition_status == "partial_success"
+    assert result.acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS
     assert len(result.normalized_items) == 1
     assert result.dropped_item_count == 1
 
@@ -308,5 +309,5 @@ def test_run_returns_no_result_when_all_results_are_dropped() -> None:
         tool.run(ResearchKnowledgeMemoryToolRequest(owner_user_id="user-1", query_text="postgres"))
     )
 
-    assert result.acquisition_status == "no_result"
+    assert result.acquisition_status == AcquisitionStatus.NO_RESULT
     assert result.dropped_item_count == 1

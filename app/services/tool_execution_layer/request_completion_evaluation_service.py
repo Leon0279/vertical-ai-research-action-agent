@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.domain.enums import AcquisitionStatus
 from app.domain.models import (
     RequestCompletionEvaluationRequest,
     RequestCompletionEvaluationResult,
@@ -46,7 +47,7 @@ class RequestCompletionEvaluationService(RequestCompletionEvaluationServiceProto
 
         acquisition_status = normalized_request.execution_outcome.acquisition_status
 
-        if acquisition_status == "success":
+        if acquisition_status == AcquisitionStatus.SUCCESS:
             return self._evaluated_result(
                 normalized_request,
                 request_completion_status="complete",
@@ -59,7 +60,7 @@ class RequestCompletionEvaluationService(RequestCompletionEvaluationServiceProto
                 cross_family_fallback_available=cross_family_fallback_available,
             )
 
-        if acquisition_status == "partial_success":
+        if acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS:
             if (
                 normalized_request.continuation_available
                 and not reached_max_results
@@ -93,7 +94,7 @@ class RequestCompletionEvaluationService(RequestCompletionEvaluationServiceProto
                 cross_family_fallback_available=cross_family_fallback_available,
             )
 
-        if acquisition_status == "no_result":
+        if acquisition_status == AcquisitionStatus.NO_RESULT:
             if timeout_exhausted:
                 return self._evaluated_result(
                     normalized_request,

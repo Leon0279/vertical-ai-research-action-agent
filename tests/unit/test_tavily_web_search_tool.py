@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.domain.enums import AcquisitionStatus
 import asyncio
 
 import pytest
@@ -113,7 +114,7 @@ def test_run_normal_path_uses_fetched_content_for_selected_candidates() -> None:
     ]
     assert content_client.last_request.format == "markdown"
 
-    assert result.acquisition_status == "partial_success"
+    assert result.acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS
     assert len(result.normalized_items) == 3
     assert result.execution_summary["fetch_success_count"] == 2
     assert result.execution_summary["fetch_failed_count"] == 1
@@ -203,7 +204,7 @@ def test_run_returns_no_result_for_empty_search_results() -> None:
 
     result = asyncio.run(tool.run(TavilyWebSearchToolRequest(query_text="missing topic")))
 
-    assert result.acquisition_status == "no_result"
+    assert result.acquisition_status == AcquisitionStatus.NO_RESULT
     assert result.normalized_items == []
 
 
@@ -215,7 +216,7 @@ def test_run_returns_failed_when_search_raises() -> None:
 
     result = asyncio.run(tool.run(TavilyWebSearchToolRequest(query_text="topic")))
 
-    assert result.acquisition_status == "failed"
+    assert result.acquisition_status == AcquisitionStatus.FAILED
     assert result.error_info == "search boom"
     assert result.normalized_items == []
 
@@ -255,7 +256,7 @@ def test_run_handles_failed_and_empty_content_with_snippet_fallback() -> None:
         )
     )
 
-    assert result.acquisition_status == "partial_success"
+    assert result.acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS
     first = result.normalized_items[0]
     assert first["content"] == "Snippet one"
     assert first["metadata"]["content_fetch_status"] == "empty_content"
@@ -280,7 +281,7 @@ def test_run_handles_batch_fetch_exception_with_snippet_fallback() -> None:
         )
     )
 
-    assert result.acquisition_status == "partial_success"
+    assert result.acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS
     assert result.execution_summary["fetch_failed_count"] == 2
     for item in result.normalized_items[:2]:
         assert item["metadata"]["content_fetch_status"] == "failed"
@@ -304,5 +305,5 @@ def test_run_uses_snippet_only_when_content_fetch_is_disabled() -> None:
     )
 
     assert content_client.last_request is None
-    assert result.acquisition_status == "partial_success"
+    assert result.acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS
     assert all(item["content_type"] == "text_snippet" for item in result.normalized_items)

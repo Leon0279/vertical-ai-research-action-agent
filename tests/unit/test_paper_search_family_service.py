@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.domain.enums import AcquisitionStatus
 import asyncio
 
 from app.domain.models import (
@@ -41,7 +42,7 @@ SUCCESS_RESULT = ArxivPaperSearchToolResult(
             "metadata": {"title": "Agent Research Systems"},
         }
     ],
-    acquisition_status="success",
+    acquisition_status=AcquisitionStatus.SUCCESS,
     dropped_item_count=0,
     source_summary=RetrievalSourceSummary(
         normalized_count=1,
@@ -68,7 +69,7 @@ def test_run_selects_default_tool_and_wraps_result() -> None:
     assert result.selected_family == "paper_search"
     assert result.candidate_tools == ["arxiv_paper_search_v1"]
     assert result.selected_tool == "arxiv_paper_search_v1"
-    assert result.acquisition_status == "success"
+    assert result.acquisition_status == AcquisitionStatus.SUCCESS
     assert result.source_summary["selected_family"] == "paper_search"
     assert result.source_summary["selected_tool"] == "arxiv_paper_search_v1"
     assert result.execution_summary["candidate_tool_count"] == 1
@@ -105,7 +106,7 @@ def test_run_returns_failed_for_invalid_preferred_tool() -> None:
         )
     )
 
-    assert result.acquisition_status == "failed"
+    assert result.acquisition_status == AcquisitionStatus.FAILED
     assert result.selected_tool is None
     assert "Preferred tool 'paper_search_v2'" in (result.error_info or "")
     assert tool.last_request is None
@@ -116,14 +117,18 @@ def test_run_returns_failed_when_no_tool_is_registered() -> None:
 
     result = asyncio.run(service.run(PaperSearchFamilyRequest(query_text="agent research")))
 
-    assert result.acquisition_status == "failed"
+    assert result.acquisition_status == AcquisitionStatus.FAILED
     assert result.candidate_tools == []
     assert result.selected_tool is None
     assert result.error_info == "No available tools registered for paper_search family."
 
 
 def test_run_preserves_partial_success_no_result_and_failed_statuses() -> None:
-    for status in ["partial_success", "no_result", "failed"]:
+    for status in [
+        AcquisitionStatus.PARTIAL_SUCCESS,
+        AcquisitionStatus.NO_RESULT,
+        AcquisitionStatus.FAILED,
+    ]:
         tool = FakeArxivPaperSearchTool(
             ArxivPaperSearchToolResult(
                 normalized_items=[],
@@ -134,7 +139,7 @@ def test_run_preserves_partial_success_no_result_and_failed_statuses() -> None:
                 ),
                 execution_summary=RetrievalExecutionSummary(),
                 retrieval_trace=RetrievalTrace(),
-                error_info="boom" if status == "failed" else None,
+                error_info="boom" if status == AcquisitionStatus.FAILED else None,
             )
         )
         service = PaperSearchFamilyService(tool)
