@@ -1,6 +1,11 @@
 """Shared base family execution result tests."""
 
+import pytest
+from pydantic import ValidationError
+
+from app.domain.enums import AcquisitionStatus
 from app.domain.models import (
+    ArxivPaperSearchToolResult,
     BaseFamilyExecutionResult,
     DocsSearchFamilyResult,
     PaperSearchFamilyResult,
@@ -41,3 +46,26 @@ def test_family_results_keep_selected_family_defaults() -> None:
         ResearchKnowledgeRecallFamilyResult(acquisition_status="success").selected_family
         == "research_knowledge_recall"
     )
+
+
+def test_acquisition_status_enum_keeps_string_compatibility() -> None:
+    assert AcquisitionStatus.SUCCESS == "success"
+
+    tool_result = ArxivPaperSearchToolResult(acquisition_status="success")
+    family_result = DocsSearchFamilyResult(acquisition_status="partial_success")
+
+    assert tool_result.acquisition_status == "success"
+    assert family_result.acquisition_status == "partial_success"
+    assert tool_result.model_dump(mode="json")["acquisition_status"] == "success"
+    assert (
+        family_result.model_dump(mode="json")["acquisition_status"]
+        == "partial_success"
+    )
+
+
+def test_acquisition_status_rejects_unknown_values() -> None:
+    with pytest.raises(ValidationError):
+        ArxivPaperSearchToolResult(acquisition_status="unknown")
+
+    with pytest.raises(ValidationError):
+        DocsSearchFamilyResult(acquisition_status="unknown")

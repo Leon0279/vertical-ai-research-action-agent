@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-
 from pydantic import BaseModel, Field
 
+from app.domain.enums import AcquisitionStatus
 from app.domain.models.retrieval import (
     NormalizedRetrievalItem,
     RetrievalExecutionSummary,
     RetrievalSourceSummary,
     RetrievalTrace,
-)
-
-from app.domain.models.families.base_family_execution_result import (
-    AcquisitionStatus,
 )
 from app.domain.models.tool_execution_layer.tool_execution_layer_request import (
     ExecutionStatus,

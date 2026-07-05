@@ -2,18 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
+from app.domain.enums import AcquisitionStatus
 from app.domain.models.retrieval import (
     NormalizedRetrievalItem,
     RetrievalExecutionSummary,
     RetrievalSourceSummary,
     RetrievalTrace,
 )
-
-AcquisitionStatus = Literal["success", "partial_success", "no_result", "failed"]
 
 
 class LlmsTxtDocsSearchToolResult(BaseModel):
