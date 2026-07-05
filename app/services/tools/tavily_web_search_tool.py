@@ -17,8 +17,10 @@ from app.domain.models import (
     SourceReference,
     TavilyWebSearchToolRequest,
     TavilyWebSearchToolResult,
+    WebContentFetchFailedResult,
     WebContentFetchRequest,
     WebContentFetchResponse,
+    WebContentFetchResult,
     WebSearchQuery,
     WebSearchResult,
 )
@@ -243,94 +245,27 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
         fetched_urls: list[str] = []
 
         for rank, candidate in enumerate(candidates, start=1):
-            metadata: dict[str, Any] = {
-                "title": candidate.title,
-                "rank": rank,
-                "score": candidate.score,
-                "search_snippet": candidate.snippet,
-                "search_source_name": candidate.source_name,
-                "published_at": (
-                    candidate.published_at.isoformat() if candidate.published_at else None
-                ),
-            }
-            metadata.update(candidate.metadata)
-
-            content = candidate.snippet
-            content_type = "text_snippet"
-            if candidate.url in selected_urls:
-                fetched = fetch_results_by_url.get(candidate.url)
-                failed = fetch_failures_by_url.get(candidate.url)
-                if fetched is not None and fetched.fetch_status == "succeeded" and fetched.extracted_content:
-                    content = fetched.extracted_content
-                    content_type = "document_chunk"
-                    metadata["content_fetch_status"] = "succeeded"
-                    metadata["content_fetch_source"] = fetched.source
-                    metadata["fetched_images"] = fetched.images
-                    metadata["fetched_favicon"] = fetched.favicon
-                    metadata.update(fetched.metadata)
-                    fetch_success_count += 1
-                    fetched_urls.append(candidate.url)
-                elif fetched is not None and fetched.fetch_status == "empty_content":
-                    metadata["content_fetch_status"] = "empty_content"
-                    metadata["fallback_to_search_snippet"] = True
-                    metadata["content_fetch_source"] = fetched.source
-                    metadata.update(fetched.metadata)
-                    if fetched.error_info:
-                        metadata["content_fetch_error_info"] = fetched.error_info
-                    fetch_empty_count += 1
-                    fetched_urls.append(candidate.url)
-                elif failed is not None:
-                    metadata["content_fetch_status"] = "failed"
-                    metadata["fallback_to_search_snippet"] = True
-                    metadata["content_fetch_error_info"] = failed.error_info
-                    metadata.update(failed.metadata)
-                    fetch_failed_count += 1
-                    failed_fetches.append(
-                        {"url": failed.url, "error_info": failed.error_info}
-                    )
-                elif fetch_error is not None:
-                    metadata["content_fetch_status"] = "failed"
-                    metadata["fallback_to_search_snippet"] = True
-                    metadata["content_fetch_error_info"] = fetch_error
-                    fetch_failed_count += 1
-                    failed_fetches.append(
-                        {"url": candidate.url, "error_info": fetch_error}
-                    )
-                else:
-                    metadata["content_fetch_status"] = "failed"
-                    metadata["fallback_to_search_snippet"] = True
-                    metadata["content_fetch_error_info"] = (
-                        "Content fetch did not return a matching result."
-                    )
-                    fetch_failed_count += 1
-                    failed_fetches.append(
-                        {
-                            "url": candidate.url,
-                            "error_info": "Content fetch did not return a matching result.",
-                        }
-                    )
-            else:
-                metadata["content_fetch_status"] = "not_requested"
-
-            normalized_items.append(
-                NormalizedRetrievalItem(
-                    item_id=candidate.item_id,
-                    source_family="web_search",
-                    source_references=[
-                        SourceReference(
-                            source_type="web_page",
-                            source_url=candidate.url,
-                            title=candidate.title,
-                            published_at=candidate.published_at,
-                            citation_text=candidate.title,
-                            metadata={"source_name": candidate.source_name},
-                        )
-                    ],
-                    content=content,
-                    content_type=content_type,
-                    metadata=metadata,
-                )
+            item, failed_fetch = self._create_normalized_item(
+                candidate=candidate,
+                rank=rank,
+                selected_urls=selected_urls,
+                fetch_results_by_url=fetch_results_by_url,
+                fetch_failures_by_url=fetch_failures_by_url,
+                fetch_error=fetch_error,
             )
+            normalized_items.append(item)
+
+            content_fetch_status = item.metadata.get("content_fetch_status")
+            if content_fetch_status == "succeeded":
+                fetch_success_count += 1
+                fetched_urls.append(candidate.url)
+            elif content_fetch_status == "empty_content":
+                fetch_empty_count += 1
+                fetched_urls.append(candidate.url)
+            elif content_fetch_status == "failed":
+                fetch_failed_count += 1
+                if failed_fetch is not None:
+                    failed_fetches.append(failed_fetch)
 
         execution_summary = RetrievalExecutionSummary(
             normalized_count=len(normalized_items),
@@ -352,6 +287,100 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
             },
         )
         return normalized_items, execution_summary, retrieval_trace
+
+    def _create_normalized_item(
+        self,
+        *,
+        candidate: WebSearchResult,
+        rank: int,
+        selected_urls: set[str],
+        fetch_results_by_url: dict[str, WebContentFetchResult],
+        fetch_failures_by_url: dict[str, WebContentFetchFailedResult],
+        fetch_error: str | None,
+    ) -> tuple[NormalizedRetrievalItem, dict[str, str] | None]:
+        metadata: dict[str, Any] = {
+            "title": candidate.title,
+            "rank": rank,
+            "score": candidate.score,
+            "search_snippet": candidate.snippet,
+            "search_source_name": candidate.source_name,
+            "published_at": (
+                candidate.published_at.isoformat() if candidate.published_at else None
+            ),
+        }
+        metadata.update(candidate.metadata)
+
+        content = candidate.snippet
+        content_type = "text_snippet"
+        failed_fetch: dict[str, str] | None = None
+
+        # 当前候选网页被选中做正文抓取，需要根据抓取结果决定使用正文还是回退搜索摘要。
+        if candidate.url in selected_urls:
+            fetched = fetch_results_by_url.get(candidate.url)
+            failed = fetch_failures_by_url.get(candidate.url)
+            # Provider 返回了有效正文，使用抓取正文作为更完整的 document chunk。
+            if (
+                fetched is not None
+                and fetched.fetch_status == "succeeded"
+                and fetched.extracted_content
+            ):
+                content = fetched.extracted_content
+                content_type = "document_chunk"
+                metadata["content_fetch_status"] = "succeeded"
+                metadata["content_fetch_source"] = fetched.source
+                metadata["fetched_images"] = fetched.images
+                metadata["fetched_favicon"] = fetched.favicon
+                metadata.update(fetched.metadata)
+            # Provider 返回了该 URL 的结果，但正文为空，保留搜索摘要并记录降级原因。
+            elif fetched is not None and fetched.fetch_status == "empty_content":
+                metadata["content_fetch_status"] = "empty_content"
+                metadata["fallback_to_search_snippet"] = True
+                metadata["content_fetch_source"] = fetched.source
+                metadata.update(fetched.metadata)
+                if fetched.error_info:
+                    metadata["content_fetch_error_info"] = fetched.error_info
+            # Provider 明确返回该 URL 的失败结果，回退搜索摘要并保留失败 trace 信息。
+            elif failed is not None:
+                metadata["content_fetch_status"] = "failed"
+                metadata["fallback_to_search_snippet"] = True
+                metadata["content_fetch_error_info"] = failed.error_info
+                metadata.update(failed.metadata)
+                failed_fetch = {"url": failed.url, "error_info": failed.error_info}
+            # 整批 content fetch 调用异常，当前被选中的 URL 只能回退到搜索摘要。
+            elif fetch_error is not None:
+                metadata["content_fetch_status"] = "failed"
+                metadata["fallback_to_search_snippet"] = True
+                metadata["content_fetch_error_info"] = fetch_error
+                failed_fetch = {"url": candidate.url, "error_info": fetch_error}
+            # 该 URL 被选中抓取，但 response 中没有匹配结果，按抓取失败降级处理。
+            else:
+                error_info = "Content fetch did not return a matching result."
+                metadata["content_fetch_status"] = "failed"
+                metadata["fallback_to_search_snippet"] = True
+                metadata["content_fetch_error_info"] = error_info
+                failed_fetch = {"url": candidate.url, "error_info": error_info}
+        # 当前候选网页未被选中做正文抓取，只使用 web search snippet，不参与 fetch 计数。
+        else:
+            metadata["content_fetch_status"] = "not_requested"
+
+        item = NormalizedRetrievalItem(
+            item_id=candidate.item_id,
+            source_family="web_search",
+            source_references=[
+                SourceReference(
+                    source_type="web_page",
+                    source_url=candidate.url,
+                    title=candidate.title,
+                    published_at=candidate.published_at,
+                    citation_text=candidate.title,
+                    metadata={"source_name": candidate.source_name},
+                )
+            ],
+            content=content,
+            content_type=content_type,
+            metadata=metadata,
+        )
+        return item, failed_fetch
 
     def _acquisition_status(
         self,
