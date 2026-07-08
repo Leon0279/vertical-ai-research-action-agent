@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
+from app.domain.enums import FamilyName
 from app.domain.models.families.base_family_execution_result import BaseFamilyExecutionResult
 
 
@@ -23,8 +24,8 @@ class PaperSearchFamilyResult(BaseFamilyExecutionResult):
     当前可能包含 `attempted_paper_ids`、`selected_paper_ids`、`fetched_paper_ids`、`failed_fetches`。
     """
 
-    selected_family: str = Field(
-        default="paper_search",
+    selected_family: FamilyName = Field(
+        default=FamilyName.PAPER_SEARCH,
         description=(
             "必填字段，默认 `paper_search`。表示该 result 属于 paper_search retrieval family。"
             "当前项目中有用：ToolExecutionLayerService 和 RequestCompletionEvaluationService 会用它确认 family execution outcome "

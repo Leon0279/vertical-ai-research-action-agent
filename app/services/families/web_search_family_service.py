@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     TavilyWebSearchToolRequest,
     TavilyWebSearchToolResult,
@@ -23,7 +23,7 @@ from app.services.tools.contracts.tavily_web_search_tool_protocol import (
 class WebSearchFamilyService(WebSearchFamilyServiceProtocol):
     """Resolve a web_search family request to a concrete web tool."""
 
-    _FAMILY_NAME = "web_search"
+    _FAMILY_NAME = FamilyName.WEB_SEARCH
     _DEFAULT_TOOL_ID = "tavily_web_search_v1"
 
     def __init__(self, tavily_web_search_tool: TavilyWebSearchToolProtocol | None) -> None:

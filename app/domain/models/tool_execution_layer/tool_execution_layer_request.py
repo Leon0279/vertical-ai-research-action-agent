@@ -6,13 +6,10 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.domain.enums import ActionMode
+from app.domain.enums import ActionMode, FamilyName
 from app.domain.models.tool_execution_layer.evidence_shape import EvidenceShape
 from app.domain.models.tool_execution_layer.request_completion_evaluation_request import (
     FallbackPolicy,
-)
-from app.domain.models.tool_execution_layer.retrieval_query_generation_request import (
-    RetrievalFamily,
 )
 
 
@@ -67,7 +64,7 @@ class ToolExecutionLayerRequest(BaseModel):
             "偏离当前任务边界。TEL 不直接解析复杂 planner 结构，只把该文本作为轻量语义信号传递。"
         ),
     )
-    allowed_source_families: list[RetrievalFamily] = Field(
+    allowed_source_families: list[FamilyName] = Field(
         default_factory=list,
         description=(
             "可选字段，默认空列表。允许参与本次 selection 的 source family 白名单。当前项目中有用："
@@ -75,7 +72,7 @@ class ToolExecutionLayerRequest(BaseModel):
             "cross-family fallback 候选。为空表示不额外限制，但仍会受已注入 family、available_families 和 blocked_source_families 约束。"
         ),
     )
-    preferred_source_families: list[RetrievalFamily] = Field(
+    preferred_source_families: list[FamilyName] = Field(
         default_factory=list,
         description=(
             "可选字段，默认空列表。Research Executor 提供的 family 偏好顺序。当前项目中有用："
@@ -83,14 +80,14 @@ class ToolExecutionLayerRequest(BaseModel):
             "它只是偏好，不是强制选择。"
         ),
     )
-    blocked_source_families: list[RetrievalFamily] = Field(
+    blocked_source_families: list[FamilyName] = Field(
         default_factory=list,
         description=(
             "可选字段，默认空列表。本次请求禁止选择的 family。当前项目中有用：TEL 初始 selection 会传入该列表；"
             "发生 fallback_to_broader_search 时，TEL 还会在内部把刚失败/无结果的 family 加入 blocked 集合，避免立刻回到同一 family。"
         ),
     )
-    available_families: list[RetrievalFamily] = Field(
+    available_families: list[FamilyName] = Field(
         default_factory=list,
         description=(
             "可选字段，默认空列表。Research Executor 或运行时声明的当前可用 family。当前项目中有用："

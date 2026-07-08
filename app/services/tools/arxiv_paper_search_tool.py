@@ -10,7 +10,7 @@ from app.adapters.paper_content_fetch.contracts.paper_content_fetch_client_proto
 from app.adapters.paper_search.contracts.paper_search_client_protocol import (
     PaperSearchClientProtocol,
 )
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     ArxivPaperSearchToolRequest,
     ArxivPaperSearchToolResult,
@@ -77,6 +77,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             acquisition_status=acquisition_status,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
+                selected_family=FamilyName.PAPER_SEARCH,
                 normalized_count=len(normalized_items),
             ),
             execution_summary=execution_summary,
@@ -252,7 +253,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             normalized_items.append(
                 NormalizedRetrievalItem(
                     item_id=candidate.paper_id,
-                    source_family="paper_search",
+                    source_family=FamilyName.PAPER_SEARCH,
                     source_references=[self._source_reference(candidate)],
                     content=content,
                     content_type=content_type,
@@ -272,6 +273,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             },
         )
         retrieval_trace = RetrievalTrace(
+            selected_family=FamilyName.PAPER_SEARCH,
             observability={
                 "attempted_paper_ids": [candidate.paper_id for candidate in candidates],
                 "selected_paper_ids": [candidate.paper_id for candidate in selected_candidates],
@@ -331,6 +333,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             acquisition_status=AcquisitionStatus.FAILED,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
+                selected_family=FamilyName.PAPER_SEARCH,
                 normalized_count=0,
             ),
             execution_summary=RetrievalExecutionSummary(
@@ -345,6 +348,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                 },
             ),
             retrieval_trace=RetrievalTrace(
+                selected_family=FamilyName.PAPER_SEARCH,
                 errors={"search_error": error_info},
                 observability={
                     "attempted_paper_ids": [],
@@ -360,6 +364,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
             acquisition_status=AcquisitionStatus.NO_RESULT,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
+                selected_family=FamilyName.PAPER_SEARCH,
                 normalized_count=0,
             ),
             execution_summary=RetrievalExecutionSummary(
@@ -374,6 +379,7 @@ class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
                 },
             ),
             retrieval_trace=RetrievalTrace(
+                selected_family=FamilyName.PAPER_SEARCH,
                 observability={
                     "attempted_paper_ids": [],
                     "selected_paper_ids": [],

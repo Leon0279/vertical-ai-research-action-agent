@@ -6,11 +6,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.domain.enums import FamilyName
 from app.domain.models.families.base_family_execution_result import (
     BaseFamilyExecutionResult,
-)
-from app.domain.models.tool_execution_layer.retrieval_query_generation_request import (
-    RetrievalFamily,
 )
 
 FailureReason = Literal[
@@ -37,7 +35,7 @@ class RequestCompletionEvaluationRequest(BaseModel):
     target_problem: str = Field(
         description="Current retrieval target problem for this execution round.",
     )
-    selected_family: RetrievalFamily = Field(
+    selected_family: FamilyName = Field(
         description="Family selected for the execution outcome being evaluated.",
     )
     generated_query: str | None = Field(
@@ -83,15 +81,15 @@ class RequestCompletionEvaluationRequest(BaseModel):
         default=None,
         description="Elapsed milliseconds already consumed by the current request.",
     )
-    available_families: list[RetrievalFamily] = Field(
+    available_families: list[FamilyName] = Field(
         default_factory=list,
         description="Families currently available to the runtime for fallback.",
     )
-    allowed_source_families: list[RetrievalFamily] = Field(
+    allowed_source_families: list[FamilyName] = Field(
         default_factory=list,
         description="Optional allow-list restricting fallback families.",
     )
-    blocked_source_families: list[RetrievalFamily] = Field(
+    blocked_source_families: list[FamilyName] = Field(
         default_factory=list,
         description="Optional block-list removing fallback families from consideration.",
     )

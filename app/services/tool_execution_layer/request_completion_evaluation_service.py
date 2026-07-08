@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     RequestCompletionEvaluationRequest,
     RequestCompletionEvaluationResult,
@@ -19,10 +19,10 @@ class RequestCompletionEvaluationService(RequestCompletionEvaluationServiceProto
 
     _POLICY_NAME = "request_completion_recovery_evaluator_v1"
     _SUPPORTED_FAMILIES = {
-        "research_knowledge_recall",
-        "docs_search",
-        "paper_search",
-        "web_search",
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+        FamilyName.DOCS_SEARCH,
+        FamilyName.PAPER_SEARCH,
+        FamilyName.WEB_SEARCH,
     }
 
     async def evaluate(
@@ -177,15 +177,15 @@ class RequestCompletionEvaluationService(RequestCompletionEvaluationServiceProto
             ),
         )
 
-    def _normalize_family_list(self, families: list[str]) -> list[str]:
-        normalized: list[str] = []
-        seen: set[str] = set()
+    def _normalize_family_list(self, families: list[FamilyName]) -> list[FamilyName]:
+        normalized: list[FamilyName] = []
+        seen: set[FamilyName] = set()
         for family in families:
-            stripped = family.strip()
-            if not stripped or stripped in seen:
+            normalized_family = FamilyName(str(family).strip())
+            if normalized_family in seen:
                 continue
-            normalized.append(stripped)
-            seen.add(stripped)
+            normalized.append(normalized_family)
+            seen.add(normalized_family)
         return normalized
 
     def _validate_request(

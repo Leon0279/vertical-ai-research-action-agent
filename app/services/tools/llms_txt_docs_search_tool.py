@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 
 from app.adapters.docs_search.contracts.docs_search_client_protocol import (
     DocsSearchClientProtocol,
@@ -96,7 +96,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             normalized_items.append(
                 NormalizedRetrievalItem(
                     item_id=result.item_id,
-                    source_family="docs_search",
+                    source_family=FamilyName.DOCS_SEARCH,
                     source_references=[source_reference],
                     content=result.content,
                     content_type="text_snippet",
@@ -149,6 +149,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
     ) -> RetrievalSourceSummary:
         return search_response.source_summary.model_copy(
             update={
+                "selected_family": FamilyName.DOCS_SEARCH,
                 "normalized_count": normalized_count,
             }
         )
@@ -181,6 +182,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             selected_sub_source_types = normalized_request.sub_source_types
         return RetrievalTrace(
             target_problem=normalized_request.target_problem,
+            selected_family=FamilyName.DOCS_SEARCH,
             returned_refs=[self._source_ref(result) for result in search_response.results],
             context={
                 "query_text": normalized_request.query_text,
@@ -199,6 +201,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             acquisition_status=AcquisitionStatus.FAILED,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
+                selected_family=FamilyName.DOCS_SEARCH,
                 normalized_count=0,
             ),
             execution_summary=self._execution_summary(
@@ -208,6 +211,7 @@ class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
             ),
             retrieval_trace=RetrievalTrace(
                 target_problem=normalized_request.target_problem,
+                selected_family=FamilyName.DOCS_SEARCH,
                 returned_refs=[],
                 context={
                     "query_text": normalized_request.query_text,

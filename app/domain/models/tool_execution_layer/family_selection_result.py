@@ -6,21 +6,23 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.domain.enums import FamilyName
+
 SelectionStatus = Literal["selected", "no_match", "failed"]
 
 
 class FamilySelectionResult(BaseModel):
     """Output of family-level routing before any tool-level selection occurs."""
 
-    candidate_families: list[str] = Field(
+    candidate_families: list[FamilyName] = Field(
         default_factory=list,
         description="Families that remain after scope and constraint filtering.",
     )
-    ranked_candidate_families: list[str] = Field(
+    ranked_candidate_families: list[FamilyName] = Field(
         default_factory=list,
         description="Candidate families ordered by the deterministic selection policy.",
     )
-    selected_family: str | None = Field(
+    selected_family: FamilyName | None = Field(
         default=None,
         description="Selected family for downstream family service invocation.",
     )

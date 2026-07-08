@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 
 
 class RetrievalAttemptTrace(BaseModel):
@@ -17,7 +17,7 @@ class RetrievalAttemptTrace(BaseModel):
     用于记录 retry/fallback 前后的每次尝试。docs tool 当前通常不直接创建该对象。
     """
 
-    selected_family: str | None = Field(
+    selected_family: FamilyName | None = Field(
         default=None,
         description=(
             "可选字段。本次 attempt 执行的 retrieval family。当前项目中有用：TEL 会写入 docs_search、paper_search、"

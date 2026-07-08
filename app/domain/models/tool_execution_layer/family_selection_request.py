@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from app.domain.enums import ActionMode
+from app.domain.enums import ActionMode, FamilyName
 from app.domain.models.tool_execution_layer.evidence_shape import EvidenceShape
 
 
@@ -38,19 +38,19 @@ class FamilySelectionRequest(BaseModel):
         default=None,
         description="Optional workflow evidence strategy from upstream routing.",
     )
-    allowed_source_families: list[str] = Field(
+    allowed_source_families: list[FamilyName] = Field(
         default_factory=list,
         description="Optional allow-list of source families for this acquisition.",
     )
-    preferred_source_families: list[str] = Field(
+    preferred_source_families: list[FamilyName] = Field(
         default_factory=list,
         description="Optional preference-ordered source families.",
     )
-    blocked_source_families: list[str] = Field(
+    blocked_source_families: list[FamilyName] = Field(
         default_factory=list,
         description="Source families that must not be selected.",
     )
-    available_families: list[str] = Field(
+    available_families: list[FamilyName] = Field(
         default_factory=list,
         description="Families available to the current runtime context.",
     )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models.retrieval import (
     NormalizedRetrievalItem,
     RetrievalExecutionSummary,
@@ -83,7 +83,7 @@ class BaseFamilyExecutionResult(BaseModel):
             "大型调试对象或完整 stack trace；详细诊断应放 retrieval_trace.errors 或 observability。"
         ),
     )
-    selected_family: str = Field(
+    selected_family: FamilyName = Field(
         description=(
             "必填字段。当前 family result 对应的 retrieval family。当前项目中该字段有用：ToolExecutionLayerService 和 "
             "RequestCompletionEvaluationService 会要求 request.selected_family 与 execution_outcome.selected_family 一致，"

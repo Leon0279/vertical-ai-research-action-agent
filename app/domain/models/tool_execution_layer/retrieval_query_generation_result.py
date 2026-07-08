@@ -6,13 +6,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.domain.enums import FamilyName
+
 GenerationStatus = Literal["succeeded", "failed"]
 
 
 class RetrievalQueryGenerationResult(BaseModel):
     """Output of generating an initial retrieval query for a selected family."""
 
-    selected_family: str | None = Field(
+    selected_family: FamilyName | None = Field(
         default=None,
         description="Selected family this query was generated for; never a selected tool.",
     )

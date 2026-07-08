@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.domain.enums import FamilyName
 from app.domain.models import (
     BaseFamilyExecutionResult,
     RequestCompletionEvaluationResult,
@@ -21,7 +22,7 @@ class ToolExecutionLayerAttemptOutcome:
     Research Executor、family service 或其它 component 直接依赖。
     """
 
-    selected_family: str | None = field(
+    selected_family: FamilyName | None = field(
         default=None,
         metadata={
             "description": (

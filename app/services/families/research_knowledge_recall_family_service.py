@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     ResearchKnowledgeMemoryToolRequest,
     ResearchKnowledgeMemoryToolResult,
@@ -23,7 +23,7 @@ from app.services.tools.contracts.research_knowledge_memory_tool_protocol import
 class ResearchKnowledgeRecallFamilyService(ResearchKnowledgeRecallFamilyServiceProtocol):
     """Resolve a research_knowledge_recall family request to a concrete recall tool."""
 
-    _FAMILY_NAME = "research_knowledge_recall"
+    _FAMILY_NAME = FamilyName.RESEARCH_KNOWLEDGE_RECALL
     _DEFAULT_TOOL_ID = "research_knowledge_memory_v1"
 
     def __init__(

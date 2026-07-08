@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     ArxivPaperSearchToolRequest,
     ArxivPaperSearchToolResult,
@@ -23,7 +23,7 @@ from app.services.tools.contracts.arxiv_paper_search_tool_protocol import (
 class PaperSearchFamilyService(PaperSearchFamilyServiceProtocol):
     """Resolve a paper_search family request to a concrete paper tool."""
 
-    _FAMILY_NAME = "paper_search"
+    _FAMILY_NAME = FamilyName.PAPER_SEARCH
     _DEFAULT_TOOL_ID = "arxiv_paper_search_v1"
 
     def __init__(self, arxiv_paper_search_tool: ArxivPaperSearchToolProtocol | None) -> None:

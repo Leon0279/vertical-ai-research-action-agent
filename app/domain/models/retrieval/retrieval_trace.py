@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.domain.enums import FamilyName
 from app.domain.models.retrieval.retrieval_attempt_trace import RetrievalAttemptTrace
 
 
@@ -26,7 +27,7 @@ class RetrievalTrace(BaseModel):
             "structuring 的 target_problem 语境。"
         ),
     )
-    selected_family: str | None = Field(
+    selected_family: FamilyName | None = Field(
         default=None,
         description=(
             "可选字段。当前 retrieval 选中的 family。当前项目中该字段有用：family/TEL 通常写入该字段；"

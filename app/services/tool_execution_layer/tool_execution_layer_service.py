@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     BaseFamilyExecutionResult,
     DocsSearchFamilyRequest,
@@ -81,10 +81,10 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         self._query_generation_service = query_generation_service
         self._completion_evaluation_service = completion_evaluation_service
         self._family_services = {
-            "docs_search": docs_search_family_service,
-            "paper_search": paper_search_family_service,
-            "web_search": web_search_family_service,
-            "research_knowledge_recall": research_knowledge_recall_family_service,
+            FamilyName.DOCS_SEARCH: docs_search_family_service,
+            FamilyName.PAPER_SEARCH: paper_search_family_service,
+            FamilyName.WEB_SEARCH: web_search_family_service,
+            FamilyName.RESEARCH_KNOWLEDGE_RECALL: research_knowledge_recall_family_service,
         }
 
     async def execute(
@@ -137,7 +137,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         *,
         request: ToolExecutionLayerRequest,
         state: ToolExecutionLayerRunState,
-        available_families: list[str],
+        available_families: list[FamilyName],
     ) -> ToolExecutionLayerAttemptOutcome:
         attempt_outcome = await self._prepare_attempt_family_and_query(
             request=request,
@@ -167,7 +167,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         *,
         request: ToolExecutionLayerRequest,
         state: ToolExecutionLayerRunState,
-        available_families: list[str],
+        available_families: list[FamilyName],
     ) -> ToolExecutionLayerAttemptOutcome:
         if state.retry_context is not None:
             selected_family, query_generation_result = state.retry_context
@@ -229,7 +229,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 or "Query generation did not produce a usable query."
             )
 
-        if selected_family == "research_knowledge_recall" and not request.owner_user_id:
+        if selected_family == FamilyName.RESEARCH_KNOWLEDGE_RECALL and not request.owner_user_id:
             return "owner_user_id is required for research_knowledge_recall family."
         return None
 
@@ -239,7 +239,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         request: ToolExecutionLayerRequest,
         state: ToolExecutionLayerRunState,
         attempt_outcome: ToolExecutionLayerAttemptOutcome,
-        available_families: list[str],
+        available_families: list[FamilyName],
     ) -> ToolExecutionLayerAttemptOutcome:
         selected_family = attempt_outcome.selected_family
         query_generation_result = attempt_outcome.query_generation_result
@@ -411,16 +411,16 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
             evidence_goal=(request.evidence_goal or "").strip() or None,
             evidence_shape=request.evidence_shape,
             task_framing=(request.task_framing or "").strip() or None,
-            allowed_source_families=self._normalize_string_list(
+            allowed_source_families=self._normalize_family_list(
                 request.allowed_source_families
             ),
-            preferred_source_families=self._normalize_string_list(
+            preferred_source_families=self._normalize_family_list(
                 request.preferred_source_families
             ),
-            blocked_source_families=self._normalize_string_list(
+            blocked_source_families=self._normalize_family_list(
                 request.blocked_source_families
             ),
-            available_families=self._normalize_string_list(request.available_families),
+            available_families=self._normalize_family_list(request.available_families),
             success_hint=(request.success_hint or "").strip() or None,
             recent_low_value_queries=self._normalize_string_list(
                 request.recent_low_value_queries
@@ -458,7 +458,18 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
             seen.add(stripped)
         return normalized
 
-    def _injected_families(self) -> list[str]:
+    def _normalize_family_list(self, values: list[FamilyName]) -> list[FamilyName]:
+        normalized: list[FamilyName] = []
+        seen: set[FamilyName] = set()
+        for value in values:
+            family = FamilyName(str(value).strip())
+            if family in seen:
+                continue
+            normalized.append(family)
+            seen.add(family)
+        return normalized
+
+    def _injected_families(self) -> list[FamilyName]:
         return [
             family
             for family, service in self._family_services.items()
@@ -468,8 +479,8 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
     def _effective_available_families(
         self,
         request: ToolExecutionLayerRequest,
-        injected_families: list[str],
-    ) -> list[str]:
+        injected_families: list[FamilyName],
+    ) -> list[FamilyName]:
         if not request.available_families:
             return injected_families
         injected = set(injected_families)
@@ -479,10 +490,10 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         self,
         *,
         request: ToolExecutionLayerRequest,
-        available_families: list[str],
-        blocked_families: list[str],
+        available_families: list[FamilyName],
+        blocked_families: list[FamilyName],
     ) -> FamilySelectionResult:
-        merged_blocked = self._normalize_string_list(
+        merged_blocked = self._normalize_family_list(
             [*request.blocked_source_families, *blocked_families]
         )
         return await self._family_selection_service.select_family(
@@ -503,7 +514,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         self,
         *,
         request: ToolExecutionLayerRequest,
-        selected_family: str,
+        selected_family: FamilyName,
     ) -> RetrievalQueryGenerationResult:
         return await self._query_generation_service.generate_query(
             RetrievalQueryGenerationRequest(
@@ -521,7 +532,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         self,
         *,
         request: ToolExecutionLayerRequest,
-        selected_family: str,
+        selected_family: FamilyName,
         generated_query: str,
         family_service: Any,
     ) -> tuple[BaseFamilyExecutionResult, str | None]:
@@ -546,11 +557,11 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         self,
         *,
         request: ToolExecutionLayerRequest,
-        selected_family: str,
+        selected_family: FamilyName,
         generated_query: str,
     ) -> Any:
         freshness_requirement = self._freshness_requirement(request)
-        if selected_family == "docs_search":
+        if selected_family == FamilyName.DOCS_SEARCH:
             return DocsSearchFamilyRequest(
                 query_text=generated_query,
                 target_problem=request.target_problem,
@@ -559,14 +570,14 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 max_search_results=request.max_search_results,
                 preferred_tool=request.preferred_tool,
             )
-        if selected_family == "paper_search":
+        if selected_family == FamilyName.PAPER_SEARCH:
             return PaperSearchFamilyRequest(
                 query_text=generated_query,
                 max_search_results=request.max_search_results,
                 max_content_fetches=request.max_content_fetches,
                 preferred_tool=request.preferred_tool,
             )
-        if selected_family == "web_search":
+        if selected_family == FamilyName.WEB_SEARCH:
             return WebSearchFamilyRequest(
                 query_text=generated_query,
                 target_problem=request.target_problem,
@@ -578,7 +589,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 min_score_threshold=request.min_score_threshold,
                 preferred_tool=request.preferred_tool,
             )
-        if selected_family == "research_knowledge_recall":
+        if selected_family == FamilyName.RESEARCH_KNOWLEDGE_RECALL:
             return ResearchKnowledgeRecallFamilyRequest(
                 owner_user_id=request.owner_user_id or "",
                 query_text=generated_query,
@@ -604,7 +615,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
     def _failed_family_result(
         self,
         *,
-        selected_family: str,
+        selected_family: FamilyName,
         generated_query: str,
         error_info: str,
     ) -> BaseFamilyExecutionResult:
@@ -637,14 +648,14 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
         self,
         *,
         request: ToolExecutionLayerRequest,
-        selected_family: str,
+        selected_family: FamilyName,
         generated_query: str,
         family_result: BaseFamilyExecutionResult,
         failure_reason: str | None,
         retry_count: int,
         fallback_applied: bool,
-        available_families: list[str],
-        blocked_families: list[str],
+        available_families: list[FamilyName],
+        blocked_families: list[FamilyName],
     ) -> RequestCompletionEvaluationResult:
         return await self._completion_evaluation_service.evaluate(
             RequestCompletionEvaluationRequest(
@@ -663,7 +674,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
                 request_elapsed_ms=None,
                 available_families=available_families,
                 allowed_source_families=request.allowed_source_families,
-                blocked_source_families=self._normalize_string_list(
+                blocked_source_families=self._normalize_family_list(
                     [*request.blocked_source_families, *blocked_families]
                 ),
             )
@@ -672,7 +683,7 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
     def _attempt_trace(
         self,
         *,
-        selected_family: str,
+        selected_family: FamilyName,
         query_generation_result: RetrievalQueryGenerationResult,
         family_result: BaseFamilyExecutionResult,
         evaluation_result: RequestCompletionEvaluationResult,

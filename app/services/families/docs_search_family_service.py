@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     DocsSearchFamilyRequest,
     DocsSearchFamilyResult,
@@ -23,7 +23,7 @@ from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
 class DocsSearchFamilyService(DocsSearchFamilyServiceProtocol):
     """Resolve a docs_search family request to a concrete docs tool."""
 
-    _FAMILY_NAME = "docs_search"
+    _FAMILY_NAME = FamilyName.DOCS_SEARCH
     _DEFAULT_TOOL_ID = "llms_txt_docs_search_v1"
 
     def __init__(self, llms_txt_docs_search_tool: LlmsTxtDocsSearchToolProtocol | None) -> None:

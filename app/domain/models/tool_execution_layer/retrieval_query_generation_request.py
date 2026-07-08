@@ -2,24 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
+from app.domain.enums import FamilyName
 from app.domain.models.tool_execution_layer.evidence_shape import EvidenceShape
-
-RetrievalFamily = Literal[
-    "research_knowledge_recall",
-    "docs_search",
-    "paper_search",
-    "web_search",
-]
 
 
 class RetrievalQueryGenerationRequest(BaseModel):
     """Input for generating an initial query for a selected retrieval family."""
 
-    selected_family: RetrievalFamily = Field(
+    selected_family: FamilyName = Field(
         description="Family already selected by family selection; this service does not choose tools.",
     )
     target_problem: str = Field(

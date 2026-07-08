@@ -8,7 +8,7 @@ from app.adapters.embedding.contracts.embedding_client_protocol import Embedding
 from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
     ResearchKnowledgeMemoryStoreProtocol,
 )
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     ResearchKnowledgeMemoryToolRequest,
     ResearchKnowledgeMemoryToolResult,
@@ -151,6 +151,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
             acquisition_status=AcquisitionStatus.PARTIAL_SUCCESS if dropped_item_count > 0 else AcquisitionStatus.SUCCESS,
             dropped_item_count=dropped_item_count,
             source_summary=RetrievalSourceSummary(
+                selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
                 normalized_count=len(normalized_items),
             ),
             execution_summary=RetrievalExecutionSummary(
@@ -160,6 +161,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
                 observability={"used_precomputed_embedding": used_precomputed_embedding},
             ),
             retrieval_trace=RetrievalTrace(
+                selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
                 returned_refs=[self._source_ref(item) for item in normalized_items],
                 context={
                     "query_text": normalized_request.query_text,
@@ -187,7 +189,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
                 normalized_items.append(
                     NormalizedRetrievalItem(
                         item_id=unit.knowledge_id,
-                        source_family="research_knowledge_recall",
+                        source_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
                         source_references=self._source_references(unit),
                         content=unit.summary,
                         content_type="knowledge_summary",
@@ -284,6 +286,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
             acquisition_status=AcquisitionStatus.FAILED,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
+                selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
                 normalized_count=0,
             ),
             execution_summary=RetrievalExecutionSummary(
@@ -293,6 +296,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
                 observability={"used_precomputed_embedding": bool(used_query_embedding)},
             ),
             retrieval_trace=RetrievalTrace(
+                selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
                 returned_refs=[],
                 errors={"recall_error": error_info},
                 context={
@@ -321,6 +325,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
             acquisition_status=AcquisitionStatus.NO_RESULT,
             dropped_item_count=dropped_item_count,
             source_summary=RetrievalSourceSummary(
+                selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
                 normalized_count=0,
             ),
             execution_summary=RetrievalExecutionSummary(
@@ -330,6 +335,7 @@ class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
                 observability={"used_precomputed_embedding": used_query_embedding},
             ),
             retrieval_trace=RetrievalTrace(
+                selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
                 returned_refs=[],
                 context={
                     "query_text": normalized_request.query_text,

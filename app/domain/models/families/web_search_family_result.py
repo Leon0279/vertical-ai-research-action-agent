@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
+from app.domain.enums import FamilyName
 from app.domain.models.families.base_family_execution_result import BaseFamilyExecutionResult
 
 
@@ -27,8 +28,8 @@ class WebSearchFamilyResult(BaseFamilyExecutionResult):
     失败路径还会在 `retrieval_trace.errors['family_error']` 中放简短 family 错误。
     """
 
-    selected_family: str = Field(
-        default="web_search",
+    selected_family: FamilyName = Field(
+        default=FamilyName.WEB_SEARCH,
         description=(
             "必填字段，有默认值 `web_search`；表示本 result 所属的 retrieval family。"
             "当前项目中有用：ToolExecutionLayerService 和 RequestCompletionEvaluationService 会用它校验 "

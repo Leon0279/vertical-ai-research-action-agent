@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from app.domain.enums import ActionMode
+from app.domain.enums import ActionMode, FamilyName
 from app.domain.models import EvidenceShape, FamilySelectionRequest, FamilySelectionResult
 from app.services.tool_execution_layer.contracts.family_selection_service_protocol import (
     FamilySelectionServiceProtocol,
@@ -12,11 +12,24 @@ from app.services.tool_execution_layer.contracts.family_selection_service_protoc
 class FamilySelectionService(FamilySelectionServiceProtocol):
     """Select a retrieval family without resolving a concrete tool."""
 
-    _MEMORY_FAMILIES = ("research_knowledge_recall",)
-    _EXTERNAL_FAMILIES = ("docs_search", "paper_search", "web_search")
+    _MEMORY_FAMILIES = (FamilyName.RESEARCH_KNOWLEDGE_RECALL,)
+    _EXTERNAL_FAMILIES = (
+        FamilyName.DOCS_SEARCH,
+        FamilyName.PAPER_SEARCH,
+        FamilyName.WEB_SEARCH,
+    )
     _SUPPORTED_FAMILIES = _MEMORY_FAMILIES + _EXTERNAL_FAMILIES
-    _EXTERNAL_FALLBACK_ORDER = ("docs_search", "web_search", "paper_search")
-    _ANY_FALLBACK_ORDER = ("research_knowledge_recall", "docs_search", "web_search", "paper_search")
+    _EXTERNAL_FALLBACK_ORDER = (
+        FamilyName.DOCS_SEARCH,
+        FamilyName.WEB_SEARCH,
+        FamilyName.PAPER_SEARCH,
+    )
+    _ANY_FALLBACK_ORDER = (
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+        FamilyName.DOCS_SEARCH,
+        FamilyName.WEB_SEARCH,
+        FamilyName.PAPER_SEARCH,
+    )
 
     async def select_family(self, request: FamilySelectionRequest) -> FamilySelectionResult:
         """Select the best family for the given acquisition intent."""
@@ -108,31 +121,41 @@ class FamilySelectionService(FamilySelectionServiceProtocol):
             available_families=self._normalize_family_list(request.available_families),
         )
 
-    def _normalize_family_list(self, values: list[str]) -> list[str]:
-        normalized: list[str] = []
-        seen: set[str] = set()
+    def _normalize_family_list(self, values: list[FamilyName]) -> list[FamilyName]:
+        normalized: list[FamilyName] = []
+        seen: set[FamilyName] = set()
         for value in values:
-            stripped = value.strip()
-            if not stripped or stripped in seen:
+            family = FamilyName(str(value).strip())
+            if family in seen:
                 continue
-            normalized.append(stripped)
-            seen.add(stripped)
+            normalized.append(family)
+            seen.add(family)
         return normalized
 
-    def _initial_scope(self, action_mode: ActionMode) -> list[str]:
+    def _initial_scope(self, action_mode: ActionMode) -> list[FamilyName]:
         if action_mode == ActionMode.MEMORY_BACKED_ACQUISITION:
             return list(self._MEMORY_FAMILIES)
         if action_mode == ActionMode.ANY:
             return list(self._SUPPORTED_FAMILIES)
         return list(self._EXTERNAL_FAMILIES)
 
-    def _filter_available(self, *, families: list[str], available_families: list[str]) -> list[str]:
+    def _filter_available(
+        self,
+        *,
+        families: list[FamilyName],
+        available_families: list[FamilyName],
+    ) -> list[FamilyName]:
         if not available_families:
             return families
         available = set(available_families)
         return [family for family in families if family in available]
 
-    def _filter_allowed(self, *, families: list[str], allowed_families: list[str]) -> list[str]:
+    def _filter_allowed(
+        self,
+        *,
+        families: list[FamilyName],
+        allowed_families: list[FamilyName],
+    ) -> list[FamilyName]:
         if not allowed_families:
             return families
         allowed = set(allowed_families)
@@ -141,9 +164,9 @@ class FamilySelectionService(FamilySelectionServiceProtocol):
     def _rank_families(
         self,
         *,
-        families: list[str],
+        families: list[FamilyName],
         request: FamilySelectionRequest,
-    ) -> list[str]:
+    ) -> list[FamilyName]:
         fallback_order = self._fallback_order(request.action_mode)
         fallback_index = {family: index for index, family in enumerate(fallback_order)}
         scores = {family: 0 for family in families}
@@ -169,7 +192,7 @@ class FamilySelectionService(FamilySelectionServiceProtocol):
             ),
         )
 
-    def _fallback_order(self, action_mode: ActionMode) -> tuple[str, ...]:
+    def _fallback_order(self, action_mode: ActionMode) -> tuple[FamilyName, ...]:
         if action_mode == ActionMode.MEMORY_BACKED_ACQUISITION:
             return self._MEMORY_FAMILIES
         if action_mode == ActionMode.ANY:
@@ -179,31 +202,31 @@ class FamilySelectionService(FamilySelectionServiceProtocol):
     def _apply_evidence_goal_scores(
         self,
         *,
-        scores: dict[str, int],
+        scores: dict[FamilyName, int],
         evidence_goal: str | None,
     ) -> None:
         if evidence_goal in {"improve_actionability", "establish_coverage"}:
-            self._add_score(scores, "docs_search", 35)
-            self._add_score(scores, "web_search", 10)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 35)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 10)
         if evidence_goal in {"rebalance_comparison", "resolve_conflict"}:
-            self._add_score(scores, "paper_search", 35)
-            self._add_score(scores, "web_search", 20)
-            self._add_score(scores, "docs_search", 10)
+            self._add_score(scores, FamilyName.PAPER_SEARCH, 35)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 20)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 10)
         if evidence_goal == "refresh_status":
-            self._add_score(scores, "web_search", 40)
-            self._add_score(scores, "docs_search", 25)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 40)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 25)
         if evidence_goal == "strengthen_support":
-            self._add_score(scores, "docs_search", 20)
-            self._add_score(scores, "paper_search", 15)
-            self._add_score(scores, "web_search", 10)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 20)
+            self._add_score(scores, FamilyName.PAPER_SEARCH, 15)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 10)
         if evidence_goal == "resolve_ambiguity":
-            self._add_score(scores, "docs_search", 25)
-            self._add_score(scores, "web_search", 20)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 25)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 20)
 
     def _apply_evidence_shape_scores(
         self,
         *,
-        scores: dict[str, int],
+        scores: dict[FamilyName, int],
         evidence_shape: EvidenceShape | None,
     ) -> None:
         if evidence_shape is None:
@@ -214,40 +237,40 @@ class FamilySelectionService(FamilySelectionServiceProtocol):
         breadth = evidence_shape.breadth
 
         if desired_kind == "direct_fact":
-            self._add_score(scores, "docs_search", 35)
-            self._add_score(scores, "web_search", 15)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 35)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 15)
         elif desired_kind == "status_evidence":
-            self._add_score(scores, "web_search", 40)
-            self._add_score(scores, "docs_search", 25)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 40)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 25)
         elif desired_kind == "comparison_evidence":
-            self._add_score(scores, "paper_search", 35)
-            self._add_score(scores, "docs_search", 15)
-            self._add_score(scores, "web_search", 10)
+            self._add_score(scores, FamilyName.PAPER_SEARCH, 35)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 15)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 10)
         elif desired_kind == "disambiguating_evidence":
-            self._add_score(scores, "docs_search", 25)
-            self._add_score(scores, "web_search", 20)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 25)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 20)
         elif desired_kind == "supporting_evidence":
-            self._add_score(scores, "docs_search", 15)
-            self._add_score(scores, "paper_search", 15)
-            self._add_score(scores, "web_search", 10)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 15)
+            self._add_score(scores, FamilyName.PAPER_SEARCH, 15)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 10)
 
         if freshness == "fresh_required":
-            self._add_score(scores, "web_search", 40)
-            self._add_score(scores, "docs_search", 25)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 40)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 25)
         elif freshness == "fresh_preferred":
-            self._add_score(scores, "web_search", 15)
-            self._add_score(scores, "docs_search", 10)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 15)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 10)
 
         if breadth == "narrow":
-            self._add_score(scores, "docs_search", 20)
+            self._add_score(scores, FamilyName.DOCS_SEARCH, 20)
         elif breadth == "broad":
-            self._add_score(scores, "web_search", 20)
-            self._add_score(scores, "paper_search", 10)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 20)
+            self._add_score(scores, FamilyName.PAPER_SEARCH, 10)
 
     def _apply_contextual_scores(
         self,
         *,
-        scores: dict[str, int],
+        scores: dict[FamilyName, int],
         task_framing: str | None,
         evidence_strategy: str | None,
     ) -> None:
@@ -256,13 +279,13 @@ class FamilySelectionService(FamilySelectionServiceProtocol):
             return
         normalized = combined.lower()
         if any(term in normalized for term in ["memory", "recall", "reuse", "existing knowledge"]):
-            self._add_score(scores, "research_knowledge_recall", 30)
+            self._add_score(scores, FamilyName.RESEARCH_KNOWLEDGE_RECALL, 30)
         if any(term in normalized for term in ["comparison", "method", "research"]):
-            self._add_score(scores, "paper_search", 15)
+            self._add_score(scores, FamilyName.PAPER_SEARCH, 15)
         if any(term in normalized for term in ["latest", "fresh", "current", "status"]):
-            self._add_score(scores, "web_search", 15)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 15)
 
-    def _add_score(self, scores: dict[str, int], family: str, score: int) -> None:
+    def _add_score(self, scores: dict[FamilyName, int], family: FamilyName, score: int) -> None:
         if family in scores:
             scores[family] += score
 
@@ -295,9 +318,9 @@ class FamilySelectionService(FamilySelectionServiceProtocol):
         self,
         *,
         normalized_request: FamilySelectionRequest,
-        initial_scope: list[str],
-        available_filtered: list[str],
-        allowed_filtered: list[str],
+        initial_scope: list[FamilyName],
+        available_filtered: list[FamilyName],
+        allowed_filtered: list[FamilyName],
     ) -> FamilySelectionResult:
         error_info = "No matching source family is available for this request."
         return FamilySelectionResult(

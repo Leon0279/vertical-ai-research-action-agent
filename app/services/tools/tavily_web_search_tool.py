@@ -10,7 +10,7 @@ from app.adapters.web_content_fetch.contracts.web_content_fetch_client_protocol 
 from app.adapters.web_search.contracts.web_search_client_protocol import (
     WebSearchClientProtocol,
 )
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     RetrievalExecutionSummary,
     RetrievalSourceSummary,
@@ -132,6 +132,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
             acquisition_status=AcquisitionStatus.FAILED,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
+                selected_family=FamilyName.WEB_SEARCH,
                 normalized_count=0,
             ),
             execution_summary=RetrievalExecutionSummary(
@@ -146,6 +147,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
                 },
             ),
             retrieval_trace=RetrievalTrace(
+                selected_family=FamilyName.WEB_SEARCH,
                 errors={"search_error": error_info},
                 observability={
                     "attempted_urls": [],
@@ -161,6 +163,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
             acquisition_status=AcquisitionStatus.NO_RESULT,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
+                selected_family=FamilyName.WEB_SEARCH,
                 normalized_count=0,
             ),
             execution_summary=RetrievalExecutionSummary(
@@ -175,6 +178,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
                 },
             ),
             retrieval_trace=RetrievalTrace(
+                selected_family=FamilyName.WEB_SEARCH,
                 observability={
                     "attempted_urls": [],
                     "fetched_urls": [],
@@ -197,6 +201,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
             acquisition_status=acquisition_status,
             dropped_item_count=0,
             source_summary=RetrievalSourceSummary(
+                selected_family=FamilyName.WEB_SEARCH,
                 normalized_count=len(normalized_items),
             ),
             execution_summary=execution_summary,
@@ -280,6 +285,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
             },
         )
         retrieval_trace = RetrievalTrace(
+            selected_family=FamilyName.WEB_SEARCH,
             observability={
                 "attempted_urls": [candidate.url for candidate in candidates],
                 "selected_for_fetch": [candidate.url for candidate in selected_candidates],
@@ -366,7 +372,7 @@ class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
 
         item = NormalizedRetrievalItem(
             item_id=candidate.item_id,
-            source_family="web_search",
+            source_family=FamilyName.WEB_SEARCH,
             source_references=[
                 SourceReference(
                     source_type="web_page",

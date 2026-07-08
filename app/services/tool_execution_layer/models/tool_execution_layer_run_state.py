@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.domain.enums import FamilyName
 from app.domain.models import (
     BaseFamilyExecutionResult,
     FamilySelectionResult,
@@ -23,7 +24,7 @@ class ToolExecutionLayerRunState:
     不应被 Tool Execution Layer 之外的组件直接依赖。
     """
 
-    blocked_families: list[str] = field(
+    blocked_families: list[FamilyName] = field(
         metadata={
             "description": (
                 "必填字段。本次 TEL request 内当前禁止再次选择的 family 列表。初始值来自 "
@@ -121,7 +122,7 @@ class ToolExecutionLayerRunState:
             ),
         },
     )
-    retry_context: tuple[str, RetrievalQueryGenerationResult] | None = field(
+    retry_context: tuple[FamilyName, RetrievalQueryGenerationResult] | None = field(
         default=None,
         metadata={
             "description": (

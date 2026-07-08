@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     NormalizedRetrievalItem,
     RetrievalExecutionSummary,
@@ -16,7 +16,7 @@ from app.domain.models import (
 def test_normalized_retrieval_item_supports_core_fields_and_metadata() -> None:
     item = NormalizedRetrievalItem(
         item_id="item-1",
-        source_family="docs_search",
+        source_family=FamilyName.DOCS_SEARCH,
         source_references=[
             SourceReference(
                 source_type="document",
@@ -30,6 +30,8 @@ def test_normalized_retrieval_item_supports_core_fields_and_metadata() -> None:
 
     dumped = item.model_dump()
     assert item.source_references[0].source_url == "https://example.test/docs"
+    assert item.source_family == FamilyName.DOCS_SEARCH
+    assert item.model_dump(mode="json")["source_family"] == "docs_search"
     assert "source_references" in dumped
     assert "source_reference" not in dumped
     assert "source_ref" not in dumped

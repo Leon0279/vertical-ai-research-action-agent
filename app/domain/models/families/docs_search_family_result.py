@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
+from app.domain.enums import FamilyName
 from app.domain.models.families.base_family_execution_result import BaseFamilyExecutionResult
 
 
@@ -17,8 +18,8 @@ class DocsSearchFamilyResult(BaseFamilyExecutionResult):
     以及未来新版 Research Executor 链路消费。
     """
 
-    selected_family: str = Field(
-        default="docs_search",
+    selected_family: FamilyName = Field(
+        default=FamilyName.DOCS_SEARCH,
         description=(
             "必填字段，默认 docs_search。表示当前 family result 属于 docs_search family。当前项目中该字段有用："
             "DocsSearchFamilyService 固定写入该值；ToolExecutionLayerService 和 RequestCompletionEvaluationService "

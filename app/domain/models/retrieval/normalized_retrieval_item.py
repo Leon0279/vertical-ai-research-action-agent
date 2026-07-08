@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.domain.enums import FamilyName
 from app.domain.models.source import SourceReference
 
 
@@ -27,10 +28,10 @@ class NormalizedRetrievalItem(BaseModel):
             "paper id、web result id 或 knowledge id。它只要求在一次 retrieval 输出内相对稳定，不要求全局唯一。"
         ),
     )
-    source_family: str = Field(
-        default="",
+    source_family: FamilyName | None = Field(
+        default=None,
         description=(
-            "可选字段，默认空字符串。产出该 item 的 retrieval family，例如 docs_search、paper_search、"
+            "可选字段，默认 None。产出该 item 的 retrieval family，例如 docs_search、paper_search、"
             "web_search、research_knowledge_recall。当前项目中该字段有用：EvidenceProcessingService 会将它写入 "
             "ProcessedEvidenceUnit.source_family，并用于 evidence summary 的 source family coverage。"
         ),

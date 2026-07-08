@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from app.domain.enums import FamilyName
+
 
 class RetrievalSourceSummary(BaseModel):
     """tool、family 和 Tool Execution Layer 共用的来源/provenance 摘要。
@@ -15,7 +17,7 @@ class RetrievalSourceSummary(BaseModel):
     tool result、family result、ToolExecutionLayerResult 和 EvidenceProcessingRequest 中。
     """
 
-    selected_family: str | None = Field(
+    selected_family: FamilyName | None = Field(
         default=None,
         description=(
             "可选字段。当前执行选择的 retrieval family。当前项目中该字段有用：tool 层通常会写入自己的 family，"

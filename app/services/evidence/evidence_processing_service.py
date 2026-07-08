@@ -595,7 +595,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         material: NormalizedRetrievalItem,
     ) -> str:
         return (
-            material.source_family.strip()
+            self._string_value(material.source_family)
             or self._string_value(request.retrieval_trace.get("selected_family"))
             or self._string_value(request.source_summary.get("selected_family"))
             or "unknown_family"

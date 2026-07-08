@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
+from app.domain.enums import FamilyName
 from app.domain.models.families.base_family_execution_result import BaseFamilyExecutionResult
 
 
@@ -29,8 +30,8 @@ class ResearchKnowledgeRecallFamilyResult(BaseFamilyExecutionResult):
     - error_info：family 或 tool 顶层失败摘要，不承载原始数据库行、完整 stack trace 或大型 debug payload。
     """
 
-    selected_family: str = Field(
-        default="research_knowledge_recall",
+    selected_family: FamilyName = Field(
+        default=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
         description=(
             "必填字段，默认 research_knowledge_recall。表示当前 family result 属于 research_knowledge_recall family。"
             "当前项目中该字段有用：ResearchKnowledgeRecallFamilyService 固定写入该值；"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.domain.enums import ActionMode
+from app.domain.enums import ActionMode, FamilyName
 from app.domain.models import EvidenceShape, FamilySelectionRequest
 from app.services.tool_execution_layer.family_selection_service import FamilySelectionService
 
@@ -43,6 +43,24 @@ def test_action_mode_accepts_legacy_string_and_dumps_string_value() -> None:
     assert request.action_mode == ActionMode.MEMORY_BACKED_ACQUISITION
     assert ActionMode.EXTERNAL_ACQUISITION == "external_acquisition"
     assert request.model_dump(mode="json")["action_mode"] == "memory_backed_acquisition"
+
+
+def test_family_name_accepts_legacy_strings_and_dumps_string_values() -> None:
+    request = FamilySelectionRequest(
+        target_problem="Find implementation docs",
+        available_families=["docs_search", "web_search"],
+        preferred_source_families=[FamilyName.WEB_SEARCH],
+        blocked_source_families=["paper_search"],
+    )
+
+    assert request.available_families == [FamilyName.DOCS_SEARCH, FamilyName.WEB_SEARCH]
+    assert request.preferred_source_families == [FamilyName.WEB_SEARCH]
+    assert request.blocked_source_families == [FamilyName.PAPER_SEARCH]
+    assert FamilyName.DOCS_SEARCH == "docs_search"
+    assert request.model_dump(mode="json")["available_families"] == [
+        "docs_search",
+        "web_search",
+    ]
 
 
 def test_fresh_status_evidence_selects_web_search() -> None:
