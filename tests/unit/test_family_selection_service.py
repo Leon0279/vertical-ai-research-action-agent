@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
+from app.domain.enums import ActionMode
 from app.domain.models import EvidenceShape, FamilySelectionRequest
 from app.services.tool_execution_layer.family_selection_service import FamilySelectionService
 
@@ -25,12 +26,23 @@ def test_memory_backed_acquisition_selects_research_knowledge_recall() -> None:
     result = _select(
         FamilySelectionRequest(
             target_problem="Reuse prior pgvector governance conclusion",
-            action_mode="memory_backed_acquisition",
+            action_mode=ActionMode.MEMORY_BACKED_ACQUISITION,
         )
     )
 
     assert result.selection_status == "selected"
     assert result.selected_family == "research_knowledge_recall"
+
+
+def test_action_mode_accepts_legacy_string_and_dumps_string_value() -> None:
+    request = FamilySelectionRequest(
+        target_problem="Reuse prior pgvector governance conclusion",
+        action_mode="memory_backed_acquisition",
+    )
+
+    assert request.action_mode == ActionMode.MEMORY_BACKED_ACQUISITION
+    assert ActionMode.EXTERNAL_ACQUISITION == "external_acquisition"
+    assert request.model_dump(mode="json")["action_mode"] == "memory_backed_acquisition"
 
 
 def test_fresh_status_evidence_selects_web_search() -> None:

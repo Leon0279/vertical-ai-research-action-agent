@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, ActionMode
 
 from app.domain.models import (
     BaseFamilyExecutionResult,
@@ -328,7 +328,7 @@ def test_memory_selected_without_owner_user_id_returns_failed() -> None:
         service,
         ToolExecutionLayerRequest(
             target_problem="Recall prior knowledge",
-            action_mode="memory_backed_acquisition",
+            action_mode=ActionMode.MEMORY_BACKED_ACQUISITION,
         ),
     )
 

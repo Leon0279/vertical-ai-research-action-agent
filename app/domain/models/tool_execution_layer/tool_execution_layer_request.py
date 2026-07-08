@@ -6,8 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.domain.enums import ActionMode
 from app.domain.models.tool_execution_layer.evidence_shape import EvidenceShape
-from app.domain.models.tool_execution_layer.family_selection_request import ActionMode
 from app.domain.models.tool_execution_layer.request_completion_evaluation_request import (
     FallbackPolicy,
 )
@@ -35,7 +35,7 @@ class ToolExecutionLayerRequest(BaseModel):
         ),
     )
     action_mode: ActionMode = Field(
-        default="external_acquisition",
+        default=ActionMode.EXTERNAL_ACQUISITION,
         description=(
             "可选字段，默认 external_acquisition。高层 acquisition 模式，用于限制 family selection 的初始范围。"
             "当前项目中有用：memory_backed_acquisition 会优先/限定 research_knowledge_recall；"

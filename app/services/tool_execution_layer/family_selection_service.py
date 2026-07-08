@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.domain.enums import ActionMode
 from app.domain.models import EvidenceShape, FamilySelectionRequest, FamilySelectionResult
 from app.services.tool_execution_layer.contracts.family_selection_service_protocol import (
     FamilySelectionServiceProtocol,
@@ -118,10 +119,10 @@ class FamilySelectionService(FamilySelectionServiceProtocol):
             seen.add(stripped)
         return normalized
 
-    def _initial_scope(self, action_mode: str) -> list[str]:
-        if action_mode == "memory_backed_acquisition":
+    def _initial_scope(self, action_mode: ActionMode) -> list[str]:
+        if action_mode == ActionMode.MEMORY_BACKED_ACQUISITION:
             return list(self._MEMORY_FAMILIES)
-        if action_mode == "any":
+        if action_mode == ActionMode.ANY:
             return list(self._SUPPORTED_FAMILIES)
         return list(self._EXTERNAL_FAMILIES)
 
@@ -168,10 +169,10 @@ class FamilySelectionService(FamilySelectionServiceProtocol):
             ),
         )
 
-    def _fallback_order(self, action_mode: str) -> tuple[str, ...]:
-        if action_mode == "memory_backed_acquisition":
+    def _fallback_order(self, action_mode: ActionMode) -> tuple[str, ...]:
+        if action_mode == ActionMode.MEMORY_BACKED_ACQUISITION:
             return self._MEMORY_FAMILIES
-        if action_mode == "any":
+        if action_mode == ActionMode.ANY:
             return self._ANY_FALLBACK_ORDER
         return self._EXTERNAL_FALLBACK_ORDER
 

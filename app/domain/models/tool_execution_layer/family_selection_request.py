@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field
 
+from app.domain.enums import ActionMode
 from app.domain.models.tool_execution_layer.evidence_shape import EvidenceShape
-
-ActionMode = Literal["memory_backed_acquisition", "external_acquisition", "any"]
 
 
 class FamilySelectionRequest(BaseModel):
@@ -18,7 +15,7 @@ class FamilySelectionRequest(BaseModel):
         description="Current retrieval target problem or evidence need.",
     )
     action_mode: ActionMode = Field(
-        default="external_acquisition",
+        default=ActionMode.EXTERNAL_ACQUISITION,
         description="High-level acquisition mode used to scope candidate families.",
     )
     evidence_goal: str | None = Field(
