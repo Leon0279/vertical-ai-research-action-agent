@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from app.domain.enums import AcquisitionStatus
 from app.domain.models import (
@@ -49,6 +49,14 @@ from app.services.tool_execution_layer.contracts.retrieval_query_generation_serv
 from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
     ToolExecutionLayerServiceProtocol,
 )
+from app.services.tool_execution_layer.models.tool_execution_layer_attempt_outcome import (
+    ToolExecutionLayerAttemptOutcome,
+)
+from app.services.tool_execution_layer.models.tool_execution_layer_run_state import (
+    ToolExecutionLayerRunState,
+)
+
+_ExecutionDirective = Literal["continue", "complete"]
 
 
 class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
@@ -91,249 +99,307 @@ class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
             normalized_request,
             injected_families,
         )
-
-        blocked_families = list(normalized_request.blocked_source_families)
-        attempts: list[dict[str, Any]] = []
-        latest_selection: FamilySelectionResult | None = None
-        latest_query_generation: RetrievalQueryGenerationResult | None = None
-        latest_family_result: BaseFamilyExecutionResult | None = None
-        latest_evaluation: RequestCompletionEvaluationResult | None = None
-        retry_count = 0
-        fallback_applied = False
-        recovery_attempt_count = 0
-        recovery_exhausted_reason: str | None = None
-        retry_family: str | None = None
-        retry_query_generation: RetrievalQueryGenerationResult | None = None
+        state = self._create_execution_state(normalized_request)
 
         while True:
-            if retry_family is None:
-                selection_result = await self._select_family(
-                    request=normalized_request,
-                    available_families=effective_available_families,
-                    blocked_families=blocked_families,
-                )
-                latest_selection = selection_result
-                if (
-                    selection_result.selection_status != "selected"
-                    or not selection_result.selected_family
-                ):
-                    return self._failed_result(
-                        request=normalized_request,
-                        family_selection_result=latest_selection,
-                        query_generation_result=latest_query_generation,
-                        family_execution_result=latest_family_result,
-                        completion_evaluation_result=latest_evaluation,
-                        retry_count=retry_count,
-                        fallback_applied=fallback_applied,
-                        recovery_attempt_count=recovery_attempt_count,
-                        attempts=attempts,
-                        error_info=selection_result.error_info
-                        or "No family was selected for Tool Execution Layer request.",
-                        recovery_exhausted_reason=recovery_exhausted_reason,
-                    )
-
-                selected_family = selection_result.selected_family
-                query_generation_result = await self._generate_query(
-                    request=normalized_request,
-                    selected_family=selected_family,
-                )
-                latest_query_generation = query_generation_result
-            else:
-                selected_family = retry_family
-                query_generation_result = retry_query_generation
-                retry_family = None
-                retry_query_generation = None
-
-            if query_generation_result is None:
-                return self._failed_result(
-                    request=normalized_request,
-                    family_selection_result=latest_selection,
-                    query_generation_result=latest_query_generation,
-                    family_execution_result=latest_family_result,
-                    completion_evaluation_result=latest_evaluation,
-                    retry_count=retry_count,
-                    fallback_applied=fallback_applied,
-                    recovery_attempt_count=recovery_attempt_count,
-                    attempts=attempts,
-                    error_info="Retry requested without a generated query.",
-                    recovery_exhausted_reason=recovery_exhausted_reason,
-                )
-
-            family_service = self._family_services.get(selected_family)
-            if family_service is None:
-                return self._failed_result(
-                    request=normalized_request,
-                    family_selection_result=latest_selection,
-                    query_generation_result=latest_query_generation,
-                    family_execution_result=latest_family_result,
-                    completion_evaluation_result=latest_evaluation,
-                    retry_count=retry_count,
-                    fallback_applied=fallback_applied,
-                    recovery_attempt_count=recovery_attempt_count,
-                    attempts=attempts,
-                    error_info=f"No family service registered for selected family '{selected_family}'.",
-                    recovery_exhausted_reason=recovery_exhausted_reason,
-                )
-
-            generated_query = query_generation_result.generated_query
-            if (
-                query_generation_result.generation_status != "succeeded"
-                or not generated_query
-            ):
-                return self._failed_result(
-                    request=normalized_request,
-                    family_selection_result=latest_selection,
-                    query_generation_result=latest_query_generation,
-                    family_execution_result=latest_family_result,
-                    completion_evaluation_result=latest_evaluation,
-                    retry_count=retry_count,
-                    fallback_applied=fallback_applied,
-                    recovery_attempt_count=recovery_attempt_count,
-                    attempts=attempts,
-                    error_info=query_generation_result.error_info
-                    or "Query generation did not produce a usable query.",
-                    recovery_exhausted_reason=recovery_exhausted_reason,
-                )
-
-            if selected_family == "research_knowledge_recall" and not normalized_request.owner_user_id:
-                return self._failed_result(
-                    request=normalized_request,
-                    family_selection_result=latest_selection,
-                    query_generation_result=latest_query_generation,
-                    family_execution_result=latest_family_result,
-                    completion_evaluation_result=latest_evaluation,
-                    retry_count=retry_count,
-                    fallback_applied=fallback_applied,
-                    recovery_attempt_count=recovery_attempt_count,
-                    attempts=attempts,
-                    error_info="owner_user_id is required for research_knowledge_recall family.",
-                    recovery_exhausted_reason=recovery_exhausted_reason,
-                )
-
-            family_result, execution_failure_reason = await self._execute_family(
+            attempt_outcome = await self._run_attempt(
                 request=normalized_request,
-                selected_family=selected_family,
-                generated_query=generated_query,
-                family_service=family_service,
-            )
-            latest_family_result = family_result
-
-            evaluation_result = await self._evaluate_completion(
-                request=normalized_request,
-                selected_family=selected_family,
-                generated_query=generated_query,
-                family_result=family_result,
-                failure_reason=execution_failure_reason,
-                retry_count=retry_count,
-                fallback_applied=fallback_applied,
+                state=state,
                 available_families=effective_available_families,
-                blocked_families=blocked_families,
             )
-            latest_evaluation = evaluation_result
-            if evaluation_result.evaluation_status == "failed":
-                return self._failed_result(
+            if attempt_outcome.error_info is not None:
+                return self._failed_from_state(
                     request=normalized_request,
-                    family_selection_result=latest_selection,
-                    query_generation_result=latest_query_generation,
-                    family_execution_result=latest_family_result,
-                    completion_evaluation_result=latest_evaluation,
-                    retry_count=retry_count,
-                    fallback_applied=fallback_applied,
-                    recovery_attempt_count=recovery_attempt_count,
-                    attempts=attempts,
-                    error_info=evaluation_result.error_info
-                    or "Request completion evaluation failed.",
-                    recovery_exhausted_reason=recovery_exhausted_reason,
+                    state=state,
+                    error_info=attempt_outcome.error_info,
                 )
 
-            attempt = self._attempt_trace(
+            self._record_attempt(state, attempt_outcome)
+            directive = self._apply_evaluation_result(
+                request=normalized_request,
+                state=state,
+                attempt_outcome=attempt_outcome,
+            )
+            if directive == "continue":
+                continue
+            return self._completed_from_state(request=normalized_request, state=state)
+
+    def _create_execution_state(
+        self,
+        request: ToolExecutionLayerRequest,
+    ) -> ToolExecutionLayerRunState:
+        return ToolExecutionLayerRunState(
+            blocked_families=list(request.blocked_source_families),
+        )
+
+    async def _run_attempt(
+        self,
+        *,
+        request: ToolExecutionLayerRequest,
+        state: ToolExecutionLayerRunState,
+        available_families: list[str],
+    ) -> ToolExecutionLayerAttemptOutcome:
+        attempt_outcome = await self._prepare_attempt_family_and_query(
+            request=request,
+            state=state,
+            available_families=available_families,
+        )
+        if attempt_outcome.error_info is not None:
+            return attempt_outcome
+
+        validation_error = self._validate_attempt_ready(
+            request=request,
+            attempt_outcome=attempt_outcome,
+        )
+        if validation_error is not None:
+            attempt_outcome.error_info = validation_error
+            return attempt_outcome
+
+        return await self._run_family_and_evaluate(
+            request=request,
+            state=state,
+            attempt_outcome=attempt_outcome,
+            available_families=available_families,
+        )
+
+    async def _prepare_attempt_family_and_query(
+        self,
+        *,
+        request: ToolExecutionLayerRequest,
+        state: ToolExecutionLayerRunState,
+        available_families: list[str],
+    ) -> ToolExecutionLayerAttemptOutcome:
+        if state.retry_context is not None:
+            selected_family, query_generation_result = state.retry_context
+            state.retry_context = None
+            return ToolExecutionLayerAttemptOutcome(
                 selected_family=selected_family,
                 query_generation_result=query_generation_result,
-                family_result=family_result,
-                evaluation_result=evaluation_result,
-                retry_count=retry_count,
-                fallback_applied=fallback_applied,
             )
-            attempts.append(attempt)
 
-            if evaluation_result.recovery_action == "stop":
-                return self._completed_result(
-                    request=normalized_request,
-                    family_selection_result=latest_selection,
-                    query_generation_result=latest_query_generation,
-                    family_execution_result=latest_family_result,
-                    completion_evaluation_result=latest_evaluation,
-                    retry_count=retry_count,
-                    fallback_applied=fallback_applied,
-                    recovery_attempt_count=recovery_attempt_count,
-                    attempts=attempts,
-                    recovery_exhausted_reason=recovery_exhausted_reason,
-                )
-
-            if evaluation_result.recovery_action == "retry_same_tool":
-                if retry_count >= normalized_request.retry_budget:
-                    recovery_exhausted_reason = "retry_budget_exhausted"
-                    return self._completed_result(
-                        request=normalized_request,
-                        family_selection_result=latest_selection,
-                        query_generation_result=latest_query_generation,
-                        family_execution_result=latest_family_result,
-                        completion_evaluation_result=latest_evaluation,
-                        retry_count=retry_count,
-                        fallback_applied=fallback_applied,
-                        recovery_attempt_count=recovery_attempt_count,
-                        attempts=attempts,
-                        recovery_exhausted_reason=recovery_exhausted_reason,
-                    )
-                retry_count += 1
-                recovery_attempt_count += 1
-                retry_family = selected_family
-                retry_query_generation = query_generation_result
-                continue
-
-            if (
-                evaluation_result.recovery_action == "fallback"
-                and evaluation_result.next_step_hint == "fallback_to_broader_search"
-            ):
-                if selected_family not in blocked_families:
-                    blocked_families.append(selected_family)
-                if fallback_applied:
-                    recovery_exhausted_reason = "fallback_already_applied"
-                    return self._completed_result(
-                        request=normalized_request,
-                        family_selection_result=latest_selection,
-                        query_generation_result=latest_query_generation,
-                        family_execution_result=latest_family_result,
-                        completion_evaluation_result=latest_evaluation,
-                        retry_count=retry_count,
-                        fallback_applied=fallback_applied,
-                        recovery_attempt_count=recovery_attempt_count,
-                        attempts=attempts,
-                        recovery_exhausted_reason=recovery_exhausted_reason,
-                    )
-                fallback_applied = True
-                recovery_attempt_count += 1
-                continue
-
-            recovery_exhausted_reason = (
-                "same_family_fallback_not_executable"
-                if evaluation_result.next_step_hint == "fallback_within_same_family"
-                else "continuation_not_supported"
-                if evaluation_result.next_step_hint == "continue_current_request"
-                else "recovery_action_not_executable"
+        selection_result = await self._select_family(
+            request=request,
+            available_families=available_families,
+            blocked_families=state.blocked_families,
+        )
+        state.latest_selection = selection_result
+        if (
+            selection_result.selection_status != "selected"
+            or not selection_result.selected_family
+        ):
+            return ToolExecutionLayerAttemptOutcome(
+                error_info=selection_result.error_info
+                or "No family was selected for Tool Execution Layer request.",
             )
-            return self._completed_result(
-                request=normalized_request,
-                family_selection_result=latest_selection,
-                query_generation_result=latest_query_generation,
-                family_execution_result=latest_family_result,
-                completion_evaluation_result=latest_evaluation,
-                retry_count=retry_count,
-                fallback_applied=fallback_applied,
-                recovery_attempt_count=recovery_attempt_count,
-                attempts=attempts,
-                recovery_exhausted_reason=recovery_exhausted_reason,
+
+        selected_family = selection_result.selected_family
+        query_generation_result = await self._generate_query(
+            request=request,
+            selected_family=selected_family,
+        )
+        state.latest_query_generation = query_generation_result
+        return ToolExecutionLayerAttemptOutcome(
+            selected_family=selected_family,
+            query_generation_result=query_generation_result,
+        )
+
+    def _validate_attempt_ready(
+        self,
+        *,
+        request: ToolExecutionLayerRequest,
+        attempt_outcome: ToolExecutionLayerAttemptOutcome,
+    ) -> str | None:
+        selected_family = attempt_outcome.selected_family
+        query_generation_result = attempt_outcome.query_generation_result
+        if selected_family is None:
+            return "No selected family is available for Tool Execution Layer attempt."
+        if query_generation_result is None:
+            return "Retry requested without a generated query."
+
+        family_service = self._family_services.get(selected_family)
+        if family_service is None:
+            return f"No family service registered for selected family '{selected_family}'."
+
+        if (
+            query_generation_result.generation_status != "succeeded"
+            or not query_generation_result.generated_query
+        ):
+            return (
+                query_generation_result.error_info
+                or "Query generation did not produce a usable query."
             )
+
+        if selected_family == "research_knowledge_recall" and not request.owner_user_id:
+            return "owner_user_id is required for research_knowledge_recall family."
+        return None
+
+    async def _run_family_and_evaluate(
+        self,
+        *,
+        request: ToolExecutionLayerRequest,
+        state: ToolExecutionLayerRunState,
+        attempt_outcome: ToolExecutionLayerAttemptOutcome,
+        available_families: list[str],
+    ) -> ToolExecutionLayerAttemptOutcome:
+        selected_family = attempt_outcome.selected_family
+        query_generation_result = attempt_outcome.query_generation_result
+        if selected_family is None or query_generation_result is None:
+            attempt_outcome.error_info = (
+                "Attempt cannot run without selected family and generated query."
+            )
+            return attempt_outcome
+
+        family_service = self._family_services[selected_family]
+        generated_query = query_generation_result.generated_query or ""
+        family_result, execution_failure_reason = await self._execute_family(
+            request=request,
+            selected_family=selected_family,
+            generated_query=generated_query,
+            family_service=family_service,
+        )
+        state.latest_family_result = family_result
+        attempt_outcome.family_result = family_result
+        attempt_outcome.execution_failure_reason = execution_failure_reason
+
+        evaluation_result = await self._evaluate_completion(
+            request=request,
+            selected_family=selected_family,
+            generated_query=generated_query,
+            family_result=family_result,
+            failure_reason=execution_failure_reason,
+            retry_count=state.retry_count,
+            fallback_applied=state.fallback_applied,
+            available_families=available_families,
+            blocked_families=state.blocked_families,
+        )
+        state.latest_evaluation = evaluation_result
+        attempt_outcome.evaluation_result = evaluation_result
+        if evaluation_result.evaluation_status == "failed":
+            attempt_outcome.error_info = (
+                evaluation_result.error_info
+                or "Request completion evaluation failed."
+            )
+        return attempt_outcome
+
+    def _record_attempt(
+        self,
+        state: ToolExecutionLayerRunState,
+        attempt_outcome: ToolExecutionLayerAttemptOutcome,
+    ) -> None:
+        if (
+            attempt_outcome.selected_family is None
+            or attempt_outcome.query_generation_result is None
+            or attempt_outcome.family_result is None
+            or attempt_outcome.evaluation_result is None
+        ):
+            return
+        attempt = self._attempt_trace(
+            selected_family=attempt_outcome.selected_family,
+            query_generation_result=attempt_outcome.query_generation_result,
+            family_result=attempt_outcome.family_result,
+            evaluation_result=attempt_outcome.evaluation_result,
+            retry_count=state.retry_count,
+            fallback_applied=state.fallback_applied,
+        )
+        state.attempts.append(attempt)
+
+    def _apply_evaluation_result(
+        self,
+        *,
+        request: ToolExecutionLayerRequest,
+        state: ToolExecutionLayerRunState,
+        attempt_outcome: ToolExecutionLayerAttemptOutcome,
+    ) -> _ExecutionDirective:
+        evaluation_result = attempt_outcome.evaluation_result
+        selected_family = attempt_outcome.selected_family
+        query_generation_result = attempt_outcome.query_generation_result
+        if (
+            evaluation_result is None
+            or selected_family is None
+            or query_generation_result is None
+        ):
+            state.recovery_exhausted_reason = "recovery_action_not_executable"
+            return "complete"
+
+        if evaluation_result.recovery_action == "stop":
+            return "complete"
+
+        if evaluation_result.recovery_action == "retry_same_tool":
+            if state.retry_count >= request.retry_budget:
+                state.recovery_exhausted_reason = "retry_budget_exhausted"
+                return "complete"
+            state.retry_count += 1
+            state.recovery_attempt_count += 1
+            state.retry_context = (selected_family, query_generation_result)
+            return "continue"
+
+        if (
+            evaluation_result.recovery_action == "fallback"
+            and evaluation_result.next_step_hint == "fallback_to_broader_search"
+        ):
+            if selected_family not in state.blocked_families:
+                state.blocked_families.append(selected_family)
+            if state.fallback_applied:
+                state.recovery_exhausted_reason = "fallback_already_applied"
+                return "complete"
+            state.fallback_applied = True
+            state.recovery_attempt_count += 1
+            return "continue"
+
+        state.recovery_exhausted_reason = (
+            "same_family_fallback_not_executable"
+            if evaluation_result.next_step_hint == "fallback_within_same_family"
+            else "continuation_not_supported"
+            if evaluation_result.next_step_hint == "continue_current_request"
+            else "recovery_action_not_executable"
+        )
+        return "complete"
+
+    def _completed_from_state(
+        self,
+        *,
+        request: ToolExecutionLayerRequest,
+        state: ToolExecutionLayerRunState,
+    ) -> ToolExecutionLayerResult:
+        if state.latest_family_result is None:
+            return self._failed_from_state(
+                request=request,
+                state=state,
+                error_info="No family execution result available.",
+            )
+        return self._completed_result(
+            request=request,
+            family_selection_result=state.latest_selection,
+            query_generation_result=state.latest_query_generation,
+            family_execution_result=state.latest_family_result,
+            completion_evaluation_result=state.latest_evaluation,
+            retry_count=state.retry_count,
+            fallback_applied=state.fallback_applied,
+            recovery_attempt_count=state.recovery_attempt_count,
+            attempts=state.attempts,
+            recovery_exhausted_reason=state.recovery_exhausted_reason,
+        )
+
+    def _failed_from_state(
+        self,
+        *,
+        request: ToolExecutionLayerRequest,
+        state: ToolExecutionLayerRunState,
+        error_info: str,
+    ) -> ToolExecutionLayerResult:
+        return self._failed_result(
+            request=request,
+            family_selection_result=state.latest_selection,
+            query_generation_result=state.latest_query_generation,
+            family_execution_result=state.latest_family_result,
+            completion_evaluation_result=state.latest_evaluation,
+            retry_count=state.retry_count,
+            fallback_applied=state.fallback_applied,
+            recovery_attempt_count=state.recovery_attempt_count,
+            attempts=state.attempts,
+            error_info=error_info,
+            recovery_exhausted_reason=state.recovery_exhausted_reason,
+        )
 
     def _normalize_request(
         self,
