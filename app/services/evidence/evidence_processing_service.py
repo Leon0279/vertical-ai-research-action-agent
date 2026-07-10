@@ -72,47 +72,18 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         """Process one current-round candidate material set."""
 
         try:
-            if request.acquisition_status in {
-                AcquisitionStatus.NO_RESULT,
-                AcquisitionStatus.FAILED,
-            }:
-                return self._empty_result(
-                    request=request,
-                    processing_status="no_result",
-                    reason=f"Upstream acquisition status was {request.acquisition_status}.",
-                )
-
-            if not request.normalized_items:
-                return self._empty_result(
-                    request=request,
-                    processing_status="no_result",
-                    reason="No normalized candidate materials were provided.",
-                )
+            short_circuit_result = self._short_circuit_result(request)
+            if short_circuit_result is not None:
+                return short_circuit_result
 
             deduped_materials, dedup_summary = self._dedup_materials(
                 request.normalized_items
             )
-            structured_units: list[ProcessedEvidenceUnit] = []
-            dropped_material_count = 0
-            llm_error_count = 0
-
-            for material in deduped_materials:
-                if not self._is_quality_material(material):
-                    dropped_material_count += 1
-                    continue
-
-                try:
-                    units = await self._structure_material(request, material)
-                except Exception:
-                    llm_error_count += 1
-                    dropped_material_count += 1
-                    continue
-
-                if not units:
-                    dropped_material_count += 1
-                    continue
-                structured_units.extend(units)
-
+            (
+                structured_units,
+                dropped_material_count,
+                llm_error_count,
+            ) = await self._structure_materials(request, deduped_materials)
             consolidated_units, consolidation_summary = self._consolidate_evidence(
                 structured_units
             )
@@ -124,45 +95,129 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
                 input_count=len(request.normalized_items),
             )
 
-            return EvidenceProcessingResult(
-                processed_evidence_units=final_units,
-                evidence_summary=self._evidence_summary(final_units),
-                evidence_processing_summary={
-                    "policy": self._POLICY_NAME,
-                    "input_material_count": len(request.normalized_items),
-                    "deduped_material_count": len(deduped_materials),
-                    "removed_duplicate_count": dedup_summary["removed_duplicate_count"],
-                    "exact_duplicate_removed": dedup_summary["exact_duplicate_removed"],
-                    "high_overlap_removed": dedup_summary["high_overlap_removed"],
-                    "dropped_material_count": dropped_material_count,
-                    "structured_evidence_count": len(structured_units),
-                    "merged_evidence_count": consolidation_summary[
-                        "merged_evidence_count"
-                    ],
-                    "output_evidence_count": len(final_units),
-                    "llm_invalid_output_count": llm_error_count,
-                    "upstream_acquisition_status": request.acquisition_status,
-                    "upstream_dropped_item_count": request.dropped_item_count,
-                },
+            return self._create_result(
+                request=request,
+                final_units=final_units,
+                deduped_material_count=len(deduped_materials),
+                dedup_summary=dedup_summary,
+                dropped_material_count=dropped_material_count,
+                structured_evidence_count=len(structured_units),
+                consolidation_summary=consolidation_summary,
+                llm_error_count=llm_error_count,
                 processing_status=processing_status,
-                error_info=(
-                    "Some materials could not be structured."
-                    if processing_status == "partial_success"
-                    else None
-                ),
             )
         except Exception as exc:
-            return EvidenceProcessingResult(
-                processed_evidence_units=[],
-                evidence_summary=self._evidence_summary([]),
-                evidence_processing_summary={
-                    "policy": self._POLICY_NAME,
-                    "input_material_count": len(request.normalized_items),
-                    "output_evidence_count": 0,
-                },
-                processing_status="failed",
-                error_info=str(exc),
+            return self._create_failed_result(request=request, error_info=str(exc))
+
+    def _short_circuit_result(
+        self,
+        request: EvidenceProcessingRequest,
+    ) -> EvidenceProcessingResult | None:
+        if request.acquisition_status in {
+            AcquisitionStatus.NO_RESULT,
+            AcquisitionStatus.FAILED,
+        }:
+            return self._empty_result(
+                request=request,
+                processing_status="no_result",
+                reason=f"Upstream acquisition status was {request.acquisition_status}.",
             )
+
+        if not request.normalized_items:
+            return self._empty_result(
+                request=request,
+                processing_status="no_result",
+                reason="No normalized candidate materials were provided.",
+            )
+
+        return None
+
+    async def _structure_materials(
+        self,
+        request: EvidenceProcessingRequest,
+        materials: list[NormalizedRetrievalItem],
+    ) -> tuple[list[ProcessedEvidenceUnit], int, int]:
+        structured_units: list[ProcessedEvidenceUnit] = []
+        dropped_material_count = 0
+        llm_error_count = 0
+
+        for material in materials:
+            if not self._is_quality_material(material):
+                dropped_material_count += 1
+                continue
+
+            try:
+                units = await self._structure_material(request, material)
+            except Exception:
+                llm_error_count += 1
+                dropped_material_count += 1
+                continue
+
+            if not units:
+                dropped_material_count += 1
+                continue
+            structured_units.extend(units)
+
+        return structured_units, dropped_material_count, llm_error_count
+
+    def _create_result(
+        self,
+        *,
+        request: EvidenceProcessingRequest,
+        final_units: list[ProcessedEvidenceUnit],
+        deduped_material_count: int,
+        dedup_summary: dict[str, int],
+        dropped_material_count: int,
+        structured_evidence_count: int,
+        consolidation_summary: dict[str, int],
+        llm_error_count: int,
+        processing_status: str,
+    ) -> EvidenceProcessingResult:
+        return EvidenceProcessingResult(
+            processed_evidence_units=final_units,
+            evidence_summary=self._evidence_summary(final_units),
+            evidence_processing_summary={
+                "policy": self._POLICY_NAME,
+                "input_material_count": len(request.normalized_items),
+                "deduped_material_count": deduped_material_count,
+                "removed_duplicate_count": dedup_summary["removed_duplicate_count"],
+                "exact_duplicate_removed": dedup_summary["exact_duplicate_removed"],
+                "high_overlap_removed": dedup_summary["high_overlap_removed"],
+                "dropped_material_count": dropped_material_count,
+                "structured_evidence_count": structured_evidence_count,
+                "merged_evidence_count": consolidation_summary[
+                    "merged_evidence_count"
+                ],
+                "output_evidence_count": len(final_units),
+                "llm_invalid_output_count": llm_error_count,
+                "upstream_acquisition_status": request.acquisition_status,
+                "upstream_dropped_item_count": request.dropped_item_count,
+            },
+            processing_status=processing_status,
+            error_info=(
+                "Some materials could not be structured."
+                if processing_status == "partial_success"
+                else None
+            ),
+        )
+
+    def _create_failed_result(
+        self,
+        *,
+        request: EvidenceProcessingRequest,
+        error_info: str,
+    ) -> EvidenceProcessingResult:
+        return EvidenceProcessingResult(
+            processed_evidence_units=[],
+            evidence_summary=self._evidence_summary([]),
+            evidence_processing_summary={
+                "policy": self._POLICY_NAME,
+                "input_material_count": len(request.normalized_items),
+                "output_evidence_count": 0,
+            },
+            processing_status="failed",
+            error_info=error_info,
+        )
 
     def _dedup_materials(
         self,
