@@ -85,7 +85,7 @@ class EvidenceProcessingSummary(BaseModel):
         ge=0,
         description=(
             "可选字段，默认 0，必须大于等于 0。evidence consolidation 阶段合并的 evidence unit 数量。当前项目中有用："
-            "当同 evidence_type 的 exact/containment evidence 被保守合并时，会计入该值，并把 support_refs 合并到 canonical unit。"
+            "当同 evidence_type 的 exact/containment evidence 被保守合并时，会计入该值，并把 source_references 合并到 canonical unit。"
         ),
     )
     output_evidence_count: int = Field(

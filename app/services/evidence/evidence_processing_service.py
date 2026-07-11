@@ -9,7 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     EvidenceProcessingSummary,
     EvidenceProcessingRequest,
@@ -32,7 +32,6 @@ class _LLMEvidenceUnitPayload(BaseModel):
 
     content: str = Field(min_length=1)
     evidence_type: EvidenceType
-    support_refs: list[str] = Field(default_factory=list)
 
 
 class _LLMStructuringPayload(BaseModel):
@@ -328,17 +327,12 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             content = payload_unit.content.strip()
             if not content:
                 continue
-            support_refs = self._normalize_support_refs(
-                payload_unit.support_refs,
-                fallback_refs=self._source_refs(material),
-            )
             units.append(
                 self._evidence_unit(
                     request=request,
                     material=material,
                     content=content,
                     evidence_type=payload_unit.evidence_type,
-                    support_refs=support_refs,
                     metadata={"structuring_method": "llm"},
                 )
             )
@@ -354,7 +348,6 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             material=material,
             content=self._content(material).strip(),
             evidence_type="supporting_signal",
-            support_refs=self._source_refs(material),
             metadata={"structuring_method": "deterministic_fallback"},
         )
 
@@ -365,17 +358,14 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         material: NormalizedRetrievalItem,
         content: str,
         evidence_type: EvidenceType,
-        support_refs: list[str],
         metadata: dict[str, Any],
     ) -> ProcessedEvidenceUnit:
         return ProcessedEvidenceUnit(
             evidence_unit_id="pending",
-            source_ref=self._source_ref(material),
+            source_references=material.source_references,
             source_family=self._source_family(request, material),
-            source_type=self._source_type(material),
             content=content,
             evidence_type=evidence_type,
-            support_refs=support_refs,
             target_problem=self._optional_trace_string(request, "target_problem"),
             target_scope=self._optional_trace_dict(request, "target_scope"),
             evidence_goal=self._optional_trace_string(request, "evidence_goal"),
@@ -419,7 +409,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
                 "source_ref": self._source_ref(material),
                 "source_refs": self._source_refs(material),
                 "source_family": self._source_family(request, material),
-                "source_type": self._source_type(material),
+                "source_types": self._source_types(material),
                 "content": self._content(material),
                 "metadata": self._metadata(material),
             },
@@ -436,7 +426,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             "5. 只输出 JSON，不要输出解释或推理过程。\n\n"
             "输出 JSON 必须且只能包含 decision、evidence_units。\n"
             "decision 必须是 keep 或 drop。\n"
-            "每个 evidence unit 必须包含 content、evidence_type、support_refs。\n\n"
+            "每个 evidence unit 必须且只能包含 content、evidence_type。\n\n"
             "输入如下：\n"
             f"{json.dumps(prompt_input, ensure_ascii=False, indent=2)}"
         )
@@ -529,7 +519,10 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         candidate: ProcessedEvidenceUnit,
     ) -> ProcessedEvidenceUnit:
         canonical = candidate if len(candidate.content) > len(existing.content) else existing
-        support_refs = self._merge_ordered_refs(existing.support_refs, candidate.support_refs)
+        source_references = self._merge_source_references(
+            existing.source_references,
+            candidate.source_references,
+        )
         metadata = {
             **existing.metadata,
             **candidate.metadata,
@@ -537,9 +530,42 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         }
         return canonical.model_copy(
             update={
-                "support_refs": support_refs,
+                "source_references": source_references,
                 "metadata": metadata,
             }
+        )
+
+    def _merge_source_references(
+        self,
+        left: list[SourceReference],
+        right: list[SourceReference],
+    ) -> list[SourceReference]:
+        merged: list[SourceReference] = []
+        seen: set[str] = set()
+
+        for source_reference in [*left, *right]:
+            key = self._source_reference_key(source_reference)
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(source_reference)
+
+        return merged
+
+    def _source_reference_key(self, source_reference: SourceReference) -> str:
+        source_url = (source_reference.source_url or "").strip()
+        if source_url:
+            return f"url:{source_url}"
+
+        source_id = (source_reference.source_id or "").strip()
+        if source_id:
+            source_id_type = (source_reference.source_id_type or "").strip()
+            return f"id:{source_id_type}:{source_id}"
+
+        return json.dumps(
+            source_reference.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
         )
 
     def _assign_evidence_ids(
@@ -561,10 +587,11 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
 
         for unit in units:
             type_breakdown[unit.evidence_type] = type_breakdown.get(unit.evidence_type, 0) + 1
-            if unit.source_family and unit.source_family not in source_families:
-                source_families.append(unit.source_family)
-            if unit.source_type and unit.source_type not in source_types:
-                source_types.append(unit.source_type)
+            if unit.source_family and unit.source_family.value not in source_families:
+                source_families.append(unit.source_family.value)
+            for source_type in self._evidence_unit_source_types(unit):
+                if source_type not in source_types:
+                    source_types.append(source_type)
 
         return ProcessedEvidenceSummary(
             new_evidence_count=len(units),
@@ -648,16 +675,44 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         self,
         request: EvidenceProcessingRequest,
         material: NormalizedRetrievalItem,
-    ) -> str:
-        return (
-            self._string_value(material.source_family)
-            or self._string_value(request.retrieval_trace.get("selected_family"))
-            or self._string_value(request.source_summary.get("selected_family"))
-            or "unknown_family"
-        )
+    ) -> FamilyName | None:
+        if material.source_family is not None:
+            return material.source_family
 
-    def _source_type(self, material: NormalizedRetrievalItem) -> str:
-        return self._primary_source_reference(material).source_type.strip() or "unknown_source_type"
+        trace_family = self._family_name_value(request.retrieval_trace.get("selected_family"))
+        if trace_family is not None:
+            return trace_family
+
+        return self._family_name_value(request.source_summary.get("selected_family"))
+
+    def _source_types(self, material: NormalizedRetrievalItem) -> list[str]:
+        source_types: list[str] = []
+        for source_reference in material.source_references:
+            source_type = source_reference.source_type.strip()
+            if source_type and source_type not in source_types:
+                source_types.append(source_type)
+        return source_types
+
+    def _evidence_unit_source_types(
+        self,
+        unit: ProcessedEvidenceUnit,
+    ) -> list[str]:
+        source_types: list[str] = []
+        for source_reference in unit.source_references:
+            source_type = source_reference.source_type.strip()
+            if source_type and source_type not in source_types:
+                source_types.append(source_type)
+        return source_types
+
+    def _family_name_value(self, value: Any) -> FamilyName | None:
+        if isinstance(value, FamilyName):
+            return value
+        if isinstance(value, str):
+            try:
+                return FamilyName(value)
+            except ValueError:
+                return None
+        return None
 
     def _content(self, material: NormalizedRetrievalItem) -> str:
         return material.content
@@ -680,26 +735,6 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
     ) -> dict[str, Any] | None:
         value = request.retrieval_trace.get(key)
         return value if isinstance(value, dict) else None
-
-    def _normalize_support_refs(
-        self,
-        refs: list[str],
-        *,
-        fallback_refs: list[str],
-    ) -> list[str]:
-        normalized = [ref.strip() for ref in refs if ref.strip()]
-        if not normalized:
-            normalized = fallback_refs
-        else:
-            normalized = self._merge_ordered_refs(normalized, fallback_refs)
-        return self._merge_ordered_refs([], normalized)
-
-    def _merge_ordered_refs(self, left: list[str], right: list[str]) -> list[str]:
-        merged: list[str] = []
-        for ref in [*left, *right]:
-            if ref and ref not in merged:
-                merged.append(ref)
-        return merged
 
     def _string_value(self, value: Any) -> str:
         return value.strip() if isinstance(value, str) else ""

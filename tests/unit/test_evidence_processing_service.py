@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 
 from app.domain.models import (
     EvidenceProcessingRequest,
@@ -182,13 +182,16 @@ def test_deterministic_fallback_generates_processed_evidence_unit() -> None:
 
     unit = result.processed_evidence_units[0]
     assert unit.evidence_unit_id == "ev_001"
-    assert unit.source_ref == "doc1"
-    assert unit.source_family == "docs_search"
-    assert unit.source_type == "document"
+    assert unit.source_references[0].source_id == "doc1"
+    assert unit.source_family == FamilyName.DOCS_SEARCH
     assert unit.evidence_type == "supporting_signal"
-    assert unit.support_refs == ["doc1"]
     assert unit.target_problem == "Choose a retrieval baseline"
     assert unit.metadata["structuring_method"] == "deterministic_fallback"
+    dumped = unit.model_dump()
+    assert "source_ref" not in dumped
+    assert "source_type" not in dumped
+    assert "support_refs" not in dumped
+    assert dumped["source_family"] == "docs_search"
 
 
 def test_deterministic_fallback_preserves_multiple_source_refs() -> None:
@@ -213,11 +216,16 @@ def test_deterministic_fallback_preserves_multiple_source_refs() -> None:
     )
 
     unit = result.processed_evidence_units[0]
-    assert unit.source_ref == "doc1"
-    assert unit.source_type == "document"
-    assert unit.support_refs == ["doc1", "2501.00001"]
+    assert len(unit.source_references) == 2
+    assert unit.source_references[0].source_id == "doc1"
+    assert unit.source_references[1].source_id == "2501.00001"
+    assert unit.source_references[1].source_id_type == "arxiv_id"
     assert unit.metadata["source_references"][0]["source_id"] == "doc1"
     assert unit.metadata["source_references"][1]["source_id"] == "2501.00001"
+    assert result.evidence_summary["source_coverage_summary"]["source_types"] == [
+        "document",
+        "paper",
+    ]
 
 
 def test_llm_json_successfully_structures_evidence() -> None:
@@ -230,7 +238,6 @@ def test_llm_json_successfully_structures_evidence() -> None:
                         {
                             "content": "Hybrid retrieval is commonly used as a practical baseline.",
                             "evidence_type": "direct_fact",
-                            "support_refs": ["doc1"],
                         }
                     ],
                 }
@@ -254,7 +261,7 @@ def test_llm_code_fence_json_is_parsed() -> None:
     llm = FakeLLMClient(
         [
             """```json
-{"decision":"keep","evidence_units":[{"content":"The API supports structured outputs.","evidence_type":"direct_fact","support_refs":["doc1"]}]}
+{"decision":"keep","evidence_units":[{"content":"The API supports structured outputs.","evidence_type":"direct_fact"}]}
 ```"""
         ]
     )
@@ -280,7 +287,6 @@ def test_invalid_llm_output_drops_current_material_without_crashing() -> None:
                         {
                             "content": "The second material is useful.",
                             "evidence_type": "supporting_signal",
-                            "support_refs": ["doc2"],
                         }
                     ],
                 }
@@ -304,7 +310,7 @@ def test_invalid_llm_output_drops_current_material_without_crashing() -> None:
     assert len(result.processed_evidence_units) == 1
 
 
-def test_same_type_exact_evidence_consolidates_support_refs() -> None:
+def test_same_type_exact_evidence_consolidates_source_references() -> None:
     llm = FakeLLMClient(
         [
             json.dumps(
@@ -314,7 +320,6 @@ def test_same_type_exact_evidence_consolidates_support_refs() -> None:
                         {
                             "content": "Hybrid retrieval is a practical baseline.",
                             "evidence_type": "direct_fact",
-                            "support_refs": ["doc1"],
                         }
                     ],
                 }
@@ -326,7 +331,6 @@ def test_same_type_exact_evidence_consolidates_support_refs() -> None:
                         {
                             "content": "Hybrid retrieval is a practical baseline.",
                             "evidence_type": "direct_fact",
-                            "support_refs": ["doc2"],
                         }
                     ],
                 }
@@ -346,7 +350,8 @@ def test_same_type_exact_evidence_consolidates_support_refs() -> None:
     )
 
     assert len(result.processed_evidence_units) == 1
-    assert result.processed_evidence_units[0].support_refs == ["doc1", "doc2"]
+    unit = result.processed_evidence_units[0]
+    assert [ref.source_id for ref in unit.source_references] == ["doc1", "doc2"]
     assert result.evidence_processing_summary["merged_evidence_count"] == 1
 
 
@@ -360,7 +365,6 @@ def test_different_evidence_types_do_not_consolidate() -> None:
                         {
                             "content": "Hybrid retrieval is a practical baseline.",
                             "evidence_type": "direct_fact",
-                            "support_refs": ["doc1"],
                         }
                     ],
                 }
@@ -372,7 +376,6 @@ def test_different_evidence_types_do_not_consolidate() -> None:
                         {
                             "content": "Hybrid retrieval is a practical baseline.",
                             "evidence_type": "comparison_signal",
-                            "support_refs": ["doc2"],
                         }
                     ],
                 }

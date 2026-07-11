@@ -37,8 +37,9 @@ class ProcessedEvidenceSummary(BaseModel):
         description=(
             "可选字段，默认空 dict。当前轮 evidence 覆盖的来源维度摘要。当前项目中有用：EvidenceProcessingService 当前写入 "
             "source_families 和 source_types 两个 key。source_families 是去重后的 retrieval family 名称列表，例如 docs_search、web_search、"
-            "paper_search、research_knowledge_recall；source_types 是去重后的原始来源类型列表，例如 document、web_page、paper、run_output、conversation。"
-            "该 dict 只做覆盖摘要，不替代每个 evidence unit 的 source_ref/support_refs。"
+            "paper_search、research_knowledge_recall；source_types 是从 ProcessedEvidenceUnit.source_references[*].source_type "
+            "汇总出的去重原始来源类型列表，例如 document、web_page、paper、run_output、conversation。"
+            "该 dict 只做覆盖摘要，不替代每个 evidence unit 的 source_references。"
         ),
     )
     metadata: dict[str, Any] = Field(

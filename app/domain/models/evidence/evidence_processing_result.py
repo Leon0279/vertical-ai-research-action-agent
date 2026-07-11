@@ -26,8 +26,9 @@ class EvidenceProcessingResult(BaseModel):
         description=(
             "可选字段，默认空列表。当前轮 evidence processing 产出的结构化 evidence units。当前项目中有用："
             "这是 EvidenceProcessingResult 的主数据，后续 Research Executor / synthesis 阶段会消费它们。"
-            "每个元素是 ProcessedEvidenceUnit，包含 evidence_unit_id、source_ref、source_family、source_type、content、evidence_type、"
-            "support_refs、target_problem、target_scope、evidence_goal、sub_question、comparison_candidate、gap、metadata。"
+            "每个元素是 ProcessedEvidenceUnit，包含 evidence_unit_id、source_references、source_family、"
+            "content、evidence_type、target_problem、target_scope、evidence_goal、sub_question、comparison_candidate、gap、metadata。"
+            "source_references 是唯一正式 provenance 字段；如需展示或 citation handle，应由调用方从 source_references 派生。"
             "当上游 no_result/failed、输入为空、全部材料质量不足或处理失败时，该列表为空。"
         ),
     )
