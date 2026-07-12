@@ -186,12 +186,16 @@ def test_deterministic_fallback_generates_processed_evidence_unit() -> None:
     assert unit.source_family == FamilyName.DOCS_SEARCH
     assert unit.evidence_type == "supporting_signal"
     assert unit.target_problem == "Choose a retrieval baseline"
+    assert unit.evidence_goal == "establish_coverage"
     assert unit.metadata["structuring_method"] == "deterministic_fallback"
+    assert unit.metadata["selected_tool"] == "tool_v1"
+    assert unit.metadata["generated_query"] == "retrieval baseline docs"
     dumped = unit.model_dump()
     assert "source_ref" not in dumped
     assert "source_type" not in dumped
     assert "support_refs" not in dumped
     assert dumped["source_family"] == "docs_search"
+    assert "source_references" not in unit.metadata
 
 
 def test_deterministic_fallback_preserves_multiple_source_refs() -> None:
@@ -220,8 +224,7 @@ def test_deterministic_fallback_preserves_multiple_source_refs() -> None:
     assert unit.source_references[0].source_id == "doc1"
     assert unit.source_references[1].source_id == "2501.00001"
     assert unit.source_references[1].source_id_type == "arxiv_id"
-    assert unit.metadata["source_references"][0]["source_id"] == "doc1"
-    assert unit.metadata["source_references"][1]["source_id"] == "2501.00001"
+    assert "source_references" not in unit.metadata
     assert result.evidence_summary["source_coverage_summary"]["source_types"] == [
         "document",
         "paper",

@@ -175,23 +175,21 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         return EvidenceProcessingResult(
             processed_evidence_units=final_units,
             evidence_summary=self._evidence_summary(final_units),
-            evidence_processing_summary={
-                "policy": self._POLICY_NAME,
-                "input_material_count": len(request.normalized_items),
-                "deduped_material_count": deduped_material_count,
-                "removed_duplicate_count": dedup_summary["removed_duplicate_count"],
-                "exact_duplicate_removed": dedup_summary["exact_duplicate_removed"],
-                "high_overlap_removed": dedup_summary["high_overlap_removed"],
-                "dropped_material_count": dropped_material_count,
-                "structured_evidence_count": structured_evidence_count,
-                "merged_evidence_count": consolidation_summary[
-                    "merged_evidence_count"
-                ],
-                "output_evidence_count": len(final_units),
-                "llm_invalid_output_count": llm_error_count,
-                "upstream_acquisition_status": request.acquisition_status,
-                "upstream_dropped_item_count": request.dropped_item_count,
-            },
+            evidence_processing_summary=EvidenceProcessingSummary(
+                policy=self._POLICY_NAME,
+                input_material_count=len(request.normalized_items),
+                deduped_material_count=deduped_material_count,
+                removed_duplicate_count=dedup_summary["removed_duplicate_count"],
+                exact_duplicate_removed=dedup_summary["exact_duplicate_removed"],
+                high_overlap_removed=dedup_summary["high_overlap_removed"],
+                dropped_material_count=dropped_material_count,
+                structured_evidence_count=structured_evidence_count,
+                merged_evidence_count=consolidation_summary["merged_evidence_count"],
+                output_evidence_count=len(final_units),
+                llm_invalid_output_count=llm_error_count,
+                upstream_acquisition_status=request.acquisition_status,
+                upstream_dropped_item_count=request.dropped_item_count,
+            ),
             processing_status=processing_status,
             error_info=(
                 "Some materials could not be structured."
@@ -209,11 +207,11 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         return EvidenceProcessingResult(
             processed_evidence_units=[],
             evidence_summary=self._evidence_summary([]),
-            evidence_processing_summary={
-                "policy": self._POLICY_NAME,
-                "input_material_count": len(request.normalized_items),
-                "output_evidence_count": 0,
-            },
+            evidence_processing_summary=EvidenceProcessingSummary(
+                policy=self._POLICY_NAME,
+                input_material_count=len(request.normalized_items),
+                output_evidence_count=0,
+            ),
             processing_status="failed",
             error_info=error_info,
         )
@@ -366,28 +364,22 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             source_family=self._source_family(request, material),
             content=content,
             evidence_type=evidence_type,
-            target_problem=self._optional_trace_string(request, "target_problem"),
-            target_scope=self._optional_trace_dict(request, "target_scope"),
-            evidence_goal=self._optional_trace_string(request, "evidence_goal"),
-            sub_question=self._optional_trace_string(request, "sub_question"),
-            comparison_candidate=self._optional_trace_string(
+            target_problem=request.retrieval_trace.target_problem,
+            target_scope=self._optional_context_dict(request, "target_scope"),
+            evidence_goal=self._optional_context_string(request, "evidence_goal"),
+            sub_question=self._optional_context_string(request, "sub_question"),
+            comparison_candidate=self._optional_context_string(
                 request, "comparison_candidate"
             ),
-            gap=self._optional_trace_string(request, "gap"),
+            gap=self._optional_context_string(request, "gap"),
             metadata={
                 **metadata,
                 "item_id": material.item_id,
-                "source_references": [
-                    source_reference.model_dump(mode="json")
-                    for source_reference in material.source_references
-                ],
                 "selected_tool": self._string_value(
-                    request.retrieval_trace.get("selected_tool")
-                    or request.source_summary.get("selected_tool")
+                    request.retrieval_trace.selected_tool
+                    or request.source_summary.selected_tool
                 ),
-                "generated_query": self._string_value(
-                    request.retrieval_trace.get("generated_query")
-                ),
+                "generated_query": self._string_value(request.retrieval_trace.generated_query),
             },
         )
 
@@ -626,18 +618,18 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         return EvidenceProcessingResult(
             processed_evidence_units=[],
             evidence_summary=self._evidence_summary([]),
-            evidence_processing_summary={
-                "policy": self._POLICY_NAME,
-                "input_material_count": len(request.normalized_items),
-                "deduped_material_count": 0,
-                "removed_duplicate_count": 0,
-                "dropped_material_count": 0,
-                "structured_evidence_count": 0,
-                "merged_evidence_count": 0,
-                "output_evidence_count": 0,
-                "upstream_acquisition_status": request.acquisition_status,
-                "short_circuit_reason": reason,
-            },
+            evidence_processing_summary=EvidenceProcessingSummary(
+                policy=self._POLICY_NAME,
+                input_material_count=len(request.normalized_items),
+                deduped_material_count=0,
+                removed_duplicate_count=0,
+                dropped_material_count=0,
+                structured_evidence_count=0,
+                merged_evidence_count=0,
+                output_evidence_count=0,
+                upstream_acquisition_status=request.acquisition_status,
+                short_circuit_reason=reason,
+            ),
             processing_status=processing_status,
             error_info=None,
         )
@@ -720,20 +712,20 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
     def _metadata(self, material: NormalizedRetrievalItem) -> dict[str, Any]:
         return material.metadata
 
-    def _optional_trace_string(
+    def _optional_context_string(
         self,
         request: EvidenceProcessingRequest,
         key: str,
     ) -> str | None:
-        value = request.retrieval_trace.get(key)
+        value = request.retrieval_trace.context.get(key)
         return self._string_value(value) or None
 
-    def _optional_trace_dict(
+    def _optional_context_dict(
         self,
         request: EvidenceProcessingRequest,
         key: str,
     ) -> dict[str, Any] | None:
-        value = request.retrieval_trace.get(key)
+        value = request.retrieval_trace.context.get(key)
         return value if isinstance(value, dict) else None
 
     def _string_value(self, value: Any) -> str:

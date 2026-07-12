@@ -124,8 +124,8 @@ class ProcessedEvidenceUnit(BaseModel):
         description=(
             "可选字段，默认空 dict。该 evidence unit 的处理过程和 provenance 扩展信息。当前项目中有用："
             "EvidenceProcessingService 当前会写入 structuring_method（取值通常为 deterministic_fallback 或 llm）、"
-            "item_id（原始 NormalizedRetrievalItem.item_id）、source_references（JSON-safe 的 SourceReference 列表）、"
-            "selected_tool（从 retrieval_trace 或 source_summary 派生）、generated_query（从 retrieval_trace 派生）。"
+            "item_id（原始 NormalizedRetrievalItem.item_id）、selected_tool（从 retrieval_trace 或 source_summary 派生）、"
+            "generated_query（从 retrieval_trace 派生）。"
             "当 evidence consolidation 合并 unit 时，还会写入 consolidated=True。"
             "该 dict 用于补充处理/调试信息，不应长期承载已经稳定建模的主字段；正式来源对象应优先读取 source_references。"
         ),
