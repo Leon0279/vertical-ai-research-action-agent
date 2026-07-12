@@ -388,23 +388,26 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
         request: EvidenceProcessingRequest,
         material: NormalizedRetrievalItem,
     ) -> str:
+        material_input: dict[str, Any] = {
+            "content": self._content(material),
+            "source_types": self._source_types(material),
+        }
+        material_context = self._prompt_material_context(material)
+        if material_context:
+            material_input["context"] = material_context
+
         prompt_input = {
-            "target_problem": request.retrieval_trace.get("target_problem"),
-            "target_scope": request.retrieval_trace.get("target_scope"),
-            "evidence_goal": request.retrieval_trace.get("evidence_goal"),
-            "sub_question": request.retrieval_trace.get("sub_question"),
-            "comparison_candidate": request.retrieval_trace.get(
-                "comparison_candidate"
-            ),
-            "gap": request.retrieval_trace.get("gap"),
-            "material": {
-                "source_ref": self._source_ref(material),
-                "source_refs": self._source_refs(material),
-                "source_family": self._source_family(request, material),
-                "source_types": self._source_types(material),
-                "content": self._content(material),
-                "metadata": self._metadata(material),
+            "task_context": {
+                "target_problem": request.retrieval_trace.target_problem,
+                "target_scope": request.retrieval_trace.context.get("target_scope"),
+                "evidence_goal": request.retrieval_trace.context.get("evidence_goal"),
+                "sub_question": request.retrieval_trace.context.get("sub_question"),
+                "comparison_candidate": request.retrieval_trace.context.get(
+                    "comparison_candidate"
+                ),
+                "gap": request.retrieval_trace.context.get("gap"),
             },
+            "material": material_input,
         }
         return (
             "你现在负责执行 Evidence Structuring。\n\n"
@@ -416,12 +419,36 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
             "3. 不要重新判断 target_problem、target_scope、evidence_goal、sub_question、comparison_candidate、gap。\n"
             "4. evidence_type 只能是 direct_fact、supporting_signal、comparison_signal、status_signal、background_signal。\n"
             "5. 只输出 JSON，不要输出解释或推理过程。\n\n"
+            "来源归属、source reference、retrieval family、selected tool 等 provenance 字段由系统确定性透传，"
+            "你不需要也不应该输出这些字段。\n\n"
             "输出 JSON 必须且只能包含 decision、evidence_units。\n"
             "decision 必须是 keep 或 drop。\n"
             "每个 evidence unit 必须且只能包含 content、evidence_type。\n\n"
             "输入如下：\n"
             f"{json.dumps(prompt_input, ensure_ascii=False, indent=2)}"
         )
+
+    def _prompt_material_context(
+        self,
+        material: NormalizedRetrievalItem,
+    ) -> dict[str, Any]:
+        metadata = self._metadata(material)
+        context: dict[str, Any] = {}
+        for key in ("title", "section", "published_at", "sub_source_type"):
+            if key not in metadata:
+                continue
+            value = metadata[key]
+            if value in (None, "", [], {}):
+                continue
+            context[key] = self._json_safe_prompt_value(value)
+        return context
+
+    def _json_safe_prompt_value(self, value: Any) -> Any:
+        try:
+            json.dumps(value, ensure_ascii=False)
+        except TypeError:
+            return str(value)
+        return value
 
     def _parse_llm_output(self, llm_output: str) -> _LLMStructuringPayload:
         json_text = self._strip_json_code_fence(llm_output)

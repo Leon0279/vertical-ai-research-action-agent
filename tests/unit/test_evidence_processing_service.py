@@ -30,6 +30,10 @@ def _process(service: EvidenceProcessingService, request: EvidenceProcessingRequ
     return asyncio.run(service.process(request))
 
 
+def _prompt_input(prompt: str) -> dict:
+    return json.loads(prompt.split("输入如下：\n", maxsplit=1)[1])
+
+
 def _request(
     items: list[dict],
     *,
@@ -258,6 +262,63 @@ def test_llm_json_successfully_structures_evidence() -> None:
     assert result.processed_evidence_units[0].evidence_type == "direct_fact"
     assert result.processed_evidence_units[0].content.startswith("Hybrid retrieval")
     assert "Evidence Structuring" in llm.prompts[0]
+
+
+def test_llm_prompt_uses_minimal_material_context() -> None:
+    llm = FakeLLMClient(
+        [
+            json.dumps(
+                {
+                    "decision": "keep",
+                    "evidence_units": [
+                        {
+                            "content": "Hybrid retrieval is commonly used as a practical baseline.",
+                            "evidence_type": "direct_fact",
+                        }
+                    ],
+                }
+            )
+        ]
+    )
+    service = EvidenceProcessingService(llm_client=llm)
+
+    _process(
+        service,
+        _request(
+            [
+                _item(
+                    "1",
+                    "doc1",
+                    "Hybrid retrieval is a useful baseline.",
+                    metadata={
+                        "title": "Hybrid retrieval guide",
+                        "section": "Baselines",
+                        "published_at": "2026-01-01",
+                        "sub_source_type": "openai_api",
+                        "rank": 1,
+                        "score": 0.98,
+                        "page_fetch_error": "debug-only",
+                    },
+                )
+            ]
+        ),
+    )
+
+    prompt_input = _prompt_input(llm.prompts[0])
+    assert prompt_input["task_context"]["target_problem"] == "Choose a retrieval baseline"
+    assert prompt_input["task_context"]["evidence_goal"] == "establish_coverage"
+    assert prompt_input["material"]["content"] == "Hybrid retrieval is a useful baseline."
+    assert prompt_input["material"]["source_types"] == ["document"]
+    assert prompt_input["material"]["context"] == {
+        "title": "Hybrid retrieval guide",
+        "section": "Baselines",
+        "published_at": "2026-01-01",
+        "sub_source_type": "openai_api",
+    }
+    assert "source_ref" not in prompt_input["material"]
+    assert "source_refs" not in prompt_input["material"]
+    assert "source_family" not in prompt_input["material"]
+    assert "metadata" not in prompt_input["material"]
 
 
 def test_llm_code_fence_json_is_parsed() -> None:
