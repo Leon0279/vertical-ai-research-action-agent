@@ -76,6 +76,11 @@ from app.domain.models.retrieval import (
     RetrievalTrace,
 )
 from app.domain.models.request_context import RequestContext
+from app.domain.models.research_stage import (
+    ResearchStageInput,
+    ResearchStageResult,
+    ResearchStageStatus,
+)
 from app.domain.models.source import (
     SourceEvidenceSpan,
     SourceReference,
@@ -174,6 +179,9 @@ __all__ = [
     "RetrievalSourceSummary",
     "RetrievalTrace",
     "RequestContext",
+    "ResearchStageInput",
+    "ResearchStageResult",
+    "ResearchStageStatus",
     "ResearchKnowledgeMemoryToolRequest",
     "ResearchKnowledgeMemoryToolResult",
     "ResearchKnowledgeRecallFamilyRequest",

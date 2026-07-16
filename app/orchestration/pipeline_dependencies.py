@@ -18,10 +18,7 @@ from app.adapters.memory.postgres_research_knowledge_memory_store import (
     PostgresResearchKnowledgeMemoryStore,
 )
 from app.adapters.memory.redis_session_memory_store import RedisSessionMemoryStore
-from app.adapters.retrieval.stub_retriever import StubRetriever
-from app.services.evidence.evidence_processor_service import EvidenceProcessorService
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
-from app.services.executor.loop_controller_service import LoopControllerService
 from app.services.executor.research_executor_service import ResearchExecutorService
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
 from app.services.intake.request_intake_service import RequestIntakeService
@@ -45,7 +42,6 @@ from app.services.planner.contracts.workflow_router_protocol import WorkflowRout
 from app.services.planner.decomposition_planner_service import DecompositionPlannerService
 from app.services.planner.task_interpreter_service import TaskInterpreterService
 from app.services.planner.workflow_router_service import WorkflowRouterService
-from app.services.retrieval.retrieval_service import RetrievalService
 
 
 @dataclass(slots=True)
@@ -77,14 +73,7 @@ def build_default_dependencies() -> PipelineDependencies:
     research_knowledge_store = PostgresResearchKnowledgeMemoryStore()
     embedding_client = ZhipuEmbeddingClient()
 
-    retrieval_service = RetrievalService(retriever=StubRetriever())
-    evidence_processor = EvidenceProcessorService()
-    loop_controller = LoopControllerService()
-    research_executor = ResearchExecutorService(
-        retrieval_service=retrieval_service,
-        evidence_processor=evidence_processor,
-        loop_controller=loop_controller,
-    )
+    research_executor = ResearchExecutorService()
 
     return PipelineDependencies(
         request_intake=RequestIntakeService(),

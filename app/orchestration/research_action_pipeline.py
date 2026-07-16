@@ -2,8 +2,19 @@
 
 from __future__ import annotations
 
-from app.domain.models import ExecutionContext, MemoryCandidate, RequestContext, StructuredOutput
+from typing import TypeVar
+
+from app.domain.models import (
+    ExecutionContext,
+    MemoryCandidate,
+    RequestContext,
+    ResearchStageInput,
+    ResearchStageResult,
+    StructuredOutput,
+)
 from app.orchestration.pipeline_dependencies import PipelineDependencies, build_default_dependencies
+
+T = TypeVar("T")
 
 
 class ResearchActionPipeline:
@@ -56,7 +67,72 @@ class ResearchActionPipeline:
         """Run evidence-driven execution loop."""
 
         context.runtime_context.stage_history.append("research")
-        await self._dependencies.research_executor.execute(context)
+        stage_input = self._build_research_stage_input(context)
+        stage_result = await self._dependencies.research_executor.execute(stage_input)
+        self._apply_research_stage_result(context, stage_result)
+
+    def _build_research_stage_input(self, context: ExecutionContext) -> ResearchStageInput:
+        """Project the full execution context into the research stage input."""
+
+        state = context.running_state
+        supplemental_context = context.supplemental_context
+        runtime_context = context.runtime_context
+
+        return ResearchStageInput(
+            original_query=state.original_query,
+            task_type=state.task_type,
+            user_goal=state.user_goal,
+            task_framing=state.task_framing,
+            constraints=state.constraints,
+            project_scope_id=state.project_scope_id,
+            project_context_summary=state.project_context_summary,
+            plan=state.plan,
+            sub_questions=state.sub_questions,
+            comparison_candidates=state.comparison_candidates,
+            information_gaps=state.information_gaps,
+            existing_evidence_summary=state.evidence_summary,
+            existing_intermediate_findings=state.intermediate_findings,
+            research_support=supplemental_context.research_support,
+            external_evidence_support=supplemental_context.external_evidence_support,
+            available_tools=runtime_context.available_tools,
+            latency_budget_ms=runtime_context.latency_budget_ms,
+            iteration_budget=runtime_context.iteration_budget,
+            scope_restrictions=runtime_context.scope_restrictions,
+        )
+
+    def _apply_research_stage_result(
+        self,
+        context: ExecutionContext,
+        result: ResearchStageResult,
+    ) -> None:
+        """Write research stage output back into the execution context."""
+
+        state = context.running_state
+        state.retrieved_evidence_refs = self._append_unique(
+            state.retrieved_evidence_refs,
+            result.retrieved_evidence_refs,
+        )
+        state.intermediate_findings = self._append_unique(
+            state.intermediate_findings,
+            result.intermediate_findings,
+        )
+        state.open_questions = self._append_unique(
+            state.open_questions,
+            result.open_questions,
+        )
+
+        if result.evidence_summary is not None:
+            state.evidence_summary = result.evidence_summary
+
+    @staticmethod
+    def _append_unique(existing: list[T], additions: list[T]) -> list[T]:
+        """Append values in order without duplicating existing entries."""
+
+        merged = list(existing)
+        for item in additions:
+            if item not in merged:
+                merged.append(item)
+        return merged
 
     async def _conclusion(self, context: ExecutionContext) -> None:
         """Generate structured conclusion."""

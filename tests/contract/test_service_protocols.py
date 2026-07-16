@@ -148,6 +148,8 @@ from app.services.memory.contracts.context_memory_loader_protocol import Context
 from app.services.memory.memory_distiller_service import MemoryDistillerService
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
 from app.services.memory.session_continuity_manager_service import SessionContinuityManagerService
+from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
+from app.services.executor.research_executor_service import ResearchExecutorService
 from app.services.output.conclusion_generator_service import ConclusionGeneratorService
 from app.services.output.contracts.conclusion_generator_protocol import ConclusionGeneratorProtocol
 from app.services.output.response_assembler_service import ResponseAssemblerService
@@ -274,6 +276,7 @@ def test_adapter_protocol_conformance() -> None:
 def test_service_protocol_conformance() -> None:
     assert isinstance(TaskInterpreterService(), TaskInterpreterProtocol)
     assert isinstance(DecompositionPlannerService(), DecompositionPlannerProtocol)
+    assert isinstance(ResearchExecutorService(), ResearchExecutorProtocol)
     assert isinstance(EvidenceProcessingService(), EvidenceProcessingServiceProtocol)
     assert isinstance(EvidenceProcessorService(), EvidenceProcessorProtocol)
     assert isinstance(ConclusionGeneratorService(), ConclusionGeneratorProtocol)
