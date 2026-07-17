@@ -1,6 +1,7 @@
 """Pipeline stage ordering tests."""
 
 import asyncio
+import json
 
 from app.domain.models import (
     ContextItem,
@@ -12,6 +13,7 @@ from app.domain.models import (
     RuntimeContext,
     SupplementalContext,
 )
+from app.orchestration import pipeline_dependencies
 from app.orchestration.pipeline_dependencies import PipelineDependencies
 from app.orchestration.research_action_pipeline import build_default_pipeline
 from app.orchestration.research_action_pipeline import ResearchActionPipeline
@@ -27,7 +29,25 @@ class _FakeResearchExecutor:
         return self.result
 
 
-def test_pipeline_stage_order() -> None:
+class _FakeZhipuLLMClient:
+    async def generate_text(self, prompt: str) -> str:
+        _ = prompt
+        return json.dumps(
+            {
+                "assessment": {
+                    "coverage_status": "not_covered",
+                    "support_strength": "insufficient_support",
+                    "finding_maturity": "tentative",
+                    "assessment_summary": "默认 pipeline 测试中的 fake assessment。",
+                },
+                "identified_gaps": [],
+            },
+            ensure_ascii=False,
+        )
+
+
+def test_pipeline_stage_order(monkeypatch) -> None:
+    monkeypatch.setattr(pipeline_dependencies, "ZhipuLLMClient", _FakeZhipuLLMClient)
     pipeline = build_default_pipeline()
     output = asyncio.run(
         pipeline.run(
@@ -59,10 +79,16 @@ def test_research_stage_projects_input_and_applies_result() -> None:
         summary="Existing research says retrieval quality depends on freshness.",
         priority=8,
     )
-    external_support = ContextItem(
-        id="ctx-external",
-        source_type="tool_result",
-        summary="A prior external source mentioned RAG baseline tradeoffs.",
+    decision_support = ContextItem(
+        id="ctx-decision",
+        source_type="decision_memory",
+        summary="Existing decision prefers memory-backed retrieval first.",
+        priority=7,
+    )
+    action_support = ContextItem(
+        id="ctx-action",
+        source_type="action_memory",
+        summary="Current action is blocked on freshness evidence.",
         priority=6,
     )
     context = ExecutionContext(
@@ -85,7 +111,8 @@ def test_research_stage_projects_input_and_applies_result() -> None:
         ),
         supplemental_context=SupplementalContext(
             research_support=[research_support],
-            external_evidence_support=[external_support],
+            decision_support=[decision_support],
+            action_support=[action_support],
         ),
         runtime_context=RuntimeContext(
             request_id="trace-1",
@@ -140,10 +167,10 @@ def test_research_stage_projects_input_and_applies_result() -> None:
         sub_questions=["When should memory be preferred?"],
         comparison_candidates=["memory", "web"],
         information_gaps=["Need freshness tradeoffs."],
-        existing_evidence_summary="Existing evidence summary.",
         existing_intermediate_findings=["Existing finding."],
         research_support=[research_support],
-        external_evidence_support=[external_support],
+        decision_support=[decision_support],
+        action_support=[action_support],
         available_tools=["docs_search"],
         latency_budget_ms=1000,
         iteration_budget=2,

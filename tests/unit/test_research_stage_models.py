@@ -11,7 +11,12 @@ def test_research_stage_input_minimal_construction() -> None:
     assert stage_input.plan == []
     assert stage_input.sub_questions == []
     assert stage_input.research_support == []
+    assert stage_input.decision_support == []
+    assert stage_input.action_support == []
     assert stage_input.available_tools == []
+    dumped = stage_input.model_dump()
+    assert "existing_evidence_summary" not in dumped
+    assert "external_evidence_support" not in dumped
 
 
 def test_research_stage_result_defaults_do_not_write_back_content() -> None:

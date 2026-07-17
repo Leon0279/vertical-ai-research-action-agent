@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.adapters.embedding.zhipu_embedding_client import ZhipuEmbeddingClient
+from app.adapters.llm.zhipu_llm_client import ZhipuLLMClient
 from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.postgres_action_memory_store import PostgresActionMemoryStore
 from app.adapters.memory.postgres_decision_memory_store import PostgresDecisionMemoryStore
@@ -73,7 +74,7 @@ def build_default_dependencies() -> PipelineDependencies:
     research_knowledge_store = PostgresResearchKnowledgeMemoryStore()
     embedding_client = ZhipuEmbeddingClient()
 
-    research_executor = ResearchExecutorService()
+    research_executor = ResearchExecutorService(llm_client=ZhipuLLMClient())
 
     return PipelineDependencies(
         request_intake=RequestIntakeService(),

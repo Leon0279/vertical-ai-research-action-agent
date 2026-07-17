@@ -1,30 +1,73 @@
 """Research executor service tests."""
 
 import asyncio
+import json
 from typing import Any
 
-from app.domain.models import ResearchStageInput, ResearchStageResult
+import pytest
+
+from app.domain.models import ContextItem, ResearchStageInput, ResearchStageResult
 from app.services.executor.research_executor_service import (
     ResearchExecutorService,
     ResearchIterationOutcome,
 )
 
 
+def _valid_assessment_payload(*, gap_summary: str = "缺少直接证据。") -> dict[str, Any]:
+    return {
+        "assessment": {
+            "coverage_status": "partially_covered",
+            "support_strength": "weak_support",
+            "finding_maturity": "tentative",
+            "assessment_summary": "当前研究状态只有部分覆盖，还需要补充证据。",
+        },
+        "identified_gaps": [
+            {
+                "gap_scope": "sub_question_level",
+                "gap_nature": "missing",
+                "gap_severity": "important",
+                "gap_summary": gap_summary,
+                "gap_target": "When should memory be preferred?",
+                "gap_actionability": "补充 memory-backed retrieval 的直接证据。",
+            }
+        ],
+    }
+
+
+class _FakeLLMClient:
+    def __init__(self, responses: list[str] | None = None) -> None:
+        default_response = json.dumps(_valid_assessment_payload(), ensure_ascii=False)
+        self._responses = responses or [default_response]
+        self.prompts: list[str] = []
+
+    async def generate_text(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        if len(self._responses) > 1:
+            return self._responses.pop(0)
+        return self._responses[0]
+
+
 class _SpyResearchExecutorService(ResearchExecutorService):
     def __init__(
         self,
         outcomes: list[ResearchIterationOutcome] | None = None,
+        llm_client: _FakeLLMClient | None = None,
     ) -> None:
+        self.llm_client = llm_client or _FakeLLMClient()
+        super().__init__(llm_client=self.llm_client)
         self.calls: list[str] = []
         self._outcomes = outcomes or []
 
-    async def _assess_current_research_state(
+    async def _assess_current_research_state_and_identify_gaps(
         self,
         stage_input: ResearchStageInput,
         working_state: dict[str, Any],
     ) -> None:
-        self.calls.append("assess_current_research_state")
-        await super()._assess_current_research_state(stage_input, working_state)
+        self.calls.append("assess_current_research_state_and_identify_gaps")
+        await super()._assess_current_research_state_and_identify_gaps(
+            stage_input,
+            working_state,
+        )
 
     async def _identify_next_evidence_need(
         self,
@@ -91,6 +134,36 @@ class _SpyResearchExecutorService(ResearchExecutorService):
         return await super()._evaluate_iteration_outcome(stage_input, working_state)
 
 
+class _StateCapturingResearchExecutorService(ResearchExecutorService):
+    def __init__(
+        self,
+        *,
+        llm_client: _FakeLLMClient | None = None,
+        outcomes: list[ResearchIterationOutcome] | None = None,
+    ) -> None:
+        self.llm_client = llm_client or _FakeLLMClient()
+        super().__init__(llm_client=self.llm_client)
+        self.captured_states: list[dict[str, Any]] = []
+        self._outcomes = outcomes or []
+
+    async def _identify_next_evidence_need(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> None:
+        self.captured_states.append(dict(working_state))
+        await super()._identify_next_evidence_need(stage_input, working_state)
+
+    async def _evaluate_iteration_outcome(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> ResearchIterationOutcome:
+        if self._outcomes:
+            return self._outcomes.pop(0)
+        return await super()._evaluate_iteration_outcome(stage_input, working_state)
+
+
 def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
     service = _SpyResearchExecutorService()
 
@@ -101,7 +174,7 @@ def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
     )
 
     assert service.calls == [
-        "assess_current_research_state",
+        "assess_current_research_state_and_identify_gaps",
         "identify_next_evidence_need",
         "decide_whether_external_action_is_needed",
         "acquire_candidate_material",
@@ -115,7 +188,7 @@ def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
 
 
 def test_research_executor_default_scaffold_result_is_empty() -> None:
-    service = ResearchExecutorService()
+    service = ResearchExecutorService(llm_client=_FakeLLMClient())
 
     result = asyncio.run(
         service.execute(
@@ -131,6 +204,164 @@ def test_research_executor_default_scaffold_result_is_empty() -> None:
     assert result.open_questions == []
 
 
+def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None:
+    service = _StateCapturingResearchExecutorService()
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(original_query="Assess current research coverage.")
+        )
+    )
+
+    assert service.captured_states[0]["current_assessment"] == {
+        "coverage_status": "partially_covered",
+        "support_strength": "weak_support",
+        "finding_maturity": "tentative",
+        "assessment_summary": "当前研究状态只有部分覆盖，还需要补充证据。",
+    }
+    assert service.captured_states[0]["identified_gaps"][0]["gap_summary"] == "缺少直接证据。"
+
+
+def test_research_executor_accepts_fenced_json_assessment_output() -> None:
+    payload = json.dumps(_valid_assessment_payload(gap_summary="fenced gap"), ensure_ascii=False)
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(responses=[f"```json\n{payload}\n```"])
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(original_query="Assess fenced JSON.")
+        )
+    )
+
+    assert service.captured_states[0]["identified_gaps"][0]["gap_summary"] == "fenced gap"
+
+
+def test_research_executor_raises_when_llm_output_is_not_json() -> None:
+    service = ResearchExecutorService(llm_client=_FakeLLMClient(responses=["not json"]))
+
+    with pytest.raises(ValueError, match="not valid JSON"):
+        asyncio.run(
+            service.execute(
+                ResearchStageInput(original_query="This should fail.")
+            )
+        )
+
+
+def test_research_executor_raises_when_llm_schema_is_invalid() -> None:
+    invalid_payload = json.dumps(
+        {
+            "assessment": {
+                "coverage_status": "unknown",
+                "support_strength": "weak_support",
+                "finding_maturity": "tentative",
+                "assessment_summary": "invalid",
+            },
+            "identified_gaps": [],
+        }
+    )
+    service = ResearchExecutorService(llm_client=_FakeLLMClient(responses=[invalid_payload]))
+
+    with pytest.raises(ValueError, match="required schema"):
+        asyncio.run(
+            service.execute(
+                ResearchStageInput(original_query="This should fail validation.")
+            )
+        )
+
+
+def test_research_assessment_prompt_contains_required_context_and_boundaries() -> None:
+    fake_llm = _FakeLLMClient()
+    service = ResearchExecutorService(llm_client=fake_llm)
+    research_support = ContextItem(
+        id="ctx-1",
+        source_type="research_memory",
+        summary="Distilled context: freshness matters for retrieval.",
+        priority=8,
+        freshness_tag="fresh",
+        confidence="high",
+        usage_hint="research_support",
+    )
+    decision_support = ContextItem(
+        id="ctx-2",
+        source_type="decision_memory",
+        summary="Distilled decision: prefer memory-backed retrieval first.",
+        priority=7,
+        usage_hint="decision_support",
+    )
+    action_support = ContextItem(
+        id="ctx-3",
+        source_type="action_memory",
+        summary="Distilled action: implementation is blocked on freshness evidence.",
+        priority=6,
+        usage_hint="action_support",
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Compare retrieval patterns.",
+                user_goal="Pick a retrieval strategy.",
+                task_type="comparison",
+                task_framing="engineering tradeoff",
+                constraints=["Prefer low latency."],
+                project_context_summary="Project ships a research agent.",
+                plan=["Compare memory-backed and web-backed retrieval."],
+                sub_questions=["When should memory be preferred?"],
+                comparison_candidates=["memory", "web"],
+                existing_intermediate_findings=["Existing finding."],
+                research_support=[research_support],
+                decision_support=[decision_support],
+                action_support=[action_support],
+                available_tools=["docs_search"],
+                latency_budget_ms=500,
+                iteration_budget=2,
+            )
+        )
+    )
+
+    prompt = fake_llm.prompts[0]
+    assert "Project ships a research agent." in prompt
+    assert "Distilled context: freshness matters for retrieval." in prompt
+    assert "Distilled decision: prefer memory-backed retrieval first." in prompt
+    assert "Distilled action: implementation is blocked on freshness evidence." in prompt
+    assert '"processed_evidence": []' in prompt
+    assert '"evidence_coverage_map": {}' in prompt
+    assert '"identified_gaps": []' in prompt
+    assert '"remaining_iteration_budget": 2' in prompt
+    assert "existing_evidence_summary" not in prompt
+    assert "external_evidence_support" not in prompt
+    assert "不选择 tool" in prompt
+    assert "不生成 retrieval query" in prompt
+    assert "不执行 retrieval" in prompt
+    assert "不生成 final answer" in prompt
+    assert "不得基于项目背景扩大 research scope" in prompt
+    assert "raw memory record 或本轮 processed evidence" in prompt
+    assert "不得据此扩大 research scope 或直接生成 action plan" in prompt
+
+
+def test_research_executor_second_iteration_prompt_sees_previous_identified_gaps() -> None:
+    first_payload = json.dumps(_valid_assessment_payload(gap_summary="first gap"), ensure_ascii=False)
+    second_payload = json.dumps(_valid_assessment_payload(gap_summary="second gap"), ensure_ascii=False)
+    fake_llm = _FakeLLMClient(responses=[first_payload, second_payload])
+    service = _SpyResearchExecutorService(
+        outcomes=["continue", "stop"],
+        llm_client=fake_llm,
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Carry gaps across iterations.",
+                iteration_budget=2,
+            )
+        )
+    )
+
+    assert len(fake_llm.prompts) == 2
+    assert "first gap" in fake_llm.prompts[1]
+
+
 def test_research_executor_continues_until_stop_within_iteration_budget() -> None:
     service = _SpyResearchExecutorService(outcomes=["continue", "stop"])
 
@@ -144,7 +375,7 @@ def test_research_executor_continues_until_stop_within_iteration_budget() -> Non
     )
 
     assert service.calls == [
-        "assess_current_research_state",
+        "assess_current_research_state_and_identify_gaps",
         "identify_next_evidence_need",
         "decide_whether_external_action_is_needed",
         "acquire_candidate_material",
@@ -152,7 +383,7 @@ def test_research_executor_continues_until_stop_within_iteration_budget() -> Non
         "update_stage_local_working_state",
         "produce_or_refine_intermediate_findings",
         "evaluate_iteration_outcome",
-        "assess_current_research_state",
+        "assess_current_research_state_and_identify_gaps",
         "identify_next_evidence_need",
         "decide_whether_external_action_is_needed",
         "acquire_candidate_material",

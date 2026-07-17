@@ -58,10 +58,6 @@ class ResearchStageInput(BaseModel):
         default_factory=list,
         description="可选字段，默认空列表。当前已识别的信息缺口，后续可作为 retrieval / evidence target。",
     )
-    existing_evidence_summary: str | None = Field(
-        default=None,
-        description="可选字段。进入 research stage 前 RunningState 中已有的 evidence summary。",
-    )
     existing_intermediate_findings: list[str] = Field(
         default_factory=list,
         description="可选字段，默认空列表。进入 research stage 前已有的中间发现。",
@@ -70,9 +66,21 @@ class ResearchStageInput(BaseModel):
         default_factory=list,
         description="可选字段，默认空列表。已筛选的 research knowledge supporting context。",
     )
-    external_evidence_support: list[ContextItem] = Field(
+    decision_support: list[ContextItem] = Field(
         default_factory=list,
-        description="可选字段，默认空列表。已筛选的 external evidence supporting context。",
+        description=(
+            "可选字段，默认空列表。来自 SupplementalContext.decision_support 的已蒸馏 decision 摘要材料。"
+            "当前用于 ResearchExecutor 评估当前研究是否受已有决策约束、是否存在决策支撑不足或冲突；"
+            "它不是 raw decision record，也不是本轮 retrieval evidence。"
+        ),
+    )
+    action_support: list[ContextItem] = Field(
+        default_factory=list,
+        description=(
+            "可选字段，默认空列表。来自 SupplementalContext.action_support 的已蒸馏 action / execution status "
+            "摘要材料。当前用于 ResearchExecutor 判断行动状态、阻塞、下一步可执行性相关 gap；"
+            "它不是 raw action record，也不是本轮 retrieval evidence。"
+        ),
     )
     available_tools: list[str] = Field(
         default_factory=list,
