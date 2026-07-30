@@ -31,6 +31,24 @@ def _valid_assessment_payload(*, gap_summary: str = "缺少直接证据。") -> 
                 "gap_actionability": "补充 memory-backed retrieval 的直接证据。",
             }
         ],
+        "top_gap": {
+            "gap_scope": "sub_question_level",
+            "gap_nature": "missing",
+            "gap_severity": "important",
+            "gap_summary": gap_summary,
+            "gap_target": "When should memory be preferred?",
+            "gap_actionability": "补充 memory-backed retrieval 的直接证据。",
+        },
+        "next_evidence_need": {
+            "need_scope": "sub_question_level",
+            "need_target": "When should memory be preferred?",
+            "need_purpose": "establish_coverage",
+            "desired_evidence_kind": "direct_fact",
+            "freshness_requirement": "normal",
+            "minimum_support_requirement": "any_relevant_signal",
+            "need_summary": "补充 memory-backed retrieval 的直接事实证据。",
+        },
+        "prioritization_summary": "该 gap 直接影响当前轮 research objective，因此优先推进。",
     }
 
 
@@ -58,24 +76,16 @@ class _SpyResearchExecutorService(ResearchExecutorService):
         self.calls: list[str] = []
         self._outcomes = outcomes or []
 
-    async def _assess_current_research_state_and_identify_gaps(
+    async def _assess_research_state_and_select_next_evidence_need(
         self,
         stage_input: ResearchStageInput,
         working_state: dict[str, Any],
     ) -> None:
-        self.calls.append("assess_current_research_state_and_identify_gaps")
-        await super()._assess_current_research_state_and_identify_gaps(
+        self.calls.append("assess_research_state_and_select_next_evidence_need")
+        await super()._assess_research_state_and_select_next_evidence_need(
             stage_input,
             working_state,
         )
-
-    async def _identify_next_evidence_need(
-        self,
-        stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
-    ) -> None:
-        self.calls.append("identify_next_evidence_need")
-        await super()._identify_next_evidence_need(stage_input, working_state)
 
     async def _decide_whether_external_action_is_needed(
         self,
@@ -146,13 +156,16 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         self.captured_states: list[dict[str, Any]] = []
         self._outcomes = outcomes or []
 
-    async def _identify_next_evidence_need(
+    async def _assess_research_state_and_select_next_evidence_need(
         self,
         stage_input: ResearchStageInput,
         working_state: dict[str, Any],
     ) -> None:
+        await super()._assess_research_state_and_select_next_evidence_need(
+            stage_input,
+            working_state,
+        )
         self.captured_states.append(dict(working_state))
-        await super()._identify_next_evidence_need(stage_input, working_state)
 
     async def _evaluate_iteration_outcome(
         self,
@@ -174,8 +187,7 @@ def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
     )
 
     assert service.calls == [
-        "assess_current_research_state_and_identify_gaps",
-        "identify_next_evidence_need",
+        "assess_research_state_and_select_next_evidence_need",
         "decide_whether_external_action_is_needed",
         "acquire_candidate_material",
         "process_candidate_material_into_usable_evidence",
@@ -220,6 +232,20 @@ def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None
         "assessment_summary": "当前研究状态只有部分覆盖，还需要补充证据。",
     }
     assert service.captured_states[0]["identified_gaps"][0]["gap_summary"] == "缺少直接证据。"
+    assert service.captured_states[0]["top_gap"]["gap_summary"] == "缺少直接证据。"
+    assert service.captured_states[0]["next_evidence_need"] == {
+        "need_scope": "sub_question_level",
+        "need_target": "When should memory be preferred?",
+        "need_purpose": "establish_coverage",
+        "desired_evidence_kind": "direct_fact",
+        "freshness_requirement": "normal",
+        "minimum_support_requirement": "any_relevant_signal",
+        "need_summary": "补充 memory-backed retrieval 的直接事实证据。",
+    }
+    assert (
+        service.captured_states[0]["prioritization_summary"]
+        == "该 gap 直接影响当前轮 research objective，因此优先推进。"
+    )
 
 
 def test_research_executor_accepts_fenced_json_assessment_output() -> None:
@@ -328,16 +354,34 @@ def test_research_assessment_prompt_contains_required_context_and_boundaries() -
     assert '"processed_evidence": []' in prompt
     assert '"evidence_coverage_map": {}' in prompt
     assert '"identified_gaps": []' in prompt
+    assert "top_gap" in prompt
+    assert "next_evidence_need" in prompt
+    assert "prioritization_summary" in prompt
     assert '"remaining_iteration_budget": 2' in prompt
+    assert "无状态调用" in prompt
+    assert "输入 JSON 分为以下区域" in prompt
+    assert "task_context" in prompt
+    assert "planning_guidance" in prompt
+    assert "supporting_context" in prompt
+    assert "evidence_state" in prompt
+    assert "gap_state" in prompt
+    assert "runtime_control" in prompt
+    assert "你的输出不是给用户看的最终回答" in prompt
+    assert "输出边界" in prompt
+    assert "不要回答用户的原始问题" in prompt
+    assert "不要输出面向用户的结论、建议、行动计划或解释性段落" in prompt
+    assert "不要输出具体工具名、执行路径或 action mode" in prompt
+    assert "不要输出搜索词或工具调用参数" in prompt
+    assert "next_evidence_need 只描述" in prompt
+    assert "它不是搜索词，不是工具调用参数，也不是执行步骤" in prompt
+    assert "available_capabilities：当前可用能力摘要。它只用于判断某个 evidence need 是否现实可推进" in prompt
+    assert "不要基于 project_context_summary、decision_support 或 action_support 扩大研究范围" in prompt
     assert "existing_evidence_summary" not in prompt
     assert "external_evidence_support" not in prompt
-    assert "不选择 tool" in prompt
-    assert "不生成 retrieval query" in prompt
-    assert "不执行 retrieval" in prompt
-    assert "不生成 final answer" in prompt
-    assert "不得基于项目背景扩大 research scope" in prompt
-    assert "raw memory record 或本轮 processed evidence" in prompt
-    assert "不得据此扩大 research scope 或直接生成 action plan" in prompt
+    assert "不选择 tool" not in prompt
+    assert "不生成 retrieval query" not in prompt
+    assert "不执行 retrieval" not in prompt
+    assert "不生成 final answer" not in prompt
 
 
 def test_research_executor_second_iteration_prompt_sees_previous_identified_gaps() -> None:
@@ -360,6 +404,8 @@ def test_research_executor_second_iteration_prompt_sees_previous_identified_gaps
 
     assert len(fake_llm.prompts) == 2
     assert "first gap" in fake_llm.prompts[1]
+    assert "next_evidence_need" in fake_llm.prompts[1]
+    assert "补充 memory-backed retrieval 的直接事实证据" in fake_llm.prompts[1]
 
 
 def test_research_executor_continues_until_stop_within_iteration_budget() -> None:
@@ -375,16 +421,14 @@ def test_research_executor_continues_until_stop_within_iteration_budget() -> Non
     )
 
     assert service.calls == [
-        "assess_current_research_state_and_identify_gaps",
-        "identify_next_evidence_need",
+        "assess_research_state_and_select_next_evidence_need",
         "decide_whether_external_action_is_needed",
         "acquire_candidate_material",
         "process_candidate_material_into_usable_evidence",
         "update_stage_local_working_state",
         "produce_or_refine_intermediate_findings",
         "evaluate_iteration_outcome",
-        "assess_current_research_state_and_identify_gaps",
-        "identify_next_evidence_need",
+        "assess_research_state_and_select_next_evidence_need",
         "decide_whether_external_action_is_needed",
         "acquire_candidate_material",
         "process_candidate_material_into_usable_evidence",
