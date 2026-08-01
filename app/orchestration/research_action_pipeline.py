@@ -85,6 +85,7 @@ class ResearchActionPipeline:
             task_framing=state.task_framing,
             constraints=state.constraints,
             project_scope_id=state.project_scope_id,
+            owner_user_id=runtime_context.user_id,
             project_context_summary=state.project_context_summary,
             plan=state.plan,
             sub_questions=state.sub_questions,

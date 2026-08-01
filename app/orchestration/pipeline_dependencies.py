@@ -19,6 +19,7 @@ from app.adapters.memory.postgres_research_knowledge_memory_store import (
     PostgresResearchKnowledgeMemoryStore,
 )
 from app.adapters.memory.redis_session_memory_store import RedisSessionMemoryStore
+from app.services.evidence.evidence_processing_service import EvidenceProcessingService
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
 from app.services.executor.research_executor_service import ResearchExecutorService
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
@@ -43,6 +44,16 @@ from app.services.planner.contracts.workflow_router_protocol import WorkflowRout
 from app.services.planner.decomposition_planner_service import DecompositionPlannerService
 from app.services.planner.task_interpreter_service import TaskInterpreterService
 from app.services.planner.workflow_router_service import WorkflowRouterService
+from app.services.tool_execution_layer.family_selection_service import FamilySelectionService
+from app.services.tool_execution_layer.request_completion_evaluation_service import (
+    RequestCompletionEvaluationService,
+)
+from app.services.tool_execution_layer.retrieval_query_generation_service import (
+    RetrievalQueryGenerationService,
+)
+from app.services.tool_execution_layer.tool_execution_layer_service import (
+    ToolExecutionLayerService,
+)
 
 
 @dataclass(slots=True)
@@ -74,7 +85,18 @@ def build_default_dependencies() -> PipelineDependencies:
     research_knowledge_store = PostgresResearchKnowledgeMemoryStore()
     embedding_client = ZhipuEmbeddingClient()
 
-    research_executor = ResearchExecutorService(llm_client=ZhipuLLMClient())
+    tool_execution_layer_service = ToolExecutionLayerService(
+        family_selection_service=FamilySelectionService(),
+        query_generation_service=RetrievalQueryGenerationService(
+            llm_client=ZhipuLLMClient(),
+        ),
+        completion_evaluation_service=RequestCompletionEvaluationService(),
+    )
+    research_executor = ResearchExecutorService(
+        llm_client=ZhipuLLMClient(),
+        tool_execution_layer_service=tool_execution_layer_service,
+        evidence_processing_service=EvidenceProcessingService(),
+    )
 
     return PipelineDependencies(
         request_intake=RequestIntakeService(),

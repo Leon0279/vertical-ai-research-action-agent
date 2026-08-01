@@ -6,7 +6,17 @@ from typing import Any
 
 import pytest
 
-from app.domain.models import ContextItem, ResearchStageInput, ResearchStageResult
+from app.domain.enums import AcquisitionStatus, FamilyName
+from app.domain.models import (
+    ContextItem,
+    EvidenceProcessingResult,
+    ProcessedEvidenceUnit,
+    ResearchStageInput,
+    ResearchStageResult,
+    SourceReference,
+    ToolExecutionLayerRequest,
+    ToolExecutionLayerResult,
+)
 from app.services.executor.research_executor_service import (
     ResearchExecutorService,
     ResearchIterationOutcome,
@@ -83,14 +93,69 @@ class _FakeLLMClient:
         return self._responses[0]
 
 
+class _FakeToolExecutionLayerService:
+    def __init__(self, result: ToolExecutionLayerResult | None = None) -> None:
+        self.result = result or ToolExecutionLayerResult(
+            execution_status="completed",
+            acquisition_status=AcquisitionStatus.NO_RESULT,
+        )
+        self.requests: list[ToolExecutionLayerRequest] = []
+
+    async def execute(
+        self,
+        request: ToolExecutionLayerRequest,
+    ) -> ToolExecutionLayerResult:
+        self.requests.append(request)
+        return self.result
+
+
+class _FakeEvidenceProcessingService:
+    def __init__(self, result: EvidenceProcessingResult | None = None) -> None:
+        self.result = result or EvidenceProcessingResult(processing_status="no_result")
+        self.requests: list[Any] = []
+
+    async def process(self, request: Any) -> EvidenceProcessingResult:
+        self.requests.append(request)
+        return self.result
+
+
+def _research_executor(
+    *,
+    llm_client: _FakeLLMClient | None = None,
+    tool_execution_layer_service: _FakeToolExecutionLayerService | None = None,
+    evidence_processing_service: _FakeEvidenceProcessingService | None = None,
+) -> ResearchExecutorService:
+    return ResearchExecutorService(
+        llm_client=llm_client or _FakeLLMClient(),
+        tool_execution_layer_service=(
+            tool_execution_layer_service or _FakeToolExecutionLayerService()
+        ),
+        evidence_processing_service=(
+            evidence_processing_service or _FakeEvidenceProcessingService()
+        ),
+    )
+
+
 class _SpyResearchExecutorService(ResearchExecutorService):
     def __init__(
         self,
         outcomes: list[ResearchIterationOutcome] | None = None,
         llm_client: _FakeLLMClient | None = None,
+        tool_execution_layer_service: _FakeToolExecutionLayerService | None = None,
+        evidence_processing_service: _FakeEvidenceProcessingService | None = None,
     ) -> None:
         self.llm_client = llm_client or _FakeLLMClient()
-        super().__init__(llm_client=self.llm_client)
+        self.tool_execution_layer_service = (
+            tool_execution_layer_service or _FakeToolExecutionLayerService()
+        )
+        self.evidence_processing_service = (
+            evidence_processing_service or _FakeEvidenceProcessingService()
+        )
+        super().__init__(
+            llm_client=self.llm_client,
+            tool_execution_layer_service=self.tool_execution_layer_service,
+            evidence_processing_service=self.evidence_processing_service,
+        )
         self.calls: list[str] = []
         self._outcomes = outcomes or []
 
@@ -168,11 +233,24 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         *,
         llm_client: _FakeLLMClient | None = None,
         outcomes: list[ResearchIterationOutcome] | None = None,
+        tool_execution_layer_service: _FakeToolExecutionLayerService | None = None,
+        evidence_processing_service: _FakeEvidenceProcessingService | None = None,
     ) -> None:
         self.llm_client = llm_client or _FakeLLMClient()
-        super().__init__(llm_client=self.llm_client)
+        self.tool_execution_layer_service = (
+            tool_execution_layer_service or _FakeToolExecutionLayerService()
+        )
+        self.evidence_processing_service = (
+            evidence_processing_service or _FakeEvidenceProcessingService()
+        )
+        super().__init__(
+            llm_client=self.llm_client,
+            tool_execution_layer_service=self.tool_execution_layer_service,
+            evidence_processing_service=self.evidence_processing_service,
+        )
         self.captured_states: list[dict[str, Any]] = []
         self.action_states: list[dict[str, Any]] = []
+        self.processed_states: list[dict[str, Any]] = []
         self._outcomes = outcomes or []
 
     async def _assess_research_state_and_select_next_evidence_need(
@@ -206,6 +284,17 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         if self._outcomes:
             return self._outcomes.pop(0)
         return await super()._evaluate_iteration_outcome(stage_input, working_state)
+
+    async def _process_candidate_material_into_usable_evidence(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> None:
+        await super()._process_candidate_material_into_usable_evidence(
+            stage_input,
+            working_state,
+        )
+        self.processed_states.append(dict(working_state))
 
 
 def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
@@ -254,7 +343,7 @@ def test_research_executor_runs_acquisition_steps_when_action_decision_requires_
 
 
 def test_research_executor_default_scaffold_result_is_empty() -> None:
-    service = ResearchExecutorService(llm_client=_FakeLLMClient())
+    service = _research_executor(llm_client=_FakeLLMClient())
 
     result = asyncio.run(
         service.execute(
@@ -382,6 +471,8 @@ def test_research_executor_selects_memory_backed_acquisition_when_available() ->
         service.execute(
             ResearchStageInput(
                 original_query="Prefer memory when freshness is normal.",
+                owner_user_id="user-1",
+                project_scope_id="project-1",
                 available_tools=["research_knowledge_recall"],
             )
         )
@@ -403,6 +494,14 @@ def test_research_executor_selects_memory_backed_acquisition_when_available() ->
     assert action_request["evidence_acquisition_intent"]["constraints"][
         "preferred_source_families"
     ] == ["research_knowledge_recall"]
+    tel_request = service.tool_execution_layer_service.requests[0]
+    assert tel_request.action_mode == "memory_backed_acquisition"
+    assert tel_request.owner_user_id == "user-1"
+    assert tel_request.project_scope_id == "project-1"
+    assert tel_request.allowed_visibility_scopes == ["user", "project"]
+    assert tel_request.allowed_source_families == [
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL
+    ]
 
 
 def test_research_executor_selects_external_acquisition_for_fresh_required_need() -> None:
@@ -442,6 +541,79 @@ def test_research_executor_selects_external_acquisition_for_fresh_required_need(
         action_request["evidence_acquisition_intent"]["success_hint"]
         == "补充最新状态 evidence。"
     )
+    tel_request = service.tool_execution_layer_service.requests[0]
+    assert tel_request.action_mode == "external_acquisition"
+    assert tel_request.allowed_source_families == [FamilyName.DOCS_SEARCH]
+    assert tel_request.evidence_shape is not None
+    assert tel_request.evidence_shape.desired_evidence_kind == "status_evidence"
+    assert tel_request.evidence_shape.freshness_requirement == "fresh_required"
+
+
+def test_research_executor_maps_supporting_evidence_need_for_tel() -> None:
+    payload = _valid_assessment_payload(
+        desired_evidence_kind="stronger_supporting_evidence",
+        need_summary="补充更强的支持性 evidence。",
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Map richer research evidence kinds.",
+                available_tools=["docs_search"],
+            )
+        )
+    )
+
+    tel_request = service.tool_execution_layer_service.requests[0]
+    assert tel_request.evidence_shape is not None
+    assert tel_request.evidence_shape.desired_evidence_kind == "supporting_evidence"
+    assert tel_request.success_hint == "补充更强的支持性 evidence。"
+
+
+def test_research_executor_processes_tel_result_into_working_state() -> None:
+    source_reference = SourceReference(source_type="document", source_id="doc-1")
+    evidence_unit = ProcessedEvidenceUnit(
+        evidence_unit_id="ev_001",
+        source_references=[source_reference],
+        source_family=FamilyName.DOCS_SEARCH,
+        content="Docs search supports the current retrieval design.",
+        evidence_type="supporting_signal",
+    )
+    tel_service = _FakeToolExecutionLayerService(
+        result=ToolExecutionLayerResult(
+            execution_status="completed",
+            acquisition_status=AcquisitionStatus.SUCCESS,
+        )
+    )
+    evidence_service = _FakeEvidenceProcessingService(
+        result=EvidenceProcessingResult(
+            processed_evidence_units=[evidence_unit],
+            processing_status="success",
+        )
+    )
+    service = _StateCapturingResearchExecutorService(
+        tool_execution_layer_service=tel_service,
+        evidence_processing_service=evidence_service,
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Process acquired materials.",
+                available_tools=["docs_search"],
+            )
+        )
+    )
+
+    assert len(tel_service.requests) == 1
+    assert len(evidence_service.requests) == 1
+    assert evidence_service.requests[0].acquisition_status == AcquisitionStatus.SUCCESS
+    assert service.processed_states[0]["processed_evidence"] == [
+        evidence_unit.model_dump(mode="json")
+    ]
 
 
 def test_research_executor_refines_when_latency_constrained_and_gap_not_blocking() -> None:
@@ -497,7 +669,7 @@ def test_research_executor_accepts_fenced_json_assessment_output() -> None:
 
 
 def test_research_executor_raises_when_llm_output_is_not_json() -> None:
-    service = ResearchExecutorService(llm_client=_FakeLLMClient(responses=["not json"]))
+    service = _research_executor(llm_client=_FakeLLMClient(responses=["not json"]))
 
     with pytest.raises(ValueError, match="not valid JSON"):
         asyncio.run(
@@ -519,7 +691,7 @@ def test_research_executor_raises_when_llm_schema_is_invalid() -> None:
             "identified_gaps": [],
         }
     )
-    service = ResearchExecutorService(llm_client=_FakeLLMClient(responses=[invalid_payload]))
+    service = _research_executor(llm_client=_FakeLLMClient(responses=[invalid_payload]))
 
     with pytest.raises(ValueError, match="required schema"):
         asyncio.run(
@@ -531,7 +703,7 @@ def test_research_executor_raises_when_llm_schema_is_invalid() -> None:
 
 def test_research_assessment_prompt_contains_required_context_and_boundaries() -> None:
     fake_llm = _FakeLLMClient()
-    service = ResearchExecutorService(llm_client=fake_llm)
+    service = _research_executor(llm_client=fake_llm)
     research_support = ContextItem(
         id="ctx-1",
         source_type="research_memory",

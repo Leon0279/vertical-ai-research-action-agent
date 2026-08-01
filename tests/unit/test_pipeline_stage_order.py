@@ -180,6 +180,7 @@ def test_research_stage_projects_input_and_applies_result() -> None:
         task_framing="engineering_tradeoff_comparison",
         constraints=["Prefer low-latency options."],
         project_scope_id="project-1",
+        owner_user_id="user-1",
         project_context_summary="The project ships a research agent.",
         plan=["Compare memory-backed and web-backed retrieval."],
         sub_questions=["When should memory be preferred?"],

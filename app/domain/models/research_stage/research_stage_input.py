@@ -38,6 +38,15 @@ class ResearchStageInput(BaseModel):
         default=None,
         description="可选字段。当前 run 的项目范围 ID，可用于后续 memory recall 或 project-scoped retrieval。",
     )
+    owner_user_id: str | None = Field(
+        default=None,
+        description=(
+            "可选字段。当前 run 的用户归属 ID，通常由 ResearchActionPipeline 从 RuntimeContext.user_id 投影而来。"
+            "当前项目中有用：ResearchExecutorService 在触发 memory-backed acquisition 时，会把它传给 "
+            "ToolExecutionLayerRequest.owner_user_id，供 research_knowledge_recall family 做用户级 memory recall 边界校验。"
+            "它不是 source author，也不应写入 SourceReference。"
+        ),
+    )
     project_context_summary: str | None = Field(
         default=None,
         description="可选字段。项目背景摘要，用于让 research stage 在项目语境内选择 evidence need。",

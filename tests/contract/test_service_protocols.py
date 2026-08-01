@@ -276,7 +276,18 @@ def test_adapter_protocol_conformance() -> None:
 def test_service_protocol_conformance() -> None:
     assert isinstance(TaskInterpreterService(), TaskInterpreterProtocol)
     assert isinstance(DecompositionPlannerService(), DecompositionPlannerProtocol)
-    assert isinstance(ResearchExecutorService(llm_client=StubLLMClient()), ResearchExecutorProtocol)
+    assert isinstance(
+        ResearchExecutorService(
+            llm_client=StubLLMClient(),
+            tool_execution_layer_service=ToolExecutionLayerService(
+                family_selection_service=FamilySelectionService(),
+                query_generation_service=RetrievalQueryGenerationService(StubLLMClient()),
+                completion_evaluation_service=RequestCompletionEvaluationService(),
+            ),
+            evidence_processing_service=EvidenceProcessingService(),
+        ),
+        ResearchExecutorProtocol,
+    )
     assert isinstance(EvidenceProcessingService(), EvidenceProcessingServiceProtocol)
     assert isinstance(EvidenceProcessorService(), EvidenceProcessorProtocol)
     assert isinstance(ConclusionGeneratorService(), ConclusionGeneratorProtocol)

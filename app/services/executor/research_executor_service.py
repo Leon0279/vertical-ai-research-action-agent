@@ -8,10 +8,23 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.domain.enums import FamilyName
-from app.domain.models import ResearchStageInput, ResearchStageResult
+from app.domain.enums import ActionMode, FamilyName
+from app.domain.models import (
+    EvidenceProcessingRequest,
+    EvidenceShape,
+    ResearchStageInput,
+    ResearchStageResult,
+    ToolExecutionLayerRequest,
+    ToolExecutionLayerResult,
+)
 from app.domain.models.context.context_item import ContextItem
+from app.services.evidence.contracts.evidence_processing_service_protocol import (
+    EvidenceProcessingServiceProtocol,
+)
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
+from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
+    ToolExecutionLayerServiceProtocol,
+)
 
 ResearchIterationOutcome = Literal["continue", "stop", "degrade"]
 ResearchActionMode = Literal[
@@ -159,10 +172,26 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     and return ResearchStageResult for the pipeline to write back.
     """
 
-    def __init__(self, llm_client: LLMClientProtocol) -> None:
+    def __init__(
+        self,
+        *,
+        llm_client: LLMClientProtocol,
+        tool_execution_layer_service: ToolExecutionLayerServiceProtocol,
+        evidence_processing_service: EvidenceProcessingServiceProtocol,
+    ) -> None:
         if llm_client is None:
             raise ValueError("ResearchExecutorService requires an llm_client.")
+        if tool_execution_layer_service is None:
+            raise ValueError(
+                "ResearchExecutorService requires a tool_execution_layer_service."
+            )
+        if evidence_processing_service is None:
+            raise ValueError(
+                "ResearchExecutorService requires an evidence_processing_service."
+            )
         self._llm_client = llm_client
+        self._tool_execution_layer_service = tool_execution_layer_service
+        self._evidence_processing_service = evidence_processing_service
 
     async def execute(self, stage_input: ResearchStageInput) -> ResearchStageResult:
         """Run bounded scaffolded canonical research iterations."""
@@ -606,8 +635,11 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     ) -> None:
         """Step 4. Acquire candidate material through the appropriate action path."""
 
-        _ = stage_input
-        _ = working_state
+        request = self._tool_execution_layer_request(stage_input, working_state)
+        result = await self._tool_execution_layer_service.execute(request)
+        working_state["tool_execution_request"] = request
+        working_state["tool_execution_result"] = result
+        working_state["candidate_materials"] = list(result.normalized_items)
 
     async def _process_candidate_material_into_usable_evidence(
         self,
@@ -617,7 +649,233 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         """Step 5. Process candidate material into usable evidence representation."""
 
         _ = stage_input
-        _ = working_state
+        tool_execution_result = working_state.get("tool_execution_result")
+        if not isinstance(tool_execution_result, ToolExecutionLayerResult):
+            raise ValueError(
+                "tool_execution_result is required before evidence processing."
+            )
+
+        request = EvidenceProcessingRequest.from_tool_execution_result(
+            tool_execution_result
+        )
+        result = await self._evidence_processing_service.process(request)
+        working_state["evidence_processing_request"] = request
+        working_state["evidence_processing_result"] = result
+        working_state.setdefault("processed_evidence", []).extend(
+            unit.model_dump(mode="json") for unit in result.processed_evidence_units
+        )
+
+    def _tool_execution_layer_request(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> ToolExecutionLayerRequest:
+        """Project the stage-local action request into TEL's public request model."""
+
+        action_request = working_state.get("action_request")
+        if not isinstance(action_request, dict):
+            raise ValueError("action_request is required before material acquisition.")
+
+        action_mode = self._tel_action_mode(action_request.get("action_mode"))
+        intent = self._action_request_intent(action_request)
+        next_evidence_need = self._working_state_dict(
+            working_state,
+            "next_evidence_need",
+        )
+        top_gap = self._working_state_dict(working_state, "top_gap")
+        constraints = self._action_request_constraints(intent)
+        max_results = self._positive_int(constraints.get("max_results"), default=5)
+        allowed_source_families = self._family_names(
+            constraints.get("allowed_source_families", [])
+        )
+        preferred_source_families = self._family_names(
+            constraints.get("preferred_source_families", [])
+        )
+        blocked_source_families = self._family_names(
+            constraints.get("blocked_source_families", [])
+        )
+
+        return ToolExecutionLayerRequest(
+            target_problem=self._required_text(
+                intent.get("target_problem"),
+                fallback=stage_input.user_goal or stage_input.original_query,
+                field_name="target_problem",
+            ),
+            action_mode=action_mode,
+            evidence_goal=self._optional_text(next_evidence_need.get("need_purpose")),
+            evidence_shape=self._tel_evidence_shape_from_next_evidence_need(
+                next_evidence_need,
+                intent.get("evidence_shape"),
+            ),
+            task_framing=stage_input.task_framing,
+            allowed_source_families=allowed_source_families,
+            preferred_source_families=preferred_source_families,
+            blocked_source_families=blocked_source_families,
+            available_families=allowed_source_families,
+            success_hint=self._success_hint(intent, next_evidence_need, top_gap),
+            preferred_tool=self._optional_text(action_request.get("preferred_tool")),
+            max_search_results=max_results,
+            max_content_fetches=3,
+            owner_user_id=stage_input.owner_user_id,
+            project_scope_id=stage_input.project_scope_id,
+            allowed_visibility_scopes=self._allowed_visibility_scopes(stage_input),
+            memory_recall_limit=max_results,
+            retry_budget=1,
+            fallback_policy=(
+                self._optional_text(action_request.get("fallback_policy"))
+                or "fallback_within_same_family"
+            ),
+            timeout_limit_ms=self._positive_optional_int(
+                stage_input.latency_budget_ms
+            ),
+        )
+
+    def _tel_action_mode(self, action_mode: Any) -> ActionMode:
+        """Map Research Executor action mode into TEL acquisition mode."""
+
+        if action_mode == _MEMORY_ACTION_MODE:
+            return ActionMode.MEMORY_BACKED_ACQUISITION
+        if action_mode == _EXTERNAL_ACTION_MODE:
+            return ActionMode.EXTERNAL_ACQUISITION
+        raise ValueError(f"Unsupported acquisition action mode: {action_mode!r}.")
+
+    def _action_request_intent(self, action_request: dict[str, Any]) -> dict[str, Any]:
+        """Return the action request's evidence acquisition intent."""
+
+        intent = action_request.get("evidence_acquisition_intent")
+        if not isinstance(intent, dict):
+            raise ValueError("action_request.evidence_acquisition_intent is required.")
+        return intent
+
+    def _action_request_constraints(self, intent: dict[str, Any]) -> dict[str, Any]:
+        """Return the action request constraints dict."""
+
+        constraints = intent.get("constraints")
+        if isinstance(constraints, dict):
+            return constraints
+        return {}
+
+    def _tel_evidence_shape_from_next_evidence_need(
+        self,
+        next_evidence_need: dict[str, Any],
+        action_evidence_shape: Any,
+    ) -> EvidenceShape:
+        """Map Research Executor evidence need semantics into TEL EvidenceShape."""
+
+        desired_kind = self._optional_text(
+            next_evidence_need.get("desired_evidence_kind")
+        )
+        tel_desired_kind = self._tel_desired_evidence_kind(desired_kind)
+
+        freshness_requirement = self._optional_text(
+            next_evidence_need.get("freshness_requirement")
+        )
+        if freshness_requirement == "none":
+            freshness_requirement = "normal"
+
+        breadth = "normal"
+        if isinstance(action_evidence_shape, dict):
+            breadth = self._optional_text(action_evidence_shape.get("breadth")) or "normal"
+
+        return EvidenceShape(
+            desired_evidence_kind=tel_desired_kind,
+            freshness_requirement=freshness_requirement or "normal",
+            breadth=breadth,
+        )
+
+    def _tel_desired_evidence_kind(self, desired_kind: str | None) -> str:
+        """Return the TEL retrieval-facing evidence kind for a research need kind."""
+
+        kind_mapping = {
+            "direct_fact": "direct_fact",
+            "stronger_supporting_evidence": "supporting_evidence",
+            "disambiguating_evidence": "disambiguating_evidence",
+            "comparison_evidence": "comparison_evidence",
+            "fresh_status_evidence": "status_evidence",
+            "decision_supporting_evidence": "supporting_evidence",
+        }
+        if desired_kind == "none":
+            raise ValueError(
+                "desired_evidence_kind='none' should not enter Tool Execution Layer."
+            )
+        try:
+            return kind_mapping[desired_kind or ""]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unsupported desired_evidence_kind for TEL mapping: {desired_kind!r}."
+            ) from exc
+
+    def _family_names(self, values: Any) -> list[FamilyName]:
+        """Convert internal action-request family strings into FamilyName values."""
+
+        if not isinstance(values, list):
+            return []
+
+        families: list[FamilyName] = []
+        for value in values:
+            try:
+                family = FamilyName(value)
+            except ValueError as exc:
+                raise ValueError(f"Unsupported source family: {value!r}.") from exc
+            if family not in families:
+                families.append(family)
+        return families
+
+    def _success_hint(
+        self,
+        intent: dict[str, Any],
+        next_evidence_need: dict[str, Any],
+        top_gap: dict[str, Any],
+    ) -> str | None:
+        """Return a compact success hint for TEL query generation."""
+
+        return (
+            self._optional_text(intent.get("success_hint"))
+            or self._optional_text(next_evidence_need.get("need_summary"))
+            or self._optional_text(top_gap.get("gap_summary"))
+        )
+
+    def _allowed_visibility_scopes(self, stage_input: ResearchStageInput) -> list[str]:
+        """Return memory visibility scopes for TEL requests."""
+
+        if stage_input.project_scope_id:
+            return ["user", "project"]
+        return ["user"]
+
+    def _positive_int(self, value: Any, *, default: int) -> int:
+        """Return value when it is a positive int, otherwise the provided default."""
+
+        if isinstance(value, int) and value > 0:
+            return value
+        return default
+
+    def _positive_optional_int(self, value: Any) -> int | None:
+        """Return a positive integer value or None."""
+
+        if isinstance(value, int) and value > 0:
+            return value
+        return None
+
+    def _required_text(
+        self,
+        value: Any,
+        *,
+        fallback: str,
+        field_name: str,
+    ) -> str:
+        """Return stripped text, falling back to a required non-empty value."""
+
+        text = self._optional_text(value) or self._optional_text(fallback)
+        if text is None:
+            raise ValueError(f"{field_name} is required for material acquisition.")
+        return text
+
+    def _optional_text(self, value: Any) -> str | None:
+        """Return a stripped non-empty string or None."""
+
+        if not isinstance(value, str):
+            return None
+        return value.strip() or None
 
     async def _update_stage_local_working_state(
         self,

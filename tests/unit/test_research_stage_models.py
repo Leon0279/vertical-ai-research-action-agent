@@ -10,6 +10,7 @@ def test_research_stage_input_minimal_construction() -> None:
     assert stage_input.constraints == []
     assert stage_input.plan == []
     assert stage_input.sub_questions == []
+    assert stage_input.owner_user_id is None
     assert stage_input.research_support == []
     assert stage_input.decision_support == []
     assert stage_input.action_support == []
