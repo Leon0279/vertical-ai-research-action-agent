@@ -13,40 +13,58 @@ from app.services.executor.research_executor_service import (
 )
 
 
-def _valid_assessment_payload(*, gap_summary: str = "缺少直接证据。") -> dict[str, Any]:
+def _valid_assessment_payload(
+    *,
+    coverage_status: str = "partially_covered",
+    support_strength: str = "weak_support",
+    finding_maturity: str = "tentative",
+    gap_scope: str = "sub_question_level",
+    gap_nature: str = "missing",
+    gap_severity: str = "important",
+    gap_summary: str = "缺少直接证据。",
+    gap_target: str | None = "When should memory be preferred?",
+    gap_actionability: str | None = "补充 memory-backed retrieval 的直接证据。",
+    need_scope: str = "sub_question_level",
+    need_target: str | None = "When should memory be preferred?",
+    need_purpose: str = "establish_coverage",
+    desired_evidence_kind: str = "direct_fact",
+    freshness_requirement: str = "normal",
+    minimum_support_requirement: str = "any_relevant_signal",
+    need_summary: str = "补充 memory-backed retrieval 的直接事实证据。",
+) -> dict[str, Any]:
     return {
         "assessment": {
-            "coverage_status": "partially_covered",
-            "support_strength": "weak_support",
-            "finding_maturity": "tentative",
+            "coverage_status": coverage_status,
+            "support_strength": support_strength,
+            "finding_maturity": finding_maturity,
             "assessment_summary": "当前研究状态只有部分覆盖，还需要补充证据。",
         },
         "identified_gaps": [
             {
-                "gap_scope": "sub_question_level",
-                "gap_nature": "missing",
-                "gap_severity": "important",
+                "gap_scope": gap_scope,
+                "gap_nature": gap_nature,
+                "gap_severity": gap_severity,
                 "gap_summary": gap_summary,
-                "gap_target": "When should memory be preferred?",
-                "gap_actionability": "补充 memory-backed retrieval 的直接证据。",
+                "gap_target": gap_target,
+                "gap_actionability": gap_actionability,
             }
         ],
         "top_gap": {
-            "gap_scope": "sub_question_level",
-            "gap_nature": "missing",
-            "gap_severity": "important",
+            "gap_scope": gap_scope,
+            "gap_nature": gap_nature,
+            "gap_severity": gap_severity,
             "gap_summary": gap_summary,
-            "gap_target": "When should memory be preferred?",
-            "gap_actionability": "补充 memory-backed retrieval 的直接证据。",
+            "gap_target": gap_target,
+            "gap_actionability": gap_actionability,
         },
         "next_evidence_need": {
-            "need_scope": "sub_question_level",
-            "need_target": "When should memory be preferred?",
-            "need_purpose": "establish_coverage",
-            "desired_evidence_kind": "direct_fact",
-            "freshness_requirement": "normal",
-            "minimum_support_requirement": "any_relevant_signal",
-            "need_summary": "补充 memory-backed retrieval 的直接事实证据。",
+            "need_scope": need_scope,
+            "need_target": need_target,
+            "need_purpose": need_purpose,
+            "desired_evidence_kind": desired_evidence_kind,
+            "freshness_requirement": freshness_requirement,
+            "minimum_support_requirement": minimum_support_requirement,
+            "need_summary": need_summary,
         },
         "prioritization_summary": "该 gap 直接影响当前轮 research objective，因此优先推进。",
     }
@@ -154,6 +172,7 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         self.llm_client = llm_client or _FakeLLMClient()
         super().__init__(llm_client=self.llm_client)
         self.captured_states: list[dict[str, Any]] = []
+        self.action_states: list[dict[str, Any]] = []
         self._outcomes = outcomes or []
 
     async def _assess_research_state_and_select_next_evidence_need(
@@ -166,6 +185,18 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
             working_state,
         )
         self.captured_states.append(dict(working_state))
+
+    async def _decide_whether_external_action_is_needed(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> bool:
+        result = await super()._decide_whether_external_action_is_needed(
+            stage_input,
+            working_state,
+        )
+        self.action_states.append(dict(working_state))
+        return result
 
     async def _evaluate_iteration_outcome(
         self,
@@ -183,6 +214,29 @@ def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
     result = asyncio.run(
         service.execute(
             ResearchStageInput(original_query="Compare retrieval strategies.")
+        )
+    )
+
+    assert service.calls == [
+        "assess_research_state_and_select_next_evidence_need",
+        "decide_whether_external_action_is_needed",
+        "update_stage_local_working_state",
+        "produce_or_refine_intermediate_findings",
+        "evaluate_iteration_outcome",
+    ]
+    assert isinstance(result, ResearchStageResult)
+    assert result.executed_iteration_count == 1
+
+
+def test_research_executor_runs_acquisition_steps_when_action_decision_requires_it() -> None:
+    service = _SpyResearchExecutorService()
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Acquire external evidence when docs search is available.",
+                available_tools=["docs_search"],
+            )
         )
     )
 
@@ -246,6 +300,185 @@ def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None
         service.captured_states[0]["prioritization_summary"]
         == "该 gap 直接影响当前轮 research objective，因此优先推进。"
     )
+
+
+def test_research_executor_refines_when_gap_is_noop() -> None:
+    payload = _valid_assessment_payload(
+        gap_nature="none",
+        gap_severity="none",
+        gap_summary="没有需要继续推进的 gap。",
+        gap_target=None,
+        gap_actionability=None,
+        need_target=None,
+        need_purpose="none",
+        desired_evidence_kind="none",
+        freshness_requirement="none",
+        minimum_support_requirement="none",
+        need_summary="无需补充 evidence。",
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="No further evidence needed.",
+                available_tools=["docs_search"],
+            )
+        )
+    )
+
+    assert service.action_states[0]["candidate_action_modes"] == [
+        "refine_from_existing_state"
+    ]
+    assert service.action_states[0]["action_mode"] == "refine_from_existing_state"
+    assert service.action_states[0]["action_request"] is None
+
+
+def test_research_executor_refines_when_findings_are_stable_and_strong() -> None:
+    payload = _valid_assessment_payload(
+        coverage_status="covered",
+        support_strength="strong_enough",
+        finding_maturity="stable",
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Stable findings should not fetch more.",
+                available_tools=["docs_search"],
+            )
+        )
+    )
+
+    assert service.action_states[0]["action_mode"] == "refine_from_existing_state"
+    assert service.action_states[0]["action_request"] is None
+
+
+def test_research_executor_refines_when_no_acquisition_capability_is_declared() -> None:
+    service = _StateCapturingResearchExecutorService()
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(original_query="No available tools means refine.")
+        )
+    )
+
+    assert service.action_states[0]["candidate_action_modes"] == [
+        "refine_from_existing_state"
+    ]
+    assert service.action_states[0]["action_mode"] == "refine_from_existing_state"
+    assert service.action_states[0]["action_request"] is None
+
+
+def test_research_executor_selects_memory_backed_acquisition_when_available() -> None:
+    service = _StateCapturingResearchExecutorService()
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Prefer memory when freshness is normal.",
+                available_tools=["research_knowledge_recall"],
+            )
+        )
+    )
+
+    action_state = service.action_states[0]
+    action_request = action_state["action_request"]
+    assert action_state["candidate_action_modes"] == [
+        "refine_from_existing_state",
+        "memory_backed_acquisition",
+    ]
+    assert action_state["action_mode"] == "memory_backed_acquisition"
+    assert action_request["action_mode"] == "memory_backed_acquisition"
+    assert action_request["fallback_policy"] == "fallback_within_same_family"
+    assert action_request["preferred_tool"] is None
+    assert action_request["evidence_acquisition_intent"]["constraints"][
+        "allowed_source_families"
+    ] == ["research_knowledge_recall"]
+    assert action_request["evidence_acquisition_intent"]["constraints"][
+        "preferred_source_families"
+    ] == ["research_knowledge_recall"]
+
+
+def test_research_executor_selects_external_acquisition_for_fresh_required_need() -> None:
+    payload = _valid_assessment_payload(
+        gap_nature="stale",
+        freshness_requirement="fresh_required",
+        desired_evidence_kind="fresh_status_evidence",
+        need_summary="补充最新状态 evidence。",
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Fresh external evidence is needed.",
+                available_tools=["docs_search"],
+            )
+        )
+    )
+
+    action_state = service.action_states[0]
+    action_request = action_state["action_request"]
+    assert action_state["action_mode"] == "external_acquisition"
+    assert action_request["action_mode"] == "external_acquisition"
+    assert action_request["fallback_policy"] == "fallback_to_broader_search"
+    assert action_request["evidence_acquisition_intent"]["constraints"][
+        "allowed_source_families"
+    ] == ["docs_search"]
+    assert action_request["evidence_acquisition_intent"]["evidence_shape"] == {
+        "desired_evidence_kind": "fresh_status_evidence",
+        "freshness_requirement": "fresh_required",
+        "breadth": "normal",
+    }
+    assert (
+        action_request["evidence_acquisition_intent"]["success_hint"]
+        == "补充最新状态 evidence。"
+    )
+
+
+def test_research_executor_refines_when_latency_constrained_and_gap_not_blocking() -> None:
+    service = _StateCapturingResearchExecutorService()
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Latency should block non-blocking acquisition.",
+                available_tools=["docs_search"],
+                latency_budget_ms=500,
+            )
+        )
+    )
+
+    assert service.action_states[0]["action_mode"] == "refine_from_existing_state"
+    assert service.action_states[0]["action_request"] is None
+
+
+def test_research_executor_allows_blocking_external_acquisition_under_latency_pressure() -> None:
+    payload = _valid_assessment_payload(gap_severity="blocking")
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Blocking gaps can still acquire evidence.",
+                available_tools=["docs_search"],
+                latency_budget_ms=500,
+            )
+        )
+    )
+
+    assert service.action_states[0]["action_mode"] == "external_acquisition"
+    assert service.action_states[0]["action_request"] is not None
 
 
 def test_research_executor_accepts_fenced_json_assessment_output() -> None:
@@ -423,15 +656,11 @@ def test_research_executor_continues_until_stop_within_iteration_budget() -> Non
     assert service.calls == [
         "assess_research_state_and_select_next_evidence_need",
         "decide_whether_external_action_is_needed",
-        "acquire_candidate_material",
-        "process_candidate_material_into_usable_evidence",
         "update_stage_local_working_state",
         "produce_or_refine_intermediate_findings",
         "evaluate_iteration_outcome",
         "assess_research_state_and_select_next_evidence_need",
         "decide_whether_external_action_is_needed",
-        "acquire_candidate_material",
-        "process_candidate_material_into_usable_evidence",
         "update_stage_local_working_state",
         "produce_or_refine_intermediate_findings",
         "evaluate_iteration_outcome",
