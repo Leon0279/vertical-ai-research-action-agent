@@ -12,6 +12,7 @@ from app.domain.enums import ActionMode, FamilyName
 from app.domain.models import (
     EvidenceProcessingRequest,
     EvidenceShape,
+    ProcessedEvidenceUnit,
     ResearchStageInput,
     ResearchStageResult,
     ToolExecutionLayerRequest,
@@ -198,7 +199,7 @@ class ResearchExecutorService(ResearchExecutorProtocol):
 
         working_state: dict[str, Any] = {
             "stage_input": stage_input,
-            "processed_evidence": [],
+            "processed_evidence_units": [],
             "evidence_coverage_map": {},
             "identified_gaps": [],
             "intermediate_findings": list(stage_input.existing_intermediate_findings),
@@ -661,9 +662,12 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         result = await self._evidence_processing_service.process(request)
         working_state["evidence_processing_request"] = request
         working_state["evidence_processing_result"] = result
-        working_state.setdefault("processed_evidence", []).extend(
-            unit.model_dump(mode="json") for unit in result.processed_evidence_units
+        processed_evidence_units = working_state.setdefault(
+            "processed_evidence_units",
+            [],
         )
+        if isinstance(processed_evidence_units, list):
+            processed_evidence_units.extend(result.processed_evidence_units)
 
     def _tool_execution_layer_request(
         self,
@@ -1118,7 +1122,9 @@ class ResearchExecutorService(ResearchExecutorProtocol):
             },
             "supporting_context": supporting_context,
             "evidence_state": {
-                "processed_evidence": working_state.get("processed_evidence", []),
+                "processed_evidence": self._processed_evidence_for_prompt(
+                    working_state,
+                ),
                 "evidence_coverage_map": working_state.get("evidence_coverage_map", {}),
                 "intermediate_findings": working_state.get("intermediate_findings", []),
             },
@@ -1139,6 +1145,22 @@ class ResearchExecutorService(ResearchExecutorProtocol):
                 "available_capabilities": stage_input.available_tools,
             },
         }
+
+    def _processed_evidence_for_prompt(
+        self,
+        working_state: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Convert typed processed evidence units into the prompt-facing JSON shape."""
+
+        processed_evidence_units = working_state.get("processed_evidence_units", [])
+        if not isinstance(processed_evidence_units, list):
+            return []
+
+        return [
+            unit.model_dump(mode="json")
+            for unit in processed_evidence_units
+            if isinstance(unit, ProcessedEvidenceUnit)
+        ]
 
     def _context_items_for_prompt(self, items: list[ContextItem]) -> list[dict[str, Any]]:
         """Convert distilled context items to the small prompt-facing shape."""

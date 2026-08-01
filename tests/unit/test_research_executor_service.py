@@ -611,9 +611,8 @@ def test_research_executor_processes_tel_result_into_working_state() -> None:
     assert len(tel_service.requests) == 1
     assert len(evidence_service.requests) == 1
     assert evidence_service.requests[0].acquisition_status == AcquisitionStatus.SUCCESS
-    assert service.processed_states[0]["processed_evidence"] == [
-        evidence_unit.model_dump(mode="json")
-    ]
+    assert service.processed_states[0]["processed_evidence_units"] == [evidence_unit]
+    assert "processed_evidence" not in service.processed_states[0]
 
 
 def test_research_executor_refines_when_latency_constrained_and_gap_not_blocking() -> None:
@@ -811,6 +810,49 @@ def test_research_executor_second_iteration_prompt_sees_previous_identified_gaps
     assert "first gap" in fake_llm.prompts[1]
     assert "next_evidence_need" in fake_llm.prompts[1]
     assert "补充 memory-backed retrieval 的直接事实证据" in fake_llm.prompts[1]
+
+
+def test_research_executor_second_iteration_prompt_serializes_typed_processed_evidence() -> None:
+    first_payload = json.dumps(_valid_assessment_payload(), ensure_ascii=False)
+    second_payload = json.dumps(
+        _valid_assessment_payload(gap_summary="second gap"),
+        ensure_ascii=False,
+    )
+    source_reference = SourceReference(source_type="document", source_id="doc-1")
+    evidence_unit = ProcessedEvidenceUnit(
+        evidence_unit_id="ev_001",
+        source_references=[source_reference],
+        source_family=FamilyName.DOCS_SEARCH,
+        content="Typed processed evidence remains available for the next assessment.",
+        evidence_type="supporting_signal",
+    )
+    fake_llm = _FakeLLMClient(responses=[first_payload, second_payload])
+    service = _SpyResearchExecutorService(
+        outcomes=["continue", "stop"],
+        llm_client=fake_llm,
+        evidence_processing_service=_FakeEvidenceProcessingService(
+            result=EvidenceProcessingResult(
+                processed_evidence_units=[evidence_unit],
+                processing_status="success",
+            )
+        ),
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Carry processed evidence across iterations.",
+                available_tools=["docs_search"],
+                iteration_budget=2,
+            )
+        )
+    )
+
+    assert len(fake_llm.prompts) == 2
+    assert "Typed processed evidence remains available for the next assessment." in (
+        fake_llm.prompts[1]
+    )
+    assert '"source_references"' in fake_llm.prompts[1]
 
 
 def test_research_executor_continues_until_stop_within_iteration_budget() -> None:
