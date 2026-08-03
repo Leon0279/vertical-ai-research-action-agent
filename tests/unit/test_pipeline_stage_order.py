@@ -31,7 +31,15 @@ class _FakeResearchExecutor:
 
 class _FakeZhipuLLMClient:
     async def generate_text(self, prompt: str) -> str:
-        _ = prompt
+        if "中间研究发现更新" in prompt:
+            return json.dumps(
+                {
+                    "intermediate_findings": [],
+                    "finding_caveats": [],
+                },
+                ensure_ascii=False,
+            )
+
         return json.dumps(
             {
                 "assessment": {

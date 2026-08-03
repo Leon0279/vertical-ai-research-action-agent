@@ -80,17 +80,62 @@ def _valid_assessment_payload(
     }
 
 
+def _valid_findings_payload(
+    *,
+    intermediate_findings: list[str] | None = None,
+    finding_caveats: list[str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "intermediate_findings": intermediate_findings
+        or ["当前证据支持：memory-backed retrieval 适合已有知识覆盖充分的场景。"],
+        "finding_caveats": finding_caveats or ["当前发现仍缺少外部新鲜度证据。"],
+    }
+
+
 class _FakeLLMClient:
-    def __init__(self, responses: list[str] | None = None) -> None:
-        default_response = json.dumps(_valid_assessment_payload(), ensure_ascii=False)
-        self._responses = responses or [default_response]
+    def __init__(
+        self,
+        responses: list[str] | None = None,
+        findings_responses: list[str] | None = None,
+    ) -> None:
+        self._assessment_responses = list(responses or [])
+        self._findings_responses = list(findings_responses or [])
+        self._default_assessment_response = json.dumps(
+            _valid_assessment_payload(),
+            ensure_ascii=False,
+        )
+        self._default_findings_response = json.dumps(
+            _valid_findings_payload(),
+            ensure_ascii=False,
+        )
         self.prompts: list[str] = []
 
     async def generate_text(self, prompt: str) -> str:
         self.prompts.append(prompt)
-        if len(self._responses) > 1:
-            return self._responses.pop(0)
-        return self._responses[0]
+        if "中间研究发现更新" in prompt:
+            return self._next_response(
+                self._findings_responses,
+                self._default_findings_response,
+            )
+        return self._next_response(
+            self._assessment_responses,
+            self._default_assessment_response,
+        )
+
+    def _next_response(self, responses: list[str], default_response: str) -> str:
+        if not responses:
+            return default_response
+        if len(responses) > 1:
+            return responses.pop(0)
+        return responses[0]
+
+
+def _assessment_prompts(fake_llm: _FakeLLMClient) -> list[str]:
+    return [prompt for prompt in fake_llm.prompts if "研究状态判断" in prompt]
+
+
+def _findings_prompts(fake_llm: _FakeLLMClient) -> list[str]:
+    return [prompt for prompt in fake_llm.prompts if "中间研究发现更新" in prompt]
 
 
 class _FakeToolExecutionLayerService:
@@ -251,6 +296,7 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         self.captured_states: list[dict[str, Any]] = []
         self.action_states: list[dict[str, Any]] = []
         self.processed_states: list[dict[str, Any]] = []
+        self.finding_states: list[dict[str, Any]] = []
         self._outcomes = outcomes or []
 
     async def _assess_research_state_and_select_next_evidence_need(
@@ -295,6 +341,14 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
             working_state,
         )
         self.processed_states.append(dict(working_state))
+
+    async def _produce_or_refine_intermediate_findings(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> None:
+        await super()._produce_or_refine_intermediate_findings(stage_input, working_state)
+        self.finding_states.append(dict(working_state))
 
 
 def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
@@ -615,6 +669,181 @@ def test_research_executor_processes_tel_result_into_working_state() -> None:
     assert "processed_evidence" not in service.processed_states[0]
 
 
+def test_research_executor_produces_full_intermediate_findings() -> None:
+    findings_payload = json.dumps(
+        _valid_findings_payload(
+            intermediate_findings=[
+                "  现有研究记忆支持优先使用 memory-backed retrieval。  ",
+                "Docs evidence suggests external retrieval is useful for fresh facts.",
+                "现有研究记忆支持优先使用 memory-backed retrieval。",
+                "",
+            ],
+            finding_caveats=[
+                "  fresh facts 仍缺少直接证据。 ",
+                "fresh facts 仍缺少直接证据。",
+                "",
+            ],
+        ),
+        ensure_ascii=False,
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(findings_responses=[findings_payload])
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Refine intermediate findings.",
+                existing_intermediate_findings=["Old finding should be replaced."],
+            )
+        )
+    )
+
+    finding_state = service.finding_states[0]
+    assert finding_state["intermediate_findings"] == [
+        "现有研究记忆支持优先使用 memory-backed retrieval。",
+        "Docs evidence suggests external retrieval is useful for fresh facts.",
+    ]
+    assert finding_state["finding_caveats"] == [
+        "fresh facts 仍缺少直接证据。",
+    ]
+
+
+def test_intermediate_findings_prompt_contains_required_context_and_boundaries() -> None:
+    fake_llm = _FakeLLMClient()
+    service = _research_executor(llm_client=fake_llm)
+    research_support = ContextItem(
+        id="ctx-1",
+        source_type="research_memory",
+        summary="Distilled research memory: freshness matters.",
+        priority=8,
+        freshness_tag="fresh",
+        confidence="high",
+        usage_hint="research_support",
+    )
+    decision_support = ContextItem(
+        id="ctx-2",
+        source_type="decision_memory",
+        summary="Distilled decision: use memory before external search.",
+        priority=7,
+        usage_hint="decision_support",
+    )
+    action_support = ContextItem(
+        id="ctx-3",
+        source_type="action_memory",
+        summary="Distilled action: implementation is blocked on freshness evidence.",
+        priority=6,
+        usage_hint="action_support",
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Compare retrieval patterns.",
+                user_goal="Pick a retrieval strategy.",
+                task_type="comparison",
+                task_framing="engineering tradeoff",
+                constraints=["Prefer low latency."],
+                project_context_summary="Project ships a research agent.",
+                plan=["Compare memory-backed and web-backed retrieval."],
+                sub_questions=["When should memory be preferred?"],
+                comparison_candidates=["memory", "web"],
+                information_gaps=["Freshness evidence is weak."],
+                existing_intermediate_findings=["Existing finding."],
+                research_support=[research_support],
+                decision_support=[decision_support],
+                action_support=[action_support],
+                available_tools=["docs_search"],
+                iteration_budget=1,
+            )
+        )
+    )
+
+    findings_prompt = _findings_prompts(fake_llm)[0]
+    assert "无状态调用" in findings_prompt
+    assert "你的输出不是最终答案" in findings_prompt
+    assert "全量 updated list" in findings_prompt
+    assert "task" in findings_prompt
+    assert "planning_reference" in findings_prompt
+    assert "current_findings" in findings_prompt
+    assert "evidence_materials" in findings_prompt
+    assert "background_support_materials" in findings_prompt
+    assert "latest_research_decision" in findings_prompt
+    assert "runtime_limits" in findings_prompt
+    assert "Distilled research memory: freshness matters." in findings_prompt
+    assert "Distilled decision: use memory before external search." in findings_prompt
+    assert "Distilled action: implementation is blocked on freshness evidence." in (
+        findings_prompt
+    )
+    assert '"intermediate_findings": [' in findings_prompt
+    assert '"finding_caveats": []' in findings_prompt
+    assert '"identified_gaps": [' in findings_prompt
+    assert "不是原始记录，也不是本轮新整理出的证据单元" in findings_prompt
+    assert "区别不是来源可靠性，而是它们在本次输入中的角色" in findings_prompt
+    assert "不要回答用户的原始问题" in findings_prompt
+    assert "不要输出面向用户的最终结论、建议、行动计划或解释性段落" in findings_prompt
+    assert "不要输出搜索词、工具名、工具调用参数或执行步骤" in findings_prompt
+    assert "working_state" not in findings_prompt
+    assert "supporting_context" not in findings_prompt
+
+
+def test_research_executor_accepts_fenced_json_intermediate_findings_output() -> None:
+    payload = json.dumps(
+        _valid_findings_payload(
+            intermediate_findings=["fenced finding"],
+            finding_caveats=["fenced caveat"],
+        ),
+        ensure_ascii=False,
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(findings_responses=[f"```json\n{payload}\n```"])
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(original_query="Refine fenced findings.")
+        )
+    )
+
+    assert service.finding_states[0]["intermediate_findings"] == ["fenced finding"]
+    assert service.finding_states[0]["finding_caveats"] == ["fenced caveat"]
+
+
+def test_research_executor_raises_when_intermediate_findings_output_is_not_json() -> None:
+    service = _research_executor(
+        llm_client=_FakeLLMClient(findings_responses=["not json"])
+    )
+
+    with pytest.raises(ValueError, match="Intermediate findings.*not valid JSON"):
+        asyncio.run(
+            service.execute(
+                ResearchStageInput(original_query="This findings step should fail.")
+            )
+        )
+
+
+def test_research_executor_raises_when_intermediate_findings_schema_is_invalid() -> None:
+    invalid_payload = json.dumps(
+        {
+            "intermediate_findings": "not a list",
+            "finding_caveats": [],
+        },
+        ensure_ascii=False,
+    )
+    service = _research_executor(
+        llm_client=_FakeLLMClient(findings_responses=[invalid_payload])
+    )
+
+    with pytest.raises(ValueError, match="Intermediate findings.*required schema"):
+        asyncio.run(
+            service.execute(
+                ResearchStageInput(
+                    original_query="This findings schema should fail validation."
+                )
+            )
+        )
+
+
 def test_research_executor_refines_when_latency_constrained_and_gap_not_blocking() -> None:
     service = _StateCapturingResearchExecutorService()
 
@@ -806,10 +1035,11 @@ def test_research_executor_second_iteration_prompt_sees_previous_identified_gaps
         )
     )
 
-    assert len(fake_llm.prompts) == 2
-    assert "first gap" in fake_llm.prompts[1]
-    assert "next_evidence_need" in fake_llm.prompts[1]
-    assert "补充 memory-backed retrieval 的直接事实证据" in fake_llm.prompts[1]
+    assessment_prompts = _assessment_prompts(fake_llm)
+    assert len(assessment_prompts) == 2
+    assert "first gap" in assessment_prompts[1]
+    assert "next_evidence_need" in assessment_prompts[1]
+    assert "补充 memory-backed retrieval 的直接事实证据" in assessment_prompts[1]
 
 
 def test_research_executor_second_iteration_prompt_serializes_typed_processed_evidence() -> None:
@@ -848,11 +1078,12 @@ def test_research_executor_second_iteration_prompt_serializes_typed_processed_ev
         )
     )
 
-    assert len(fake_llm.prompts) == 2
+    assessment_prompts = _assessment_prompts(fake_llm)
+    assert len(assessment_prompts) == 2
     assert "Typed processed evidence remains available for the next assessment." in (
-        fake_llm.prompts[1]
+        assessment_prompts[1]
     )
-    assert '"source_references"' in fake_llm.prompts[1]
+    assert '"source_references"' in assessment_prompts[1]
 
 
 def test_research_executor_continues_until_stop_within_iteration_budget() -> None:
