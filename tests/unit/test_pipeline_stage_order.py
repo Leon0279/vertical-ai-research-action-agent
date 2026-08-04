@@ -39,6 +39,18 @@ class _FakeZhipuLLMClient:
                 },
                 ensure_ascii=False,
             )
+        if "研究迭代结果评估" in prompt:
+            return json.dumps(
+                {
+                    "top_gap_progress": "resolved",
+                    "evidence_gain": "limited_gain",
+                    "finding_progress": "improved_but_not_stable",
+                    "residual_uncertainty": "low",
+                    "proposed_iteration_outcome": "stop",
+                    "proposed_outcome_rationale": "默认 pipeline 测试选择收束。",
+                },
+                ensure_ascii=False,
+            )
 
         return json.dumps(
             {

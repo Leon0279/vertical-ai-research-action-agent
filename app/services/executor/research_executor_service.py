@@ -8,8 +8,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.domain.enums import ActionMode, FamilyName
+from app.domain.enums import AcquisitionStatus, ActionMode, FamilyName
 from app.domain.models import (
+    EvidenceProcessingResult,
     EvidenceProcessingRequest,
     EvidenceShape,
     ProcessedEvidenceUnit,
@@ -87,6 +88,25 @@ ResearchMinimumSupportRequirement = Literal[
     "strong_support",
     "none",
 ]
+ResearchTopGapProgress = Literal[
+    "resolved",
+    "partially_advanced",
+    "not_advanced",
+    "regressed",
+]
+ResearchEvidenceGain = Literal[
+    "meaningful_gain",
+    "limited_gain",
+    "no_meaningful_gain",
+    "failed_acquisition",
+]
+ResearchFindingProgress = Literal[
+    "improved_to_stable",
+    "improved_but_not_stable",
+    "no_material_change",
+    "became_less_certain",
+]
+ResearchResidualUncertainty = Literal["high", "moderate", "low", "minimal"]
 
 _REFINE_ACTION_MODE: ResearchActionMode = "refine_from_existing_state"
 _MEMORY_ACTION_MODE: ResearchActionMode = "memory_backed_acquisition"
@@ -172,6 +192,19 @@ class _LLMIntermediateFindingsPayload(BaseModel):
 
     intermediate_findings: list[str]
     finding_caveats: list[str]
+
+
+class _LLMIterationOutcomePayload(BaseModel):
+    """Strict LLM output payload for iteration-end outcome evaluation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    top_gap_progress: ResearchTopGapProgress = Field(min_length=1)
+    evidence_gain: ResearchEvidenceGain = Field(min_length=1)
+    finding_progress: ResearchFindingProgress = Field(min_length=1)
+    residual_uncertainty: ResearchResidualUncertainty = Field(min_length=1)
+    proposed_iteration_outcome: ResearchIterationOutcome = Field(min_length=1)
+    proposed_outcome_rationale: str = Field(min_length=1)
 
 
 class ResearchExecutorService(ResearchExecutorProtocol):
@@ -926,9 +959,214 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     ) -> ResearchIterationOutcome:
         """Step 8. Evaluate whether the research stage should continue, stop, or degrade."""
 
-        _ = stage_input
-        _ = working_state
-        return "stop"
+        short_circuit_outcome = self._short_circuit_iteration_outcome(
+            stage_input,
+            working_state,
+        )
+        if short_circuit_outcome is not None:
+            outcome, rationale = short_circuit_outcome
+            self._write_iteration_outcome(
+                working_state,
+                iteration_outcome=outcome,
+                outcome_rationale=rationale,
+                outcome_decision_source="rule_short_circuit",
+                iteration_evaluation_state={
+                    "short_circuit_reason": rationale,
+                },
+            )
+            return outcome
+
+        prompt = self._build_iteration_outcome_prompt(stage_input, working_state)
+        llm_output = await self._llm_client.generate_text(prompt)
+        payload = self._parse_iteration_outcome_output(llm_output)
+        final_outcome, final_rationale, guardrail_applied = (
+            self._apply_iteration_outcome_guardrails(
+                stage_input,
+                working_state,
+                payload,
+            )
+        )
+        self._write_iteration_outcome(
+            working_state,
+            iteration_outcome=final_outcome,
+            outcome_rationale=final_rationale,
+            outcome_decision_source="llm_with_guardrails",
+            iteration_evaluation_state=self._iteration_evaluation_state(payload),
+            proposed_iteration_outcome=payload.proposed_iteration_outcome,
+            outcome_guardrail_applied=guardrail_applied,
+        )
+        return final_outcome
+
+    def _short_circuit_iteration_outcome(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> tuple[ResearchIterationOutcome, str] | None:
+        """Return a stable rule-based outcome when LLM judgment is unnecessary."""
+
+        top_gap = self._working_state_dict(working_state, "top_gap")
+        next_evidence_need = self._working_state_dict(
+            working_state,
+            "next_evidence_need",
+        )
+        assessment = self._working_state_dict(working_state, "current_assessment")
+        if self._has_no_actionable_evidence_need(top_gap, next_evidence_need):
+            return (
+                "stop",
+                "当前 top_gap / next_evidence_need 表示没有可继续推进的 actionable gap，因此本轮直接收束。",
+            )
+
+        if (
+            working_state.get("action_mode") == _REFINE_ACTION_MODE
+            and assessment.get("finding_maturity") == "stable"
+            and assessment.get("support_strength") == "strong_enough"
+        ):
+            return (
+                "stop",
+                "当前 findings 已稳定且支撑强度足够，本轮无需继续发起新的 iteration。",
+            )
+
+        evidence_processing_result = self._evidence_processing_result(working_state)
+        if (
+            evidence_processing_result is not None
+            and evidence_processing_result.processing_status == "failed"
+        ):
+            return (
+                "degrade",
+                "Evidence Processing 阶段失败，本轮无法形成可用 evidence，因此进入降级收束。",
+            )
+
+        if (
+            self._did_tel_fail_or_return_no_result(working_state)
+            and not self._did_new_evidence_arrive(working_state)
+            and (
+                self._remaining_iteration_budget_after_current(
+                    stage_input,
+                    working_state,
+                )
+                <= 0
+                or self._iteration_input_budget_pressure(
+                    stage_input,
+                    working_state,
+                )
+                == "high"
+            )
+        ):
+            return (
+                "degrade",
+                "本轮 acquisition failed/no_result 且没有新增 processed evidence，在当前预算约束下继续投入价值较低。",
+            )
+
+        if (
+            not self._available_tool_names(stage_input)
+            and not self._has_no_actionable_evidence_need(top_gap, next_evidence_need)
+            and not self._did_new_evidence_arrive(working_state)
+        ):
+            return (
+                "degrade",
+                "当前存在 actionable gap，但 runtime 未声明 acquisition capability 且没有新增 evidence，因此进入降级收束。",
+            )
+
+        return None
+
+    def _apply_iteration_outcome_guardrails(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+        payload: _LLMIterationOutcomePayload,
+    ) -> tuple[ResearchIterationOutcome, str, bool]:
+        """Constrain the LLM-proposed outcome to hard runtime boundaries."""
+
+        if (
+            payload.top_gap_progress == "resolved"
+            and payload.residual_uncertainty == "minimal"
+        ):
+            return (
+                "stop",
+                "Guardrail: top_gap 已解决且 residual uncertainty 已降到 minimal，因此收束当前 research iteration。",
+                payload.proposed_iteration_outcome != "stop",
+            )
+
+        if (
+            payload.evidence_gain == "failed_acquisition"
+            and payload.top_gap_progress == "not_advanced"
+            and self._iteration_input_budget_pressure(stage_input, working_state)
+            == "high"
+        ):
+            return (
+                "degrade",
+                "Guardrail: acquisition 失败、top_gap 未推进且预算压力高，因此不继续循环，进入降级收束。",
+                payload.proposed_iteration_outcome != "degrade",
+            )
+
+        if (
+            payload.proposed_iteration_outcome == "continue"
+            and self._remaining_iteration_budget_after_current(
+                stage_input,
+                working_state,
+            )
+            <= 0
+        ):
+            if (
+                payload.evidence_gain
+                in {"failed_acquisition", "no_meaningful_gain"}
+                and payload.top_gap_progress in {"not_advanced", "regressed"}
+            ):
+                return (
+                    "degrade",
+                    "Guardrail: 本轮结束后没有剩余 iteration budget，且本轮没有形成有效推进，因此降级收束。",
+                    True,
+                )
+            return (
+                "stop",
+                "Guardrail: 本轮结束后没有剩余 iteration budget，因此不能继续下一轮，转为正常收束。",
+                True,
+            )
+
+        return (
+            payload.proposed_iteration_outcome,
+            payload.proposed_outcome_rationale,
+            False,
+        )
+
+    def _write_iteration_outcome(
+        self,
+        working_state: dict[str, Any],
+        *,
+        iteration_outcome: ResearchIterationOutcome,
+        outcome_rationale: str,
+        outcome_decision_source: str,
+        iteration_evaluation_state: dict[str, Any],
+        proposed_iteration_outcome: ResearchIterationOutcome | None = None,
+        outcome_guardrail_applied: bool = False,
+    ) -> None:
+        """Write the final iteration outcome and trace fields into working state."""
+
+        working_state["iteration_evaluation_state"] = iteration_evaluation_state
+        working_state["iteration_outcome"] = iteration_outcome
+        working_state["outcome_rationale"] = outcome_rationale
+        working_state["outcome_decision_source"] = outcome_decision_source
+        if proposed_iteration_outcome is not None:
+            working_state["proposed_iteration_outcome"] = proposed_iteration_outcome
+        else:
+            working_state.pop("proposed_iteration_outcome", None)
+        if outcome_guardrail_applied:
+            working_state["outcome_guardrail_applied"] = True
+        else:
+            working_state.pop("outcome_guardrail_applied", None)
+
+    def _iteration_evaluation_state(
+        self,
+        payload: _LLMIterationOutcomePayload,
+    ) -> dict[str, Any]:
+        """Return the LLM evaluation dimensions without the proposed outcome."""
+
+        return {
+            "top_gap_progress": payload.top_gap_progress,
+            "evidence_gain": payload.evidence_gain,
+            "finding_progress": payload.finding_progress,
+            "residual_uncertainty": payload.residual_uncertainty,
+        }
 
     def _build_research_assessment_prompt(
         self,
@@ -1209,6 +1447,301 @@ class ResearchExecutorService(ResearchExecutorProtocol):
             return "latency_constrained"
         return "normal"
 
+    def _iteration_input_budget_pressure(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> str:
+        """Return the 4.7 low/medium/high budget pressure signal."""
+
+        if self._remaining_iteration_budget_after_current(stage_input, working_state) <= 0:
+            return "high"
+        if (
+            stage_input.latency_budget_ms is not None
+            and stage_input.latency_budget_ms <= 1000
+        ):
+            return "high"
+        if (
+            stage_input.latency_budget_ms is not None
+            and stage_input.latency_budget_ms <= 3000
+        ):
+            return "medium"
+        return "low"
+
+    def _remaining_iteration_budget_after_current(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> int:
+        """Return remaining loop budget after the current iteration finishes."""
+
+        iteration_index = working_state.get("iteration_index")
+        if not isinstance(iteration_index, int) or iteration_index < 1:
+            iteration_index = 1
+        return max(0, self._max_iterations(stage_input) - iteration_index)
+
+    def _did_new_evidence_arrive(self, working_state: dict[str, Any]) -> bool:
+        """Return whether Step 5 has produced at least one processed evidence unit."""
+
+        return bool(self._processed_evidence_units(working_state))
+
+    def _processed_evidence_units(
+        self,
+        working_state: dict[str, Any],
+    ) -> list[ProcessedEvidenceUnit]:
+        """Return typed processed evidence units from stage-local working state."""
+
+        processed_evidence_units = working_state.get("processed_evidence_units", [])
+        if not isinstance(processed_evidence_units, list):
+            return []
+        return [
+            unit
+            for unit in processed_evidence_units
+            if isinstance(unit, ProcessedEvidenceUnit)
+        ]
+
+    def _did_tel_fail_or_return_no_result(
+        self,
+        working_state: dict[str, Any],
+    ) -> bool:
+        """Return whether TEL ended with failed/no_result acquisition state."""
+
+        tool_execution_result = self._tool_execution_result(working_state)
+        if tool_execution_result is None:
+            return False
+        return (
+            tool_execution_result.execution_status == "failed"
+            or tool_execution_result.acquisition_status
+            in {AcquisitionStatus.FAILED, AcquisitionStatus.NO_RESULT}
+        )
+
+    def _tool_execution_result(
+        self,
+        working_state: dict[str, Any],
+    ) -> ToolExecutionLayerResult | None:
+        """Return the typed TEL result from working state, if present."""
+
+        value = working_state.get("tool_execution_result")
+        if isinstance(value, ToolExecutionLayerResult):
+            return value
+        return None
+
+    def _evidence_processing_result(
+        self,
+        working_state: dict[str, Any],
+    ) -> EvidenceProcessingResult | None:
+        """Return the typed evidence processing result from working state, if present."""
+
+        value = working_state.get("evidence_processing_result")
+        if isinstance(value, EvidenceProcessingResult):
+            return value
+        return None
+
+    def _build_iteration_outcome_prompt(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> str:
+        """Build the LLM prompt for iteration-end outcome evaluation."""
+
+        prompt_input = self._iteration_outcome_prompt_input(stage_input, working_state)
+        return (
+            "你正在执行一次“研究迭代结果评估”任务。\n\n"
+            "这是一次无状态调用。\n"
+            "你不能依赖任何未出现在本 prompt 中的项目文档、代码、历史对话或系统上下文。\n"
+            "请只根据下面的任务说明和最后给出的输入 JSON，判断本轮研究迭代推进得怎么样。\n\n"
+            "你的输出不是最终答案，也不是给用户直接阅读的结论。\n"
+            "你的输出是给后续程序使用的结构化 JSON，用来描述本轮迭代的推进效果，"
+            "并提出下一步控制流建议。\n\n"
+            "输入 JSON 分为以下区域：\n\n"
+            "1. iteration_start_reference\n"
+            "- top_gap：本轮开始时原本要优先推进的信息缺口。\n"
+            "- next_evidence_need：本轮开始时希望补充的 evidence need。\n"
+            "这组信息只用于判断本轮是否推进了原定目标，不要重新选择 top gap。\n\n"
+            "2. current_iteration_result\n"
+            "- action_mode：本轮实际采用的高层推进方式。\n"
+            "- action_rationale：系统选择该推进方式的原因。\n"
+            "- acquisition_result_summary：本轮材料获取阶段的摘要，包括是否拿到材料、是否失败、是否无结果。\n"
+            "- processed_evidence_summary：本轮证据整理阶段的摘要，包括是否产出 processed evidence。\n\n"
+            "3. updated_findings\n"
+            "- intermediate_findings：本轮结束后更新过的中间发现。\n"
+            "- finding_caveats：本轮结束后仍需要保留的限制说明。\n"
+            "这组信息用于判断 findings 是否更稳定、更明确，或是否变得更不确定。\n\n"
+            "4. available_evidence\n"
+            "- processed_evidence：当前研究阶段已经整理成证据单元的材料。\n"
+            "- evidence_summary：当前 evidence 的数量、类型和来源覆盖摘要。\n"
+            "不要重新处理原始材料；只根据这些摘要判断本轮是否带来有效 evidence gain。\n\n"
+            "5. runtime_constraints\n"
+            "- remaining_iteration_budget_after_current：本轮结束后还剩多少轮。\n"
+            "- input_budget_pressure：当前预算压力，取值 low / medium / high。\n"
+            "- available_capabilities：当前可用能力摘要。\n"
+            "如果没有剩余轮次，即使你认为继续可能有价值，也只能提出 stop 或 degrade。\n\n"
+            "请只完成 4 件事：\n"
+            "1. 判断本轮是否推进了 iteration_start_reference.top_gap。\n"
+            "2. 判断本轮是否带来了有新增价值的 evidence。\n"
+            "3. 判断 updated_findings 是否比本轮开始前更稳定或更成熟。\n"
+            "4. 判断是否仍存在值得继续投入的关键不确定性，并提出 proposed_iteration_outcome。\n\n"
+            "输出边界：\n"
+            "- 只输出一个 JSON object。\n"
+            "- 不要回答用户的原始问题。\n"
+            "- 不要重新生成 assessment、identified_gaps、top_gap 或 next_evidence_need。\n"
+            "- 不要输出面向用户的最终结论、建议、行动计划或解释性段落。\n"
+            "- 不要输出搜索词、工具名、工具调用参数或执行步骤。\n"
+            "- 不要输出 Markdown 标题、解释文字或额外字段。\n\n"
+            "JSON 必须且只能包含以下顶层字段：\n"
+            "- top_gap_progress\n"
+            "- evidence_gain\n"
+            "- finding_progress\n"
+            "- residual_uncertainty\n"
+            "- proposed_iteration_outcome\n"
+            "- proposed_outcome_rationale\n\n"
+            "允许取值：\n"
+            "- top_gap_progress: resolved | partially_advanced | not_advanced | regressed\n"
+            "- evidence_gain: meaningful_gain | limited_gain | no_meaningful_gain | failed_acquisition\n"
+            "- finding_progress: improved_to_stable | improved_but_not_stable | no_material_change | became_less_certain\n"
+            "- residual_uncertainty: high | moderate | low | minimal\n"
+            "- proposed_iteration_outcome: continue | stop | degrade\n\n"
+            "判断倾向：\n"
+            "- top_gap_progress 明显推进、finding_progress 明显改善、residual_uncertainty 较低时，更偏 stop。\n"
+            "- 本轮有真实推进但 residual_uncertainty 仍为 moderate/high 时，更偏 continue。\n"
+            "- 本轮几乎无推进、evidence_gain 很低或 acquisition failed，且继续价值不明显时，更偏 degrade。\n"
+            "- remaining_iteration_budget_after_current 为 0 时，不要提出 continue。\n\n"
+            "期望 JSON 形状：\n"
+            "{\n"
+            '  "top_gap_progress": "partially_advanced",\n'
+            '  "evidence_gain": "meaningful_gain",\n'
+            '  "finding_progress": "improved_but_not_stable",\n'
+            '  "residual_uncertainty": "moderate",\n'
+            '  "proposed_iteration_outcome": "continue",\n'
+            '  "proposed_outcome_rationale": "一句到三句中文说明，解释为什么建议该 outcome。"\n'
+            "}\n\n"
+            "输入 JSON：\n"
+            f"{json.dumps(prompt_input, ensure_ascii=False, indent=2)}"
+        )
+
+    def _iteration_outcome_prompt_input(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Create the JSON input shown to the iteration outcome LLM."""
+
+        return {
+            "iteration_start_reference": {
+                "top_gap": working_state.get("top_gap"),
+                "next_evidence_need": working_state.get("next_evidence_need"),
+            },
+            "current_iteration_result": {
+                "action_mode": working_state.get("action_mode"),
+                "action_rationale": working_state.get("action_rationale"),
+                "acquisition_result_summary": self._acquisition_result_summary(
+                    working_state,
+                ),
+                "processed_evidence_summary": (
+                    self._evidence_processing_result_summary_for_prompt(
+                        working_state,
+                    )
+                ),
+            },
+            "updated_findings": {
+                "intermediate_findings": self._prompt_text_list(
+                    working_state.get("intermediate_findings"),
+                ),
+                "finding_caveats": self._prompt_text_list(
+                    working_state.get("finding_caveats"),
+                ),
+            },
+            "available_evidence": {
+                "processed_evidence": self._processed_evidence_for_prompt(
+                    working_state,
+                ),
+                "evidence_summary": self._evidence_summary_for_prompt(
+                    working_state,
+                ),
+            },
+            "runtime_constraints": {
+                "iteration_index": working_state.get("iteration_index"),
+                "remaining_iteration_budget_after_current": (
+                    self._remaining_iteration_budget_after_current(
+                        stage_input,
+                        working_state,
+                    )
+                ),
+                "input_budget_pressure": self._iteration_input_budget_pressure(
+                    stage_input,
+                    working_state,
+                ),
+                "available_capabilities": stage_input.available_tools,
+                "latency_budget_ms": stage_input.latency_budget_ms,
+            },
+        }
+
+    def _acquisition_result_summary(
+        self,
+        working_state: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return a compact acquisition/execution summary for 4.7."""
+
+        tool_execution_result = self._tool_execution_result(working_state)
+        if tool_execution_result is None:
+            return {
+                "acquisition_requested": False,
+                "execution_status": "not_requested",
+                "acquisition_status": "not_requested",
+                "normalized_item_count": 0,
+                "dropped_item_count": 0,
+                "did_acquisition_fail": False,
+            }
+
+        acquisition_status = tool_execution_result.acquisition_status.value
+        return {
+            "acquisition_requested": True,
+            "execution_status": tool_execution_result.execution_status,
+            "acquisition_status": acquisition_status,
+            "normalized_item_count": len(tool_execution_result.normalized_items),
+            "dropped_item_count": tool_execution_result.dropped_item_count,
+            "did_acquisition_fail": (
+                tool_execution_result.execution_status == "failed"
+                or tool_execution_result.acquisition_status == AcquisitionStatus.FAILED
+            ),
+            "error_info": tool_execution_result.error_info,
+        }
+
+    def _evidence_processing_result_summary_for_prompt(
+        self,
+        working_state: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return a compact evidence processing summary for 4.7."""
+
+        result = self._evidence_processing_result(working_state)
+        if result is None:
+            return {
+                "processing_requested": False,
+                "processing_status": "not_requested",
+                "processed_evidence_count": 0,
+            }
+
+        return {
+            "processing_requested": True,
+            "processing_status": result.processing_status,
+            "processed_evidence_count": len(result.processed_evidence_units),
+            "evidence_processing_summary": (
+                result.evidence_processing_summary.model_dump(mode="json")
+            ),
+            "error_info": result.error_info,
+        }
+
+    def _evidence_summary_for_prompt(
+        self,
+        working_state: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Return the latest typed evidence summary in JSON-safe form."""
+
+        result = self._evidence_processing_result(working_state)
+        if result is None:
+            return {}
+        return result.evidence_summary.model_dump(mode="json")
+
     def _build_intermediate_findings_prompt(
         self,
         stage_input: ResearchStageInput,
@@ -1392,6 +1925,27 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         except ValidationError as exc:
             raise ValueError(
                 "Intermediate findings LLM response did not match the required schema."
+            ) from exc
+
+    def _parse_iteration_outcome_output(
+        self,
+        llm_output: str,
+    ) -> _LLMIterationOutcomePayload:
+        """Parse and validate the LLM iteration-outcome JSON."""
+
+        json_text = self._strip_json_code_fence(llm_output)
+        try:
+            raw_payload = json.loads(json_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "Iteration outcome LLM response was not valid JSON."
+            ) from exc
+
+        try:
+            return _LLMIterationOutcomePayload.model_validate(raw_payload)
+        except ValidationError as exc:
+            raise ValueError(
+                "Iteration outcome LLM response did not match the required schema."
             ) from exc
 
     def _unique_non_empty_texts(self, values: list[str]) -> list[str]:

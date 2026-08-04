@@ -92,20 +92,45 @@ def _valid_findings_payload(
     }
 
 
+def _valid_outcome_payload(
+    *,
+    top_gap_progress: str = "partially_advanced",
+    evidence_gain: str = "meaningful_gain",
+    finding_progress: str = "improved_but_not_stable",
+    residual_uncertainty: str = "moderate",
+    proposed_iteration_outcome: str = "stop",
+    proposed_outcome_rationale: str = "本轮已有有效推进，但当前默认测试选择收束。",
+) -> dict[str, Any]:
+    return {
+        "top_gap_progress": top_gap_progress,
+        "evidence_gain": evidence_gain,
+        "finding_progress": finding_progress,
+        "residual_uncertainty": residual_uncertainty,
+        "proposed_iteration_outcome": proposed_iteration_outcome,
+        "proposed_outcome_rationale": proposed_outcome_rationale,
+    }
+
+
 class _FakeLLMClient:
     def __init__(
         self,
         responses: list[str] | None = None,
         findings_responses: list[str] | None = None,
+        outcome_responses: list[str] | None = None,
     ) -> None:
         self._assessment_responses = list(responses or [])
         self._findings_responses = list(findings_responses or [])
+        self._outcome_responses = list(outcome_responses or [])
         self._default_assessment_response = json.dumps(
             _valid_assessment_payload(),
             ensure_ascii=False,
         )
         self._default_findings_response = json.dumps(
             _valid_findings_payload(),
+            ensure_ascii=False,
+        )
+        self._default_outcome_response = json.dumps(
+            _valid_outcome_payload(),
             ensure_ascii=False,
         )
         self.prompts: list[str] = []
@@ -116,6 +141,11 @@ class _FakeLLMClient:
             return self._next_response(
                 self._findings_responses,
                 self._default_findings_response,
+            )
+        if "研究迭代结果评估" in prompt:
+            return self._next_response(
+                self._outcome_responses,
+                self._default_outcome_response,
             )
         return self._next_response(
             self._assessment_responses,
@@ -136,6 +166,10 @@ def _assessment_prompts(fake_llm: _FakeLLMClient) -> list[str]:
 
 def _findings_prompts(fake_llm: _FakeLLMClient) -> list[str]:
     return [prompt for prompt in fake_llm.prompts if "中间研究发现更新" in prompt]
+
+
+def _outcome_prompts(fake_llm: _FakeLLMClient) -> list[str]:
+    return [prompt for prompt in fake_llm.prompts if "研究迭代结果评估" in prompt]
 
 
 class _FakeToolExecutionLayerService:
@@ -178,6 +212,31 @@ def _research_executor(
         evidence_processing_service=(
             evidence_processing_service or _FakeEvidenceProcessingService()
         ),
+    )
+
+
+def _processed_evidence_unit(
+    content: str = "Processed evidence advances the current top gap.",
+) -> ProcessedEvidenceUnit:
+    return ProcessedEvidenceUnit(
+        evidence_unit_id="ev_001",
+        source_references=[
+            SourceReference(source_type="document", source_id="doc-1"),
+        ],
+        source_family=FamilyName.DOCS_SEARCH,
+        content=content,
+        evidence_type="supporting_signal",
+    )
+
+
+def _successful_evidence_service(
+    content: str = "Processed evidence advances the current top gap.",
+) -> _FakeEvidenceProcessingService:
+    return _FakeEvidenceProcessingService(
+        result=EvidenceProcessingResult(
+            processed_evidence_units=[_processed_evidence_unit(content)],
+            processing_status="success",
+        )
     )
 
 
@@ -297,6 +356,7 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         self.action_states: list[dict[str, Any]] = []
         self.processed_states: list[dict[str, Any]] = []
         self.finding_states: list[dict[str, Any]] = []
+        self.outcome_states: list[dict[str, Any]] = []
         self._outcomes = outcomes or []
 
     async def _assess_research_state_and_select_next_evidence_need(
@@ -329,7 +389,9 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
     ) -> ResearchIterationOutcome:
         if self._outcomes:
             return self._outcomes.pop(0)
-        return await super()._evaluate_iteration_outcome(stage_input, working_state)
+        outcome = await super()._evaluate_iteration_outcome(stage_input, working_state)
+        self.outcome_states.append(dict(working_state))
+        return outcome
 
     async def _process_candidate_material_into_usable_evidence(
         self,
@@ -477,6 +539,9 @@ def test_research_executor_refines_when_gap_is_noop() -> None:
     ]
     assert service.action_states[0]["action_mode"] == "refine_from_existing_state"
     assert service.action_states[0]["action_request"] is None
+    assert service.outcome_states[0]["iteration_outcome"] == "stop"
+    assert service.outcome_states[0]["outcome_decision_source"] == "rule_short_circuit"
+    assert _outcome_prompts(service.llm_client) == []
 
 
 def test_research_executor_refines_when_findings_are_stable_and_strong() -> None:
@@ -667,6 +732,249 @@ def test_research_executor_processes_tel_result_into_working_state() -> None:
     assert evidence_service.requests[0].acquisition_status == AcquisitionStatus.SUCCESS
     assert service.processed_states[0]["processed_evidence_units"] == [evidence_unit]
     assert "processed_evidence" not in service.processed_states[0]
+
+
+def test_research_executor_degrades_when_evidence_processing_fails() -> None:
+    tel_service = _FakeToolExecutionLayerService(
+        result=ToolExecutionLayerResult(
+            execution_status="completed",
+            acquisition_status=AcquisitionStatus.SUCCESS,
+        )
+    )
+    evidence_service = _FakeEvidenceProcessingService(
+        result=EvidenceProcessingResult(processing_status="failed")
+    )
+    service = _StateCapturingResearchExecutorService(
+        tool_execution_layer_service=tel_service,
+        evidence_processing_service=evidence_service,
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Evidence processing failure should degrade.",
+                available_tools=["docs_search"],
+            )
+        )
+    )
+
+    outcome_state = service.outcome_states[0]
+    assert outcome_state["iteration_outcome"] == "degrade"
+    assert outcome_state["outcome_decision_source"] == "rule_short_circuit"
+    assert "Evidence Processing 阶段失败" in outcome_state["outcome_rationale"]
+    assert _outcome_prompts(service.llm_client) == []
+
+
+def test_research_executor_continues_when_llm_outcome_allows_more_iterations() -> None:
+    outcome_payload = json.dumps(
+        _valid_outcome_payload(
+            proposed_iteration_outcome="continue",
+            proposed_outcome_rationale="本轮有有效推进，但仍有中等不确定性，建议继续下一轮。",
+        ),
+        ensure_ascii=False,
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(outcome_responses=[outcome_payload, outcome_payload]),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_successful_evidence_service(),
+    )
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Continue when outcome evaluation says so.",
+                available_tools=["docs_search"],
+                iteration_budget=2,
+            )
+        )
+    )
+
+    assert result.executed_iteration_count == 2
+    assert service.outcome_states[0]["iteration_outcome"] == "continue"
+    assert service.outcome_states[0]["outcome_decision_source"] == "llm_with_guardrails"
+    assert service.outcome_states[1]["iteration_outcome"] == "stop"
+    assert service.outcome_states[1]["outcome_guardrail_applied"] is True
+    assert len(_outcome_prompts(service.llm_client)) == 2
+
+
+def test_research_executor_degrades_when_last_iteration_has_no_meaningful_gain() -> None:
+    outcome_payload = json.dumps(
+        _valid_outcome_payload(
+            top_gap_progress="not_advanced",
+            evidence_gain="no_meaningful_gain",
+            finding_progress="no_material_change",
+            residual_uncertainty="high",
+            proposed_iteration_outcome="continue",
+            proposed_outcome_rationale="仍有高不确定性，模型建议继续。",
+        ),
+        ensure_ascii=False,
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(outcome_responses=[outcome_payload]),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_successful_evidence_service(),
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Guardrail should prevent impossible continuation.",
+                available_tools=["docs_search"],
+                iteration_budget=1,
+            )
+        )
+    )
+
+    outcome_state = service.outcome_states[0]
+    assert outcome_state["proposed_iteration_outcome"] == "continue"
+    assert outcome_state["iteration_outcome"] == "degrade"
+    assert outcome_state["outcome_guardrail_applied"] is True
+    assert "没有剩余 iteration budget" in outcome_state["outcome_rationale"]
+
+
+def test_research_executor_accepts_fenced_json_iteration_outcome_output() -> None:
+    payload = json.dumps(
+        _valid_outcome_payload(
+            proposed_iteration_outcome="stop",
+            proposed_outcome_rationale="fenced outcome rationale",
+        ),
+        ensure_ascii=False,
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(outcome_responses=[f"```json\n{payload}\n```"]),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_successful_evidence_service(),
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Parse fenced outcome JSON.",
+                available_tools=["docs_search"],
+            )
+        )
+    )
+
+    assert service.outcome_states[0]["iteration_outcome"] == "stop"
+    assert service.outcome_states[0]["outcome_rationale"] == "fenced outcome rationale"
+
+
+def test_research_executor_raises_when_iteration_outcome_output_is_not_json() -> None:
+    service = _research_executor(
+        llm_client=_FakeLLMClient(outcome_responses=["not json"]),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_successful_evidence_service(),
+    )
+
+    with pytest.raises(ValueError, match="Iteration outcome.*not valid JSON"):
+        asyncio.run(
+            service.execute(
+                ResearchStageInput(
+                    original_query="This outcome step should fail.",
+                    available_tools=["docs_search"],
+                )
+            )
+        )
+
+
+def test_research_executor_raises_when_iteration_outcome_schema_is_invalid() -> None:
+    invalid_payload = json.dumps(
+        {
+            "top_gap_progress": "unknown",
+            "evidence_gain": "meaningful_gain",
+            "finding_progress": "improved_but_not_stable",
+            "residual_uncertainty": "moderate",
+            "proposed_iteration_outcome": "continue",
+            "proposed_outcome_rationale": "invalid",
+        },
+        ensure_ascii=False,
+    )
+    service = _research_executor(
+        llm_client=_FakeLLMClient(outcome_responses=[invalid_payload]),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_successful_evidence_service(),
+    )
+
+    with pytest.raises(ValueError, match="Iteration outcome.*required schema"):
+        asyncio.run(
+            service.execute(
+                ResearchStageInput(
+                    original_query="This outcome schema should fail validation.",
+                    available_tools=["docs_search"],
+                )
+            )
+        )
+
+
+def test_iteration_outcome_prompt_contains_required_context_and_boundaries() -> None:
+    fake_llm = _FakeLLMClient()
+    service = _research_executor(
+        llm_client=fake_llm,
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_successful_evidence_service(
+            "Outcome prompt evidence content."
+        ),
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Evaluate iteration outcome prompt.",
+                available_tools=["docs_search"],
+                iteration_budget=2,
+            )
+        )
+    )
+
+    outcome_prompt = _outcome_prompts(fake_llm)[0]
+    assert "无状态调用" in outcome_prompt
+    assert "研究迭代结果评估" in outcome_prompt
+    assert "iteration_start_reference" in outcome_prompt
+    assert "current_iteration_result" in outcome_prompt
+    assert "updated_findings" in outcome_prompt
+    assert "available_evidence" in outcome_prompt
+    assert "runtime_constraints" in outcome_prompt
+    assert "缺少直接证据。" in outcome_prompt
+    assert "external_acquisition" in outcome_prompt
+    assert "Outcome prompt evidence content." in outcome_prompt
+    assert '"remaining_iteration_budget_after_current": 1' in outcome_prompt
+    assert "不要重新生成 assessment、identified_gaps、top_gap 或 next_evidence_need" in (
+        outcome_prompt
+    )
+    assert "不要输出搜索词、工具名、工具调用参数或执行步骤" in outcome_prompt
+    assert "tool_execution_result" not in outcome_prompt
+    assert "evidence_processing_result" not in outcome_prompt
+    assert "working_state" not in outcome_prompt
 
 
 def test_research_executor_produces_full_intermediate_findings() -> None:
