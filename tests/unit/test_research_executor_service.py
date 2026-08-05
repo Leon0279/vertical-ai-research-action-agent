@@ -86,9 +86,16 @@ def _valid_findings_payload(
     finding_caveats: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
-        "intermediate_findings": intermediate_findings
-        or ["当前证据支持：memory-backed retrieval 适合已有知识覆盖充分的场景。"],
-        "finding_caveats": finding_caveats or ["当前发现仍缺少外部新鲜度证据。"],
+        "intermediate_findings": (
+            intermediate_findings
+            if intermediate_findings is not None
+            else ["当前证据支持：memory-backed retrieval 适合已有知识覆盖充分的场景。"]
+        ),
+        "finding_caveats": (
+            finding_caveats
+            if finding_caveats is not None
+            else ["当前发现仍缺少外部新鲜度证据。"]
+        ),
     }
 
 
@@ -189,12 +196,19 @@ class _FakeToolExecutionLayerService:
 
 
 class _FakeEvidenceProcessingService:
-    def __init__(self, result: EvidenceProcessingResult | None = None) -> None:
+    def __init__(
+        self,
+        result: EvidenceProcessingResult | None = None,
+        results: list[EvidenceProcessingResult] | None = None,
+    ) -> None:
         self.result = result or EvidenceProcessingResult(processing_status="no_result")
+        self._results = list(results or [])
         self.requests: list[Any] = []
 
     async def process(self, request: Any) -> EvidenceProcessingResult:
         self.requests.append(request)
+        if self._results:
+            return self._results.pop(0)
         return self.result
 
 
@@ -458,7 +472,7 @@ def test_research_executor_runs_acquisition_steps_when_action_decision_requires_
     assert result.executed_iteration_count == 1
 
 
-def test_research_executor_default_scaffold_result_is_empty() -> None:
+def test_research_executor_projects_default_working_state_into_result() -> None:
     service = _research_executor(llm_client=_FakeLLMClient())
 
     result = asyncio.run(
@@ -467,12 +481,21 @@ def test_research_executor_default_scaffold_result_is_empty() -> None:
         )
     )
 
-    assert result.research_status == "no_result"
+    assert result.research_status == "partial_success"
     assert result.executed_iteration_count == 1
     assert result.retrieved_evidence_refs == []
     assert result.evidence_summary is None
-    assert result.intermediate_findings == []
-    assert result.open_questions == []
+    assert result.intermediate_findings == [
+        "当前证据支持：memory-backed retrieval 适合已有知识覆盖充分的场景。"
+    ]
+    assert any(
+        "runtime 未声明 acquisition capability" in question
+        for question in result.open_questions
+    )
+    assert any(
+        "Finding caveat: 当前发现仍缺少外部新鲜度证据。" == question
+        for question in result.open_questions
+    )
 
 
 def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None:
@@ -731,7 +754,67 @@ def test_research_executor_processes_tel_result_into_working_state() -> None:
     assert len(evidence_service.requests) == 1
     assert evidence_service.requests[0].acquisition_status == AcquisitionStatus.SUCCESS
     assert service.processed_states[0]["processed_evidence_units"] == [evidence_unit]
+    assert service.processed_states[0]["current_iteration_processed_evidence_units"] == [
+        evidence_unit
+    ]
     assert "processed_evidence" not in service.processed_states[0]
+
+
+def test_research_executor_returns_processed_evidence_refs_findings_and_summary() -> None:
+    findings_payload = json.dumps(
+        _valid_findings_payload(
+            intermediate_findings=["Evidence-backed finding."],
+            finding_caveats=[],
+        ),
+        ensure_ascii=False,
+    )
+    source_reference = SourceReference(
+        source_type="document",
+        source_id="doc-1",
+        title="Docs evidence",
+    )
+    evidence_unit = ProcessedEvidenceUnit(
+        evidence_unit_id="ev_001",
+        source_references=[source_reference],
+        source_family=FamilyName.DOCS_SEARCH,
+        content="Docs search supports the current retrieval design.",
+        evidence_type="supporting_signal",
+    )
+    service = _research_executor(
+        llm_client=_FakeLLMClient(findings_responses=[findings_payload]),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_FakeEvidenceProcessingService(
+            result=EvidenceProcessingResult(
+                processed_evidence_units=[evidence_unit],
+                processing_status="success",
+            )
+        ),
+    )
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Return real research result.",
+                available_tools=["docs_search"],
+            )
+        )
+    )
+
+    assert result.research_status == "completed"
+    assert result.retrieved_evidence_refs == [source_reference]
+    assert result.intermediate_findings == ["Evidence-backed finding."]
+    assert result.open_questions == []
+    assert result.evidence_summary is not None
+    assert "processed_evidence_count=1" in result.evidence_summary
+    assert "evidence_types=supporting_signal:1" in result.evidence_summary
+    assert "source_families=docs_search" in result.evidence_summary
+    assert "source_types=document" in result.evidence_summary
+    assert "last_processing_status=success" in result.evidence_summary
 
 
 def test_research_executor_degrades_when_evidence_processing_fails() -> None:
@@ -763,6 +846,74 @@ def test_research_executor_degrades_when_evidence_processing_fails() -> None:
     assert outcome_state["outcome_decision_source"] == "rule_short_circuit"
     assert "Evidence Processing 阶段失败" in outcome_state["outcome_rationale"]
     assert _outcome_prompts(service.llm_client) == []
+
+
+def test_research_executor_returns_partial_success_when_degraded_with_outputs() -> None:
+    outcome_payload = json.dumps(
+        _valid_outcome_payload(
+            top_gap_progress="not_advanced",
+            evidence_gain="no_meaningful_gain",
+            finding_progress="no_material_change",
+            residual_uncertainty="high",
+            proposed_iteration_outcome="continue",
+            proposed_outcome_rationale="仍有高不确定性，模型建议继续。",
+        ),
+        ensure_ascii=False,
+    )
+    service = _research_executor(
+        llm_client=_FakeLLMClient(outcome_responses=[outcome_payload]),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_successful_evidence_service(),
+    )
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Degraded iteration still has partial outputs.",
+                available_tools=["docs_search"],
+                iteration_budget=1,
+            )
+        )
+    )
+
+    assert result.research_status == "partial_success"
+    assert result.retrieved_evidence_refs
+    assert result.intermediate_findings
+    assert any(
+        "没有剩余 iteration budget" in question
+        for question in result.open_questions
+    )
+
+
+def test_research_executor_returns_failed_when_degraded_without_outputs() -> None:
+    findings_payload = json.dumps(
+        _valid_findings_payload(intermediate_findings=[], finding_caveats=[]),
+        ensure_ascii=False,
+    )
+    service = _research_executor(
+        llm_client=_FakeLLMClient(findings_responses=[findings_payload])
+    )
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(original_query="Degrade without outputs should fail.")
+        )
+    )
+
+    assert result.research_status == "failed"
+    assert result.retrieved_evidence_refs == []
+    assert result.intermediate_findings == []
+    assert result.evidence_summary is None
+    assert result.error_info is not None
+    assert any(
+        "runtime 未声明 acquisition capability" in question
+        for question in result.open_questions
+    )
 
 
 def test_research_executor_continues_when_llm_outcome_allows_more_iterations() -> None:
@@ -800,6 +951,58 @@ def test_research_executor_continues_when_llm_outcome_allows_more_iterations() -
     assert service.outcome_states[1]["iteration_outcome"] == "stop"
     assert service.outcome_states[1]["outcome_guardrail_applied"] is True
     assert len(_outcome_prompts(service.llm_client)) == 2
+
+
+def test_research_executor_tracks_current_iteration_evidence_delta() -> None:
+    first_result = EvidenceProcessingResult(
+        processed_evidence_units=[_processed_evidence_unit("First iteration evidence.")],
+        processing_status="success",
+    )
+    second_result = EvidenceProcessingResult(processing_status="no_result")
+    outcome_payload = json.dumps(
+        _valid_outcome_payload(
+            proposed_iteration_outcome="continue",
+            proposed_outcome_rationale="第一轮继续。",
+        ),
+        ensure_ascii=False,
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(outcome_responses=[outcome_payload]),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_FakeEvidenceProcessingService(
+            results=[first_result, second_result]
+        ),
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Only first iteration produces evidence.",
+                available_tools=["docs_search"],
+                iteration_budget=2,
+            )
+        )
+    )
+
+    assert service.processed_states[0]["processed_evidence_units"] == [
+        first_result.processed_evidence_units[0]
+    ]
+    assert service.processed_states[0]["current_iteration_processed_evidence_units"] == [
+        first_result.processed_evidence_units[0]
+    ]
+    assert service.processed_states[1]["processed_evidence_units"] == [
+        first_result.processed_evidence_units[0]
+    ]
+    assert (
+        service.processed_states[1]["current_iteration_processed_evidence_units"]
+        == []
+    )
+    assert service._did_new_evidence_arrive(service.processed_states[1]) is False
 
 
 def test_research_executor_degrades_when_last_iteration_has_no_meaningful_gain() -> None:
@@ -840,6 +1043,25 @@ def test_research_executor_degrades_when_last_iteration_has_no_meaningful_gain()
     assert outcome_state["iteration_outcome"] == "degrade"
     assert outcome_state["outcome_guardrail_applied"] is True
     assert "没有剩余 iteration budget" in outcome_state["outcome_rationale"]
+
+
+def test_research_executor_reports_budget_exhaustion_when_loop_wants_to_continue() -> None:
+    service = _SpyResearchExecutorService(outcomes=["continue"])
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Budget should stop continuing loops.",
+                iteration_budget=1,
+            )
+        )
+    )
+
+    assert result.executed_iteration_count == 1
+    assert result.research_status == "partial_success"
+    assert any(
+        "iteration budget 已用尽" in question for question in result.open_questions
+    )
 
 
 def test_research_executor_accepts_fenced_json_iteration_outcome_output() -> None:

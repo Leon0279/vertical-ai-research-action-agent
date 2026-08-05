@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -16,6 +17,7 @@ from app.domain.models import (
     ProcessedEvidenceUnit,
     ResearchStageInput,
     ResearchStageResult,
+    SourceReference,
     ToolExecutionLayerRequest,
     ToolExecutionLayerResult,
 )
@@ -256,6 +258,9 @@ class ResearchExecutorService(ResearchExecutorProtocol):
             working_state["remaining_iteration_budget"] = (
                 max_iterations - executed_iteration_count
             )
+            working_state["current_iteration_processed_evidence_units"] = []
+            working_state["current_iteration_tool_execution_result"] = None
+            working_state["current_iteration_evidence_processing_result"] = None
             await self._assess_research_state_and_select_next_evidence_need(
                 stage_input,
                 working_state,
@@ -277,7 +282,12 @@ class ResearchExecutorService(ResearchExecutorProtocol):
             outcome = await self._evaluate_iteration_outcome(stage_input, working_state)
             executed_iteration_count += 1
 
-        return ResearchStageResult(executed_iteration_count=executed_iteration_count)
+        return self._build_research_stage_result(
+            stage_input,
+            working_state,
+            executed_iteration_count=executed_iteration_count,
+            final_outcome=outcome,
+        )
 
     def _max_iterations(self, stage_input: ResearchStageInput) -> int:
         """Resolve the bounded loop budget from stage input only."""
@@ -285,6 +295,246 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         if stage_input.iteration_budget is None or stage_input.iteration_budget < 1:
             return 1
         return stage_input.iteration_budget
+
+    def _build_research_stage_result(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+        *,
+        executed_iteration_count: int,
+        final_outcome: ResearchIterationOutcome,
+    ) -> ResearchStageResult:
+        """Project stage-local working state into the public research result."""
+
+        processed_evidence_units = self._processed_evidence_units(working_state)
+        intermediate_findings = self._prompt_text_list(
+            working_state.get("intermediate_findings")
+        )
+        open_questions = self._open_questions_from_working_state(
+            stage_input,
+            working_state,
+            executed_iteration_count=executed_iteration_count,
+            final_outcome=final_outcome,
+        )
+        research_status = self._research_status_from_working_state(
+            working_state,
+            processed_evidence_units=processed_evidence_units,
+            intermediate_findings=intermediate_findings,
+            open_questions=open_questions,
+            final_outcome=final_outcome,
+        )
+        return ResearchStageResult(
+            research_status=research_status,
+            retrieved_evidence_refs=self._source_references_from_processed_evidence(
+                processed_evidence_units
+            ),
+            evidence_summary=self._evidence_summary_from_working_state(
+                working_state,
+                processed_evidence_units,
+            ),
+            intermediate_findings=intermediate_findings,
+            open_questions=open_questions,
+            executed_iteration_count=executed_iteration_count,
+            error_info=self._error_info_from_working_state(
+                working_state,
+                research_status,
+                final_outcome,
+            ),
+        )
+
+    def _source_references_from_processed_evidence(
+        self,
+        processed_evidence_units: list[ProcessedEvidenceUnit],
+    ) -> list[SourceReference]:
+        """Collect unique typed source references from processed evidence units."""
+
+        source_references: list[SourceReference] = []
+        seen: set[str] = set()
+        for unit in processed_evidence_units:
+            for source_reference in unit.source_references:
+                key = self._source_reference_key(source_reference)
+                if key in seen:
+                    continue
+                source_references.append(source_reference)
+                seen.add(key)
+        return source_references
+
+    def _source_reference_key(self, source_reference: SourceReference) -> str:
+        """Return a stable identity key for SourceReference deduplication."""
+
+        if source_reference.source_url:
+            return f"url:{source_reference.source_url}"
+        if source_reference.source_id:
+            return (
+                f"id:{source_reference.source_id_type or ''}:"
+                f"{source_reference.source_id}"
+            )
+        if source_reference.citation_text:
+            return f"citation:{source_reference.citation_text}"
+        return "json:" + json.dumps(
+            source_reference.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
+    def _evidence_summary_from_working_state(
+        self,
+        working_state: dict[str, Any],
+        processed_evidence_units: list[ProcessedEvidenceUnit],
+    ) -> str | None:
+        """Return a compact human-readable summary for pipeline write-back."""
+
+        if not processed_evidence_units:
+            return None
+
+        evidence_type_counts = Counter(
+            unit.evidence_type for unit in processed_evidence_units
+        )
+        source_families = sorted(
+            {
+                unit.source_family.value
+                for unit in processed_evidence_units
+                if unit.source_family is not None
+            }
+        )
+        source_types = sorted(
+            {
+                source_reference.source_type
+                for unit in processed_evidence_units
+                for source_reference in unit.source_references
+                if source_reference.source_type
+            }
+        )
+        latest_processing_result = self._latest_evidence_processing_result(
+            working_state
+        )
+        latest_processing_status = (
+            latest_processing_result.processing_status
+            if latest_processing_result is not None
+            else "not_requested"
+        )
+        evidence_types = ", ".join(
+            f"{evidence_type}:{count}"
+            for evidence_type, count in sorted(evidence_type_counts.items())
+        )
+        return (
+            f"processed_evidence_count={len(processed_evidence_units)}; "
+            f"evidence_types={evidence_types or 'none'}; "
+            f"source_families={', '.join(source_families) or 'none'}; "
+            f"source_types={', '.join(source_types) or 'none'}; "
+            f"last_processing_status={latest_processing_status}"
+        )
+
+    def _open_questions_from_working_state(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+        *,
+        executed_iteration_count: int,
+        final_outcome: ResearchIterationOutcome,
+    ) -> list[str]:
+        """Derive unresolved questions and degradation reasons from working state."""
+
+        open_questions: list[str] = []
+        for result in self._tool_execution_results(working_state):
+            if (
+                result.execution_status == "failed"
+                or result.acquisition_status
+                in {AcquisitionStatus.FAILED, AcquisitionStatus.NO_RESULT}
+            ):
+                reason = result.error_info or (
+                    f"execution_status={result.execution_status}, "
+                    f"acquisition_status={result.acquisition_status.value}"
+                )
+                open_questions.append(f"Tool Execution Layer 未形成可用材料：{reason}")
+
+        for result in self._evidence_processing_results(working_state):
+            if result.processing_status in {"failed", "no_result"}:
+                reason = (
+                    result.error_info
+                    or f"processing_status={result.processing_status}"
+                )
+                open_questions.append(f"Evidence Processing 未形成可用 evidence：{reason}")
+
+        if final_outcome == "degrade":
+            rationale = self._optional_text(working_state.get("outcome_rationale"))
+            open_questions.append(rationale or "Research iteration 进入 degrade 收束。")
+
+        if (
+            final_outcome == "continue"
+            and executed_iteration_count >= self._max_iterations(stage_input)
+        ):
+            open_questions.append(
+                "Research iteration budget 已用尽，仍存在未完成的后续研究需求。"
+            )
+
+        open_questions.extend(
+            f"Finding caveat: {caveat}"
+            for caveat in self._prompt_text_list(working_state.get("finding_caveats"))
+        )
+        return self._unique_non_empty_texts(open_questions)
+
+    def _research_status_from_working_state(
+        self,
+        working_state: dict[str, Any],
+        *,
+        processed_evidence_units: list[ProcessedEvidenceUnit],
+        intermediate_findings: list[str],
+        open_questions: list[str],
+        final_outcome: ResearchIterationOutcome,
+    ) -> str:
+        """Map final working-state signals into ResearchStageResult status."""
+
+        has_research_output = bool(processed_evidence_units or intermediate_findings)
+        if final_outcome == "degrade":
+            return "partial_success" if has_research_output else "failed"
+
+        if has_research_output:
+            return "partial_success" if open_questions else "completed"
+
+        if self._has_hard_failure(working_state):
+            return "failed"
+
+        return "no_result"
+
+    def _has_hard_failure(self, working_state: dict[str, Any]) -> bool:
+        """Return whether TEL or EvidenceProcessing hit a hard failure."""
+
+        return any(
+            result.execution_status == "failed"
+            or result.acquisition_status == AcquisitionStatus.FAILED
+            for result in self._tool_execution_results(working_state)
+        ) or any(
+            result.processing_status == "failed"
+            for result in self._evidence_processing_results(working_state)
+        )
+
+    def _error_info_from_working_state(
+        self,
+        working_state: dict[str, Any],
+        research_status: str,
+        final_outcome: ResearchIterationOutcome,
+    ) -> str | None:
+        """Return a compact top-level error when the final status is failed."""
+
+        if research_status != "failed":
+            return None
+
+        for result in self._tool_execution_results(working_state):
+            if result.execution_status == "failed" or (
+                result.acquisition_status == AcquisitionStatus.FAILED
+            ):
+                return result.error_info or "Tool Execution Layer failed."
+
+        for result in self._evidence_processing_results(working_state):
+            if result.processing_status == "failed":
+                return result.error_info or "Evidence Processing failed."
+
+        if final_outcome == "degrade":
+            return self._optional_text(working_state.get("outcome_rationale")) or (
+                "Research iteration degraded without producing usable research output."
+            )
+        return None
 
     async def _assess_research_state_and_select_next_evidence_need(
         self,
@@ -683,6 +933,10 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         result = await self._tool_execution_layer_service.execute(request)
         working_state["tool_execution_request"] = request
         working_state["tool_execution_result"] = result
+        working_state["current_iteration_tool_execution_result"] = result
+        tool_execution_results = working_state.setdefault("tool_execution_results", [])
+        if isinstance(tool_execution_results, list):
+            tool_execution_results.append(result)
         working_state["candidate_materials"] = list(result.normalized_items)
 
     async def _process_candidate_material_into_usable_evidence(
@@ -705,12 +959,22 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         result = await self._evidence_processing_service.process(request)
         working_state["evidence_processing_request"] = request
         working_state["evidence_processing_result"] = result
+        working_state["current_iteration_evidence_processing_result"] = result
+        evidence_processing_results = working_state.setdefault(
+            "evidence_processing_results",
+            [],
+        )
+        if isinstance(evidence_processing_results, list):
+            evidence_processing_results.append(result)
         processed_evidence_units = working_state.setdefault(
             "processed_evidence_units",
             [],
         )
         if isinstance(processed_evidence_units, list):
             processed_evidence_units.extend(result.processed_evidence_units)
+        working_state["current_iteration_processed_evidence_units"] = list(
+            result.processed_evidence_units
+        )
 
     def _tool_execution_layer_request(
         self,
@@ -1026,7 +1290,9 @@ class ResearchExecutorService(ResearchExecutorProtocol):
                 "当前 findings 已稳定且支撑强度足够，本轮无需继续发起新的 iteration。",
             )
 
-        evidence_processing_result = self._evidence_processing_result(working_state)
+        evidence_processing_result = self._current_evidence_processing_result(
+            working_state
+        )
         if (
             evidence_processing_result is not None
             and evidence_processing_result.processing_status == "failed"
@@ -1483,7 +1749,25 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     def _did_new_evidence_arrive(self, working_state: dict[str, Any]) -> bool:
         """Return whether Step 5 has produced at least one processed evidence unit."""
 
-        return bool(self._processed_evidence_units(working_state))
+        return bool(self._current_iteration_processed_evidence_units(working_state))
+
+    def _current_iteration_processed_evidence_units(
+        self,
+        working_state: dict[str, Any],
+    ) -> list[ProcessedEvidenceUnit]:
+        """Return evidence units produced by the current iteration only."""
+
+        processed_evidence_units = working_state.get(
+            "current_iteration_processed_evidence_units",
+            [],
+        )
+        if not isinstance(processed_evidence_units, list):
+            return []
+        return [
+            unit
+            for unit in processed_evidence_units
+            if isinstance(unit, ProcessedEvidenceUnit)
+        ]
 
     def _processed_evidence_units(
         self,
@@ -1506,7 +1790,7 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     ) -> bool:
         """Return whether TEL ended with failed/no_result acquisition state."""
 
-        tool_execution_result = self._tool_execution_result(working_state)
+        tool_execution_result = self._current_tool_execution_result(working_state)
         if tool_execution_result is None:
             return False
         return (
@@ -1519,23 +1803,82 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         self,
         working_state: dict[str, Any],
     ) -> ToolExecutionLayerResult | None:
-        """Return the typed TEL result from working state, if present."""
+        """Return the latest typed TEL result from working state, if present."""
 
         value = working_state.get("tool_execution_result")
         if isinstance(value, ToolExecutionLayerResult):
             return value
         return None
 
+    def _current_tool_execution_result(
+        self,
+        working_state: dict[str, Any],
+    ) -> ToolExecutionLayerResult | None:
+        """Return the current iteration TEL result from working state, if present."""
+
+        value = working_state.get("current_iteration_tool_execution_result")
+        if isinstance(value, ToolExecutionLayerResult):
+            return value
+        return None
+
+    def _tool_execution_results(
+        self,
+        working_state: dict[str, Any],
+    ) -> list[ToolExecutionLayerResult]:
+        """Return all TEL results accumulated during this research stage."""
+
+        values = working_state.get("tool_execution_results", [])
+        if not isinstance(values, list):
+            return []
+        return [
+            value for value in values if isinstance(value, ToolExecutionLayerResult)
+        ]
+
     def _evidence_processing_result(
         self,
         working_state: dict[str, Any],
     ) -> EvidenceProcessingResult | None:
-        """Return the typed evidence processing result from working state, if present."""
+        """Return the latest evidence processing result from working state, if present."""
 
         value = working_state.get("evidence_processing_result")
         if isinstance(value, EvidenceProcessingResult):
             return value
         return None
+
+    def _current_evidence_processing_result(
+        self,
+        working_state: dict[str, Any],
+    ) -> EvidenceProcessingResult | None:
+        """Return the current iteration evidence processing result, if present."""
+
+        value = working_state.get("current_iteration_evidence_processing_result")
+        if isinstance(value, EvidenceProcessingResult):
+            return value
+        return None
+
+    def _latest_evidence_processing_result(
+        self,
+        working_state: dict[str, Any],
+    ) -> EvidenceProcessingResult | None:
+        """Return the latest evidence processing result from accumulated results."""
+
+        results = self._evidence_processing_results(working_state)
+        if results:
+            return results[-1]
+        return self._evidence_processing_result(working_state)
+
+    def _evidence_processing_results(
+        self,
+        working_state: dict[str, Any],
+    ) -> list[EvidenceProcessingResult]:
+        """Return all evidence processing results accumulated during this stage."""
+
+        values = working_state.get("evidence_processing_results", [])
+        if not isinstance(values, list):
+            return []
+        return [
+            value for value in values if isinstance(value, EvidenceProcessingResult)
+        ]
 
     def _build_iteration_outcome_prompt(
         self,
@@ -1682,7 +2025,7 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     ) -> dict[str, Any]:
         """Return a compact acquisition/execution summary for 4.7."""
 
-        tool_execution_result = self._tool_execution_result(working_state)
+        tool_execution_result = self._current_tool_execution_result(working_state)
         if tool_execution_result is None:
             return {
                 "acquisition_requested": False,
@@ -1713,7 +2056,7 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     ) -> dict[str, Any]:
         """Return a compact evidence processing summary for 4.7."""
 
-        result = self._evidence_processing_result(working_state)
+        result = self._current_evidence_processing_result(working_state)
         if result is None:
             return {
                 "processing_requested": False,
@@ -1737,7 +2080,7 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     ) -> dict[str, Any]:
         """Return the latest typed evidence summary in JSON-safe form."""
 
-        result = self._evidence_processing_result(working_state)
+        result = self._latest_evidence_processing_result(working_state)
         if result is None:
             return {}
         return result.evidence_summary.model_dump(mode="json")
