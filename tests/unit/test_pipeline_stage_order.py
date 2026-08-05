@@ -11,6 +11,7 @@ from app.domain.models import (
     ResearchStageResult,
     RunningState,
     RuntimeContext,
+    SourceReference,
     SupplementalContext,
 )
 from app.orchestration import pipeline_dependencies
@@ -111,6 +112,21 @@ def test_pipeline_stage_order(monkeypatch) -> None:
 
 
 def test_research_stage_projects_input_and_applies_result() -> None:
+    existing_evidence_ref = SourceReference(
+        source_type="web_page",
+        source_url="https://existing.test/ref",
+        title="Existing evidence",
+    )
+    duplicate_existing_evidence_ref = SourceReference(
+        source_type="web_page",
+        source_url="https://existing.test/ref",
+        title="Existing evidence duplicate",
+    )
+    new_evidence_ref = SourceReference(
+        source_type="web_page",
+        source_url="https://new.test/ref",
+        title="New evidence",
+    )
     research_support = ContextItem(
         id="ctx-research",
         source_type="research_memory",
@@ -144,7 +160,7 @@ def test_research_stage_projects_input_and_applies_result() -> None:
             information_gaps=["Need freshness tradeoffs."],
             evidence_summary="Existing evidence summary.",
             intermediate_findings=["Existing finding."],
-            retrieved_evidence_refs=["https://existing.test/ref"],
+            retrieved_evidence_refs=[existing_evidence_ref],
             open_questions=["Existing open question."],
         ),
         supplemental_context=SupplementalContext(
@@ -165,8 +181,8 @@ def test_research_stage_projects_input_and_applies_result() -> None:
     result = ResearchStageResult(
         research_status="completed",
         retrieved_evidence_refs=[
-            "https://existing.test/ref",
-            "https://new.test/ref",
+            duplicate_existing_evidence_ref,
+            new_evidence_ref,
         ],
         evidence_summary="Updated evidence summary.",
         intermediate_findings=["Existing finding.", "New finding."],
@@ -216,8 +232,8 @@ def test_research_stage_projects_input_and_applies_result() -> None:
         scope_restrictions=["project_only"],
     )
     assert context.running_state.retrieved_evidence_refs == [
-        "https://existing.test/ref",
-        "https://new.test/ref",
+        existing_evidence_ref,
+        new_evidence_ref,
     ]
     assert context.running_state.evidence_summary == "Updated evidence summary."
     assert context.running_state.intermediate_findings == ["Existing finding.", "New finding."]
@@ -228,10 +244,11 @@ def test_research_stage_projects_input_and_applies_result() -> None:
 
 
 def test_empty_research_stage_result_does_not_clear_existing_state() -> None:
+    evidence_ref = SourceReference(source_type="document", source_id="ref-1")
     context = ExecutionContext(
         running_state=RunningState(
             original_query="Keep prior research state.",
-            retrieved_evidence_refs=["ref-1"],
+            retrieved_evidence_refs=[evidence_ref],
             evidence_summary="Keep this summary.",
             intermediate_findings=["Keep this finding."],
             open_questions=["Keep this question."],
@@ -260,7 +277,54 @@ def test_empty_research_stage_result_does_not_clear_existing_state() -> None:
 
     asyncio.run(pipeline._research(context))
 
-    assert context.running_state.retrieved_evidence_refs == ["ref-1"]
+    assert context.running_state.retrieved_evidence_refs == [evidence_ref]
     assert context.running_state.evidence_summary == "Keep this summary."
     assert context.running_state.intermediate_findings == ["Keep this finding."]
     assert context.running_state.open_questions == ["Keep this question."]
+
+
+def test_research_stage_result_deduplicates_typed_source_ids() -> None:
+    existing_ref = SourceReference(
+        source_type="paper",
+        source_id="2501.12345v2",
+        source_id_type="arxiv_id",
+        title="Existing paper title",
+    )
+    duplicate_ref = SourceReference(
+        source_type="paper",
+        source_id="2501.12345v2",
+        source_id_type="arxiv_id",
+        title="Updated paper title",
+    )
+    context = ExecutionContext(
+        running_state=RunningState(
+            original_query="Keep typed refs unique.",
+            retrieved_evidence_refs=[existing_ref],
+        ),
+        runtime_context=RuntimeContext(
+            request_id="trace-1",
+            user_id="user-1",
+            session_id="session-1",
+        ),
+    )
+    pipeline = ResearchActionPipeline(
+        dependencies=PipelineDependencies(
+            request_intake=object(),
+            task_interpreter=object(),
+            workflow_router=object(),
+            decomposition_planner=object(),
+            context_memory_loader=object(),
+            research_executor=_FakeResearchExecutor(
+                ResearchStageResult(retrieved_evidence_refs=[duplicate_ref])
+            ),
+            conclusion_generator=object(),
+            memory_distiller=object(),
+            memory_persistence=object(),
+            session_continuity_manager=object(),
+            response_assembler=object(),
+        )
+    )
+
+    asyncio.run(pipeline._research(context))
+
+    assert context.running_state.retrieved_evidence_refs == [existing_ref]

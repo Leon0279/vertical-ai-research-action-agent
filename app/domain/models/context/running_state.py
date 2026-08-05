@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.domain.enums.planning_depth import PlanningDepth
 from app.domain.enums.workflow_pattern import WorkflowPattern
+from app.domain.models.source import SourceReference
 from app.domain.models.workflow_execution_policy import WorkflowExecutionPolicy
 
 
@@ -162,12 +163,15 @@ class RunningState(BaseModel):
         ),
     )
 
-    retrieved_evidence_refs: list[str] = Field(
+    retrieved_evidence_refs: list[SourceReference] = Field(
         default_factory=list,
         description=(
-            "可选字段，默认空列表。当前 run 已采纳 evidence 的轻量引用字符串。当前项目中有用：ResearchExecutor "
-            "会从 ProcessedEvidenceUnit.source_references 派生 URL、typed id 或标题并去重追加。该字段只放引用/handle，"
-            "不放大段 evidence 正文；完整 typed provenance 仍在 evidence processing 输出中。"
+            "可选字段，默认空列表。当前 run 已采纳 evidence 的正式 typed 来源引用列表。当前项目中有用："
+            "ResearchExecutor 会从 ProcessedEvidenceUnit.source_references 直接收集 SourceReference 并去重追加，"
+            "pipeline 会把 ResearchStageResult.retrieved_evidence_refs 原样回写到该字段。该字段只保存来源 provenance，"
+            "例如 source_type、source_id/source_id_type、source_url、title、authors、publisher、published_at、evidence_span "
+            "和 metadata；不保存 evidence 正文、raw retrieval payload 或完整 ProcessedEvidenceUnit。需要展示 URL、typed id "
+            "或 citation label 时，应由调用方从 SourceReference 派生。"
         ),
     )
     evidence_summary: str | None = Field(

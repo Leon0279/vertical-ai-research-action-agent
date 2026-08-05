@@ -6,6 +6,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from app.domain.models.source import SourceReference
+
 ResearchStageStatus = Literal["completed", "partial_success", "no_result", "failed"]
 
 
@@ -23,9 +25,15 @@ class ResearchStageResult(BaseModel):
             "research loop，因此默认返回 no_result。"
         ),
     )
-    retrieved_evidence_refs: list[str] = Field(
+    retrieved_evidence_refs: list[SourceReference] = Field(
         default_factory=list,
-        description="可选字段，默认空列表。可回写到 RunningState.retrieved_evidence_refs 的轻量 evidence 引用。",
+        description=(
+            "可选字段，默认空列表。Research Stage 本轮采纳 evidence 对应的 typed 来源引用列表。"
+            "当前项目中有用：pipeline 会将该字段原样去重追加到 RunningState.retrieved_evidence_refs。"
+            "每个元素都是 SourceReference，可保留 source_type、source_id/source_id_type、source_url、title、"
+            "authors、publisher、published_at、evidence_span 和 metadata 等 provenance 信息。该字段不保存 evidence 正文、"
+            "raw TEL result 或完整 ProcessedEvidenceUnit；需要展示字符串引用时由调用方从 SourceReference 派生。"
+        ),
     )
     evidence_summary: str | None = Field(
         default=None,

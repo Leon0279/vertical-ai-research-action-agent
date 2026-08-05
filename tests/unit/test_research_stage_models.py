@@ -1,6 +1,9 @@
 """Research stage model tests."""
 
-from app.domain.models import ResearchStageInput, ResearchStageResult
+import pytest
+from pydantic import ValidationError
+
+from app.domain.models import ResearchStageInput, ResearchStageResult, SourceReference
 
 
 def test_research_stage_input_minimal_construction() -> None:
@@ -30,3 +33,40 @@ def test_research_stage_result_defaults_do_not_write_back_content() -> None:
     assert result.open_questions == []
     assert result.executed_iteration_count == 0
     assert result.error_info is None
+
+
+def test_research_stage_result_uses_typed_source_references() -> None:
+    result = ResearchStageResult(
+        retrieved_evidence_refs=[
+            SourceReference(
+                source_type="document",
+                source_url="https://docs.example/ref",
+                title="Docs reference",
+            )
+        ]
+    )
+
+    assert result.retrieved_evidence_refs[0].source_url == "https://docs.example/ref"
+    assert result.model_dump(mode="json")["retrieved_evidence_refs"] == [
+        {
+            "source_type": "document",
+            "sub_source_type": None,
+            "source_id": None,
+            "source_id_type": None,
+            "source_url": "https://docs.example/ref",
+            "title": "Docs reference",
+            "authors": [],
+            "publisher": None,
+            "published_at": None,
+            "retrieved_at": None,
+            "evidence_span": None,
+            "citation_text": None,
+            "source_ref_id": None,
+            "metadata": {},
+        }
+    ]
+
+
+def test_research_stage_result_rejects_legacy_string_evidence_refs() -> None:
+    with pytest.raises(ValidationError):
+        ResearchStageResult(retrieved_evidence_refs=["https://docs.example/ref"])

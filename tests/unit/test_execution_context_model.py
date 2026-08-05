@@ -9,6 +9,7 @@ from app.domain.models import (
     ExecutionContext,
     RunningState,
     RuntimeContext,
+    SourceReference,
     SupplementalContext,
 )
 
@@ -26,6 +27,32 @@ def test_running_state_defaults_follow_context_construction_lld() -> None:
     assert state.retrieved_evidence_refs == []
     assert state.intermediate_findings == []
     assert state.action_items == []
+
+
+def test_running_state_uses_typed_retrieved_evidence_refs() -> None:
+    reference = SourceReference(
+        source_type="paper",
+        source_id="2501.12345v2",
+        source_id_type="arxiv_id",
+    )
+
+    state = RunningState(
+        original_query="Compare agent memory stores",
+        retrieved_evidence_refs=[reference],
+    )
+
+    assert state.retrieved_evidence_refs == [reference]
+    assert state.model_dump(mode="json")["retrieved_evidence_refs"][0]["source_id"] == (
+        "2501.12345v2"
+    )
+
+
+def test_running_state_rejects_legacy_string_retrieved_evidence_refs() -> None:
+    with pytest.raises(ValidationError):
+        RunningState(
+            original_query="Compare agent memory stores",
+            retrieved_evidence_refs=["ref-1"],
+        )
 
 
 def test_context_item_requires_directly_consumable_summary() -> None:
