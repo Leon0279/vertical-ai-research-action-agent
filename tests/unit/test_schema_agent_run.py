@@ -22,6 +22,7 @@ def test_agent_run_response_defaults() -> None:
     response = AgentRunResponse(
         task_type="TOPIC_EXPLORATION",
         workflow_pattern="TOPIC_EXPLORATION_FLOW",
+        answer="stub-answer",
         summary="stub-summary",
     )
     assert response.stage_history == []

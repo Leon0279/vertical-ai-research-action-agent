@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from app.domain.enums.planning_depth import PlanningDepth
 from app.domain.enums.workflow_pattern import WorkflowPattern
+from app.domain.models.citation import Citation
 from app.domain.models.source import SourceReference
 from app.domain.models.workflow_execution_policy import WorkflowExecutionPolicy
 
@@ -199,24 +200,71 @@ class RunningState(BaseModel):
         ),
     )
 
+    final_answer: str | None = Field(
+        default=None,
+        description=(
+            "可选字段。当前 run 最终给用户看的完整自然语言答案。当前项目中有用："
+            "ConclusionGeneratorService 会基于 original_query、task framing、research evidence、intermediate findings、"
+            "open questions 和少量 distilled supporting context 生成该字段；ResponseAssemblerService 会把它输出到 "
+            "StructuredOutput.answer。它不是由 final_summary、final_recommendation 或 action_items 机械拼接出来的，"
+            "而是面向用户阅读的一段完整正文。research 阶段不应写该字段；如果 conclusion 阶段失败或尚未运行，"
+            "该字段通常为 None。"
+        ),
+    )
+    final_summary: str | None = Field(
+        default=None,
+        description=(
+            "可选字段。当前 run 最终答案的短摘要、TL;DR 或 UI 预览文案。当前项目中有用："
+            "ConclusionGeneratorService 会写入该字段；ResponseAssemblerService 会优先把它映射到 StructuredOutput.summary；"
+            "未来 session continuity、memory distillation、列表页预览或通知摘要也可以使用它。它不替代 final_answer，"
+            "也不应承载完整推理过程或完整 evidence 列表。"
+        ),
+    )
     final_recommendation: str | None = Field(
         default=None,
         description=(
-            "可选字段。当前 run 收敛后的最终推荐文本。当前项目中有用：ConclusionGeneratorService 会写入该字段；"
-            "ResponseAssembler 和 MemoryDistiller 会读取它生成结构化输出和 memory candidate。research 阶段不应直接写最终推荐。"
+            "可选字段。当前 run 收敛后的结构化主推荐、主判断或主结论短句。当前项目中有用："
+            "ConclusionGeneratorService 会在 recommendation、decision、comparison、action_planning 等任务中写入；"
+            "ResponseAssemblerService 会映射到 StructuredOutput.recommendation；MemoryDistillerService 和 session continuity "
+            "会读取它生成 decision memory 或最近推荐记录。它不同于 final_answer：final_answer 是完整用户正文，"
+            "final_recommendation 是便于下游结构化消费和检索的短句。纯事实问答或探索类任务可以为空。"
         ),
     )
     action_items: list[str] = Field(
         default_factory=list,
         description=(
-            "可选字段，默认空列表。当前 run 产出的行动项标题或简短描述。当前项目中有用：ConclusionGeneratorService "
-            "会在行动计划或推荐类任务中写入；ResponseAssembler 会把它转换为 ActionItem 输出。"
+            "可选字段，默认空列表。当前 run 产出的用户可执行下一步行动项标题或简短描述。当前项目中有用："
+            "ConclusionGeneratorService 会在 action_planning、recommendation、tracking 等任务中写入；"
+            "ResponseAssemblerService 会把每个字符串转换为 ActionItem 输出；SessionContinuityManagerService 会把它保存到 "
+            "session memory。未来该字段可用于 action memory、任务创建、提醒或 checklist。没有明确行动建议时保持空列表，"
+            "不要为了填充结构而生成泛泛的行动项。"
+        ),
+    )
+    citations: list[Citation] = Field(
+        default_factory=list,
+        description=(
+            "可选字段，默认空列表。当前 run 最终答案实际引用的来源列表。当前项目中有用："
+            "ConclusionGeneratorService 会从 retrieved_evidence_refs 可派生的来源 handle 中选择 citation 并写入；"
+            "ResponseAssemblerService 会映射到 StructuredOutput.citations，帮助用户核验结论来源。citation 只保存展示级引用，"
+            "不替代 RunningState.retrieved_evidence_refs 中的 typed SourceReference；不要让 LLM 编造不在 retrieved_evidence_refs "
+            "里的来源。"
         ),
     )
     confidence: str | None = Field(
         default=None,
         description=(
-            "可选字段。当前 run 最终输出的整体置信度标签。当前项目中有用：ConclusionGeneratorService 写入 low/medium/high "
-            "等字符串；ResponseAssembler 和 MemoryDistiller 会把它转换成分数或持久化信号。未形成结论前通常为 None。"
+            "可选字段。当前 run 最终答案的整体置信度标签，建议值为 low、medium 或 high。当前项目中有用："
+            "ConclusionGeneratorService 会写入该字段；ResponseAssemblerService 会把它转换成数值 confidence；"
+            "MemoryDistillerService 可把它作为 memory candidate 的稳定性信号。它表达最终答案在当前 evidence、"
+            "open questions 和 caveats 下是否足够稳，不代表单条 evidence 的 provider score。未形成结论前通常为 None。"
+        ),
+    )
+    caveats: list[str] = Field(
+        default_factory=list,
+        description=(
+            "可选字段，默认空列表。当前 run 最终答案的限制条件、未覆盖范围、风险提示或仍未解决的问题。当前项目中有用："
+            "ConclusionGeneratorService 会把 ResearchExecutor 产生的 open_questions、evidence 不足、冲突或新鲜度限制转成用户可理解的 "
+            "caveats；ResponseAssemblerService 会输出到 StructuredOutput.caveats。它不是 debug trace，也不应保存 raw error payload；"
+            "如果没有需要提醒用户的限制，可保持空列表。"
         ),
     )

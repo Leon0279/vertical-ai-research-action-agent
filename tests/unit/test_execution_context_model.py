@@ -26,7 +26,13 @@ def test_running_state_defaults_follow_context_construction_lld() -> None:
     assert state.initial_evidence_strategy == []
     assert state.retrieved_evidence_refs == []
     assert state.intermediate_findings == []
+    assert state.final_answer is None
+    assert state.final_summary is None
+    assert state.final_recommendation is None
     assert state.action_items == []
+    assert state.citations == []
+    assert state.confidence is None
+    assert state.caveats == []
 
 
 def test_running_state_uses_typed_retrieved_evidence_refs() -> None:

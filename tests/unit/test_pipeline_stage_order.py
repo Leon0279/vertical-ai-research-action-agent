@@ -32,6 +32,19 @@ class _FakeResearchExecutor:
 
 class _FakeZhipuLLMClient:
     async def generate_text(self, prompt: str) -> str:
+        if "最终结论生成调用" in prompt:
+            return json.dumps(
+                {
+                    "final_answer": "默认 pipeline 测试生成的最终答案。",
+                    "final_summary": "默认 pipeline 测试摘要。",
+                    "final_recommendation": None,
+                    "action_items": [],
+                    "citations": [],
+                    "confidence": "low",
+                    "caveats": [],
+                },
+                ensure_ascii=False,
+            )
         if "中间研究发现更新" in prompt:
             return json.dumps(
                 {

@@ -290,7 +290,10 @@ def test_service_protocol_conformance() -> None:
     )
     assert isinstance(EvidenceProcessingService(), EvidenceProcessingServiceProtocol)
     assert isinstance(EvidenceProcessorService(), EvidenceProcessorProtocol)
-    assert isinstance(ConclusionGeneratorService(), ConclusionGeneratorProtocol)
+    assert isinstance(
+        ConclusionGeneratorService(llm_client=StubLLMClient()),
+        ConclusionGeneratorProtocol,
+    )
     assert isinstance(FamilySelectionService(), FamilySelectionServiceProtocol)
     assert isinstance(
         RequestCompletionEvaluationService(),

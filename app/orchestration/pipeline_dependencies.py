@@ -113,7 +113,7 @@ def build_default_dependencies() -> PipelineDependencies:
             embedding_client=embedding_client,
         ),
         research_executor=research_executor,
-        conclusion_generator=ConclusionGeneratorService(),
+        conclusion_generator=ConclusionGeneratorService(llm_client=ZhipuLLMClient()),
         memory_distiller=MemoryDistillerService(),
         memory_persistence=MemoryPersistenceService(long_term_store=long_term_store),
         session_continuity_manager=SessionContinuityManagerService(session_store=session_store),

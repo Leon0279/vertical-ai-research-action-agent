@@ -29,6 +29,7 @@ async def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
         trace_id=output.trace_id,
         task_type=output.task_type.value,
         workflow_pattern=output.workflow_pattern.value,
+        answer=output.answer,
         summary=output.summary,
         recommendation=output.recommendation,
         action_items=[
@@ -45,6 +46,7 @@ async def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
             for citation in output.citations
         ],
         confidence=output.confidence,
+        caveats=output.caveats,
         stage_history=output.stage_history,
         metadata=output.metadata,
     )
