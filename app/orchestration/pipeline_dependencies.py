@@ -33,6 +33,7 @@ from app.services.memory.contracts.session_continuity_manager_protocol import (
 from app.services.memory.context_memory_loader_service import ContextMemoryLoaderService
 from app.services.memory.memory_distiller_service import MemoryDistillerService
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
+from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.memory.session_continuity_manager_service import SessionContinuityManagerService
 from app.services.output.contracts.conclusion_generator_protocol import ConclusionGeneratorProtocol
 from app.services.output.contracts.response_assembler_protocol import ResponseAssemblerProtocol
@@ -84,6 +85,7 @@ def build_default_dependencies() -> PipelineDependencies:
     preference_policy_store = PostgresPreferencePolicyMemoryStore()
     research_knowledge_store = PostgresResearchKnowledgeMemoryStore()
     embedding_client = ZhipuEmbeddingClient()
+    semantic_resolver = SemanticResolverService()
 
     tool_execution_layer_service = ToolExecutionLayerService(
         family_selection_service=FamilySelectionService(),
@@ -115,7 +117,10 @@ def build_default_dependencies() -> PipelineDependencies:
         research_executor=research_executor,
         conclusion_generator=ConclusionGeneratorService(llm_client=ZhipuLLMClient()),
         memory_distiller=MemoryDistillerService(llm_client=ZhipuLLMClient()),
-        memory_persistence=MemoryPersistenceService(long_term_store=long_term_store),
+        memory_persistence=MemoryPersistenceService(
+            long_term_store=long_term_store,
+            semantic_resolver=semantic_resolver,
+        ),
         session_continuity_manager=SessionContinuityManagerService(session_store=session_store),
         response_assembler=ResponseAssemblerService(),
     )

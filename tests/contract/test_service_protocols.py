@@ -145,8 +145,11 @@ from app.services.evidence.evidence_processing_service import EvidenceProcessing
 from app.services.evidence.evidence_processor_service import EvidenceProcessorService
 from app.services.memory.context_memory_loader_service import ContextMemoryLoaderService
 from app.services.memory.contracts.context_memory_loader_protocol import ContextMemoryLoaderProtocol
+from app.services.memory.contracts.memory_persistence_protocol import MemoryPersistenceProtocol
+from app.services.memory.contracts.semantic_resolver_protocol import SemanticResolverProtocol
 from app.services.memory.memory_distiller_service import MemoryDistillerService
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
+from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.memory.session_continuity_manager_service import SessionContinuityManagerService
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
 from app.services.executor.research_executor_service import ResearchExecutorService
@@ -465,11 +468,16 @@ def test_memory_service_interfaces_instantiable() -> None:
         research_knowledge_store=research_knowledge_store,
         embedding_client=embedding_client,
     )
-    memory_persistence = MemoryPersistenceService(long_term_store=long_term_store)
+    semantic_resolver = SemanticResolverService()
+    memory_persistence = MemoryPersistenceService(
+        long_term_store=long_term_store,
+        semantic_resolver=semantic_resolver,
+    )
     continuity_manager = SessionContinuityManagerService(session_store=session_store)
     response_assembler = ResponseAssemblerService()
 
     assert isinstance(memory_loader, ContextMemoryLoaderProtocol)
-    assert hasattr(memory_persistence, "persist")
+    assert isinstance(memory_persistence, MemoryPersistenceProtocol)
+    assert isinstance(semantic_resolver, SemanticResolverProtocol)
     assert hasattr(continuity_manager, "update")
     assert hasattr(response_assembler, "assemble")

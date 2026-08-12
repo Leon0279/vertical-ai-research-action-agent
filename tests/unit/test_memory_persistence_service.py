@@ -5,6 +5,7 @@ import asyncio
 from app.domain.enums.memory_type import MemoryType
 from app.domain.models import MemoryCandidate, SourceReference
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
+from app.services.memory.semantic_resolver_service import SemanticResolverService
 
 
 class _FakeLongTermStore:
@@ -47,7 +48,12 @@ def _candidate() -> MemoryCandidate:
 
 def test_persistence_preserves_canonical_candidate_metadata() -> None:
     store = _FakeLongTermStore()
-    asyncio.run(MemoryPersistenceService(store).persist([_candidate()]))
+    asyncio.run(
+        MemoryPersistenceService(
+            long_term_store=store,
+            semantic_resolver=SemanticResolverService(),
+        ).persist([_candidate()])
+    )
 
     assert store.call_count == 1
     assert len(store.records) == 1
@@ -66,7 +72,12 @@ def test_persistence_preserves_canonical_candidate_metadata() -> None:
 
 def test_persistence_skips_store_for_empty_candidates() -> None:
     store = _FakeLongTermStore()
-    asyncio.run(MemoryPersistenceService(store).persist([]))
+    asyncio.run(
+        MemoryPersistenceService(
+            long_term_store=store,
+            semantic_resolver=SemanticResolverService(),
+        ).persist([])
+    )
 
     assert store.call_count == 0
     assert store.records == []
@@ -76,7 +87,12 @@ def test_persistence_shapes_multiple_candidates() -> None:
     store = _FakeLongTermStore()
     candidates = [_candidate(), _candidate().model_copy(update={"summary": "第二条候选。"})]
 
-    asyncio.run(MemoryPersistenceService(store).persist(candidates))
+    asyncio.run(
+        MemoryPersistenceService(
+            long_term_store=store,
+            semantic_resolver=SemanticResolverService(),
+        ).persist(candidates)
+    )
 
     assert len(store.records) == 2
     assert [record.payload["summary"] for record in store.records] == [
@@ -84,3 +100,25 @@ def test_persistence_shapes_multiple_candidates() -> None:
         "第二条候选。",
     ]
 
+
+def test_persistence_exposes_semantic_resolver_and_step_skeletons() -> None:
+    store = _FakeLongTermStore()
+    semantic_resolver = SemanticResolverService()
+    service = MemoryPersistenceService(
+        long_term_store=store,
+        semantic_resolver=semantic_resolver,
+    )
+
+    assert service._semantic_resolver is semantic_resolver
+    assert all(
+        hasattr(service, method_name)
+        for method_name in (
+            "_validate_candidates",
+            "_resolve_target_store",
+            "_lookup_existing_records",
+            "_decide_persistence_action",
+            "_shape_durable_record",
+            "_execute_write",
+            "_build_post_write_result",
+        )
+    )
