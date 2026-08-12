@@ -6,7 +6,7 @@ from app.services.memory.contracts.memory_distiller_protocol import MemoryDistil
 
 
 class MemoryDistillerService(MemoryDistillerProtocol):
-    """Extract durable memory candidates from current run."""
+    """从当前 run 的稳定输出中提取长期 memory candidate。"""
 
     async def distill(self, context: ExecutionContext) -> list[MemoryCandidate]:
         state = context.running_state
@@ -16,12 +16,18 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             candidates.append(
                 MemoryCandidate(
                     memory_type=MemoryType.DECISION,
+                    semantic_type="stable_decision",
+                    candidate_source="run_output",
                     summary=state.final_recommendation,
                     payload={
                         "task_type": state.task_type,
-                        "project_scope_id": state.project_scope_id,
                     },
                     confidence=self._confidence_to_score(state.confidence),
+                    stability=self._stability_from_state(context),
+                    project_scope_id=state.project_scope_id,
+                    source_references=list(state.retrieved_evidence_refs),
+                    derived_from_run_id=context.runtime_context.request_id,
+                    derived_from_session_id=context.runtime_context.session_id,
                 )
             )
 
@@ -35,3 +41,12 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             "medium": 0.5,
             "high": 0.8,
         }.get(confidence.lower())
+
+    def _stability_from_state(self, context: ExecutionContext) -> str:
+        """Return the conservative persistence stability for the current recommendation."""
+
+        state = context.running_state
+        if state.confidence and state.confidence.lower() == "high":
+            if not state.caveats and not state.open_questions:
+                return "stable"
+        return "tentative"
