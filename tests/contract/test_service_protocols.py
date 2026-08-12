@@ -429,7 +429,7 @@ def test_memory_service_interfaces_instantiable() -> None:
     assert isinstance(retrieval_service, RetrievalServiceProtocol)
 
     # Structural checks for services requiring adapters, without real persistence.
-    assert hasattr(MemoryDistillerService(), "distill")
+    assert hasattr(MemoryDistillerService(llm_client=StubLLMClient()), "distill")
     assert hasattr(WorkflowRouterService(), "route")
 
     long_term_store = InMemoryLongTermStore()
