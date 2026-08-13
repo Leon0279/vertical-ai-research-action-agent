@@ -26,6 +26,14 @@ class ResearchKnowledgeMemoryStoreProtocol(Protocol):
     async def upsert_knowledge_unit(self, unit: ResearchKnowledgeUnitRecord) -> None:
         """Insert or update a research knowledge unit."""
 
+    async def find_active_by_dedupe_key(
+        self,
+        *,
+        owner_user_id: str,
+        dedupe_key: str,
+    ) -> ResearchKnowledgeUnitRecord | None:
+        """Load one active canonical knowledge unit by its dedupe key."""
+
     async def recall_knowledge_units(
         self,
         query: ResearchKnowledgeRecallQuery,

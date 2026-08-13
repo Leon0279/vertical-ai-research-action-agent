@@ -1,37 +1,123 @@
-"""Tests for memory candidate persistence shaping."""
+"""Tests for typed memory candidate persistence."""
 
 import asyncio
 
 from app.domain.enums.memory_type import MemoryType
-from app.domain.models import MemoryCandidate, SourceReference
+from app.domain.models import (
+    DecisionMemoryRecord,
+    ExecutionContext,
+    MemoryCandidate,
+    ProjectProfileMemoryRecord,
+    RuntimeContext,
+    RunningState,
+    SourceReference,
+)
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 
 
-class _FakeLongTermStore:
-    def __init__(self) -> None:
-        self.records = []
-        self.call_count = 0
+class _ProjectStore:
+    def __init__(self, profile: ProjectProfileMemoryRecord | None = None) -> None:
+        self.profile = profile
+        self.writes: list[ProjectProfileMemoryRecord] = []
 
-    async def upsert(self, records) -> None:
-        self.call_count += 1
-        self.records.extend(records)
+    async def load_active_profile(self, *, user_id: str, project_id: str):
+        _ = user_id, project_id
+        return self.profile
+
+    async def upsert_profile(self, profile: ProjectProfileMemoryRecord) -> None:
+        self.writes.append(profile)
 
 
-def _candidate() -> MemoryCandidate:
+class _DecisionStore:
+    def __init__(self, decisions: list[DecisionMemoryRecord] | None = None) -> None:
+        self.decisions = decisions or []
+        self.writes: list[DecisionMemoryRecord] = []
+
+    async def list_active_decisions(self, *, user_id: str, project_id: str):
+        _ = user_id, project_id
+        return self.decisions
+
+    async def upsert_decision(self, decision: DecisionMemoryRecord) -> None:
+        self.writes.append(decision)
+
+
+class _ActionStore:
+    async def list_active_actions(self, *, user_id: str, project_id: str):
+        _ = user_id, project_id
+        return []
+
+    async def list_actions_by_parent_decision(self, *, user_id: str, parent_decision_id: str):
+        _ = user_id, parent_decision_id
+        return []
+
+    async def upsert_action(self, action) -> None:
+        _ = action
+
+
+class _PolicyStore:
+    async def list_applicable_policies(self, **kwargs):
+        _ = kwargs
+        return []
+
+    async def upsert_policy(self, policy) -> None:
+        _ = policy
+
+
+class _KnowledgeStore:
+    async def get_knowledge_unit(self, *, owner_user_id: str, knowledge_id: str):
+        _ = owner_user_id, knowledge_id
+        return None
+
+    async def find_active_by_dedupe_key(self, *, owner_user_id: str, dedupe_key: str):
+        _ = owner_user_id, dedupe_key
+        return None
+
+    async def upsert_knowledge_unit(self, unit) -> None:
+        _ = unit
+
+    async def recall_knowledge_units(self, query):
+        _ = query
+        return []
+
+
+def _context(project_scope_id: str | None = "project-1") -> ExecutionContext:
+    return ExecutionContext(
+        running_state=RunningState(
+            original_query="Choose a retrieval strategy.",
+            project_scope_id=project_scope_id,
+        ),
+        runtime_context=RuntimeContext(
+            request_id="run-1",
+            user_id="user-1",
+            session_id="session-1",
+        ),
+    )
+
+
+def _service(
+    *,
+    project_store: _ProjectStore | None = None,
+    decision_store: _DecisionStore | None = None,
+) -> MemoryPersistenceService:
+    return MemoryPersistenceService(
+        project_profile_store=project_store or _ProjectStore(),
+        decision_store=decision_store or _DecisionStore(),
+        action_store=_ActionStore(),
+        preference_policy_store=_PolicyStore(),
+        research_knowledge_store=_KnowledgeStore(),
+        semantic_resolver=SemanticResolverService(),
+    )
+
+
+def _decision(summary: str = "采用离线评测集作为优先方案。") -> MemoryCandidate:
     return MemoryCandidate(
         memory_type=MemoryType.DECISION,
-        summary="优先建设离线评测集。",
-        payload={
-            "task_type": "RECOMMENDATION",
-            "summary": "payload 不应覆盖 canonical summary",
-            "stability": "payload 不应覆盖 canonical stability",
-            "source_references": "payload 不应覆盖 canonical refs",
-        },
+        summary=summary,
+        payload={"chosen_option": summary, "decision_state": "accepted"},
         confidence=0.8,
         stability="stable",
         project_scope_id="project-1",
-        candidate_source="run_output",
         semantic_type="stable_decision",
         source_references=[
             SourceReference(
@@ -41,84 +127,79 @@ def _candidate() -> MemoryCandidate:
                 source_url="https://docs.example/1",
             )
         ],
-        derived_from_run_id="run-1",
-        derived_from_session_id="session-1",
     )
 
 
-def test_persistence_preserves_canonical_candidate_metadata() -> None:
-    store = _FakeLongTermStore()
-    asyncio.run(
-        MemoryPersistenceService(
-            long_term_store=store,
-            semantic_resolver=SemanticResolverService(),
-        ).persist([_candidate()])
+def test_decision_candidate_is_shaped_and_written() -> None:
+    store = _DecisionStore()
+    result = asyncio.run(_service(decision_store=store).persist(_context(), [_decision()]))
+
+    assert result.written_count == 1
+    assert result.no_write_count == 0
+    assert result.failed_count == 0
+    assert len(store.writes) == 1
+    assert store.writes[0].user_id == "user-1"
+    assert store.writes[0].project_id == "project-1"
+    assert result.items[0].action == "create"
+    assert result.items[0].status == "written"
+
+
+def test_duplicate_decision_is_no_write() -> None:
+    existing = DecisionMemoryRecord(
+        decision_id="decision-1",
+        user_id="user-1",
+        project_id="project-1",
+        chosen_option="采用离线评测集作为优先方案。",
+        rationale="采用离线评测集作为优先方案。",
+        record_status="active",
     )
+    store = _DecisionStore([existing])
+    result = asyncio.run(_service(decision_store=store).persist(_context(), [_decision()]))
 
-    assert store.call_count == 1
-    assert len(store.records) == 1
-    payload = store.records[0].payload
-    assert payload["summary"] == "优先建设离线评测集。"
-    assert payload["stability"] == "stable"
-    assert payload["project_scope_id"] == "project-1"
-    assert payload["candidate_source"] == "run_output"
-    assert payload["semantic_type"] == "stable_decision"
-    assert payload["confidence"] == 0.8
-    assert payload["derived_from_run_id"] == "run-1"
-    assert payload["derived_from_session_id"] == "session-1"
-    assert payload["source_references"][0]["source_id"] == "docs-1"
-    assert payload["task_type"] == "RECOMMENDATION"
+    assert result.written_count == 0
+    assert result.no_write_count == 1
+    assert result.items[0].action == "no_write"
+    assert store.writes == []
 
 
-def test_persistence_skips_store_for_empty_candidates() -> None:
-    store = _FakeLongTermStore()
-    asyncio.run(
-        MemoryPersistenceService(
-            long_term_store=store,
-            semantic_resolver=SemanticResolverService(),
-        ).persist([])
+def test_tracking_candidate_is_explicitly_no_write() -> None:
+    candidate = _decision().model_copy(
+        update={
+            "memory_type": MemoryType.TRACKING_WATCHLIST,
+            "semantic_type": "tracking_update",
+        }
     )
+    result = asyncio.run(_service().persist(_context(), [candidate]))
 
-    assert store.call_count == 0
-    assert store.records == []
+    assert result.items[0].status == "no_write"
+    assert "typed persistence store" in (result.items[0].no_write_reason or "")
 
 
-def test_persistence_shapes_multiple_candidates() -> None:
-    store = _FakeLongTermStore()
-    candidates = [_candidate(), _candidate().model_copy(update={"summary": "第二条候选。"})]
+def test_admission_failure_does_not_write() -> None:
+    candidate = _decision().model_copy(update={"stability": "tentative"})
+    result = asyncio.run(_service().persist(_context(), [candidate]))
 
-    asyncio.run(
-        MemoryPersistenceService(
-            long_term_store=store,
-            semantic_resolver=SemanticResolverService(),
-        ).persist(candidates)
+    assert result.no_write_count == 1
+    assert "stable" in (result.items[0].no_write_reason or "")
+
+
+def test_project_profile_replaces_existing_profile() -> None:
+    existing = ProjectProfileMemoryRecord(
+        project_profile_id="profile-1",
+        project_id="project-1",
+        user_id="user-1",
+        project_goal="旧目标",
+        record_status="active",
     )
-
-    assert len(store.records) == 2
-    assert [record.payload["summary"] for record in store.records] == [
-        "优先建设离线评测集。",
-        "第二条候选。",
-    ]
-
-
-def test_persistence_exposes_semantic_resolver_and_step_skeletons() -> None:
-    store = _FakeLongTermStore()
-    semantic_resolver = SemanticResolverService()
-    service = MemoryPersistenceService(
-        long_term_store=store,
-        semantic_resolver=semantic_resolver,
+    store = _ProjectStore(existing)
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.PROJECT_PROFILE,
+        summary="新项目目标。",
+        payload={"project_goal": "新项目目标。"},
+        stability="stable",
+        project_scope_id="project-1",
     )
+    result = asyncio.run(_service(project_store=store).persist(_context(), [candidate]))
 
-    assert service._semantic_resolver is semantic_resolver
-    assert all(
-        hasattr(service, method_name)
-        for method_name in (
-            "_validate_candidates",
-            "_resolve_target_store",
-            "_lookup_existing_records",
-            "_decide_persistence_action",
-            "_shape_durable_record",
-            "_execute_write",
-            "_build_post_write_result",
-        )
-    )
+    assert result.items[0].action == "replace"
+    assert store.writes[0].supersedes_profile_id == "profile-1"

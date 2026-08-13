@@ -69,6 +69,25 @@ class PostgresResearchKnowledgeMemoryStore(ResearchKnowledgeMemoryStoreProtocol)
                 "Failed to upsert research knowledge unit."
             ) from exc
 
+    async def find_active_by_dedupe_key(
+        self,
+        *,
+        owner_user_id: str,
+        dedupe_key: str,
+    ) -> ResearchKnowledgeUnitRecord | None:
+        pool = await self._ensure_pool()
+        query = self._build_find_active_by_dedupe_key_query()
+
+        try:
+            async with pool.acquire() as connection:
+                row = await connection.fetchrow(query, owner_user_id, dedupe_key)
+        except Exception as exc:
+            raise PostgresResearchKnowledgeMemoryStoreError(
+                "Failed to find research knowledge unit by dedupe key."
+            ) from exc
+
+        return self._row_to_record(row) if row is not None else None
+
     async def recall_knowledge_units(
         self,
         query: ResearchKnowledgeRecallQuery,
@@ -112,6 +131,20 @@ SELECT
 FROM {self._table_ref}
 WHERE owner_user_id = $1
   AND knowledge_id = $2
+"""
+
+    def _build_find_active_by_dedupe_key_query(self) -> str:
+        return f"""
+SELECT
+    {self._select_columns()}
+FROM {self._table_ref}
+WHERE owner_user_id = $1
+  AND dedupe_key = $2
+  AND status = 'active'
+  AND is_canonical = true
+  AND merged_into_id IS NULL
+ORDER BY updated_at DESC
+LIMIT 1
 """
 
     def _build_recall_knowledge_units_query(

@@ -241,6 +241,25 @@ def test_get_knowledge_unit_maps_row() -> None:
     assert unit.embedding_vector == [0.1, 0.2, 0.3]
 
 
+def test_find_active_by_dedupe_key_uses_scoped_query() -> None:
+    connection = FakeConnection(row=_row())
+    store = PostgresResearchKnowledgeMemoryStore(config=_config(), pool=FakePool(connection))
+
+    unit = asyncio.run(
+        store.find_active_by_dedupe_key(
+            owner_user_id="user-1",
+            dedupe_key="postgres-pgvector-governed-knowledge",
+        )
+    )
+
+    assert unit is not None
+    assert unit.knowledge_id == "knowledge-1"
+    query, args = connection.fetchrow_calls[0]
+    assert "dedupe_key = $2" in query
+    assert "status = 'active'" in query
+    assert args == ("user-1", "postgres-pgvector-governed-knowledge")
+
+
 def test_upsert_knowledge_unit_writes_jsonb_and_vector_params() -> None:
     connection = FakeConnection()
     store = PostgresResearchKnowledgeMemoryStore(config=_config(), pool=FakePool(connection))

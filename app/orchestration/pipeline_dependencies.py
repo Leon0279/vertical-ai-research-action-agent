@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from app.adapters.embedding.zhipu_embedding_client import ZhipuEmbeddingClient
 from app.adapters.llm.zhipu_llm_client import ZhipuLLMClient
-from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.postgres_action_memory_store import PostgresActionMemoryStore
 from app.adapters.memory.postgres_decision_memory_store import PostgresDecisionMemoryStore
 from app.adapters.memory.postgres_preference_policy_memory_store import (
@@ -78,7 +77,6 @@ def build_default_dependencies() -> PipelineDependencies:
     """Construct the default runtime dependency graph."""
 
     session_store = RedisSessionMemoryStore()
-    long_term_store = InMemoryLongTermStore()
     project_profile_store = PostgresProjectProfileMemoryStore()
     decision_store = PostgresDecisionMemoryStore()
     action_store = PostgresActionMemoryStore()
@@ -118,7 +116,11 @@ def build_default_dependencies() -> PipelineDependencies:
         conclusion_generator=ConclusionGeneratorService(llm_client=ZhipuLLMClient()),
         memory_distiller=MemoryDistillerService(llm_client=ZhipuLLMClient()),
         memory_persistence=MemoryPersistenceService(
-            long_term_store=long_term_store,
+            project_profile_store=project_profile_store,
+            decision_store=decision_store,
+            action_store=action_store,
+            preference_policy_store=preference_policy_store,
+            research_knowledge_store=research_knowledge_store,
             semantic_resolver=semantic_resolver,
         ),
         session_continuity_manager=SessionContinuityManagerService(session_store=session_store),

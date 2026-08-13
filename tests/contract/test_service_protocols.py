@@ -85,7 +85,6 @@ from app.services.tools.arxiv_paper_search_tool import ArxivPaperSearchTool
 from app.services.tools.llms_txt_docs_search_tool import LlmsTxtDocsSearchTool
 from app.services.tools.research_knowledge_memory_tool import ResearchKnowledgeMemoryTool
 from app.services.tools.tavily_web_search_tool import TavilyWebSearchTool
-from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
 from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.adapters.memory.contracts.action_memory_store_protocol import (
     ActionMemoryStoreProtocol,
@@ -435,7 +434,6 @@ def test_memory_service_interfaces_instantiable() -> None:
     assert hasattr(MemoryDistillerService(llm_client=StubLLMClient()), "distill")
     assert hasattr(WorkflowRouterService(), "route")
 
-    long_term_store = InMemoryLongTermStore()
     session_store = InMemorySessionStore()
     project_profile_store = PostgresProjectProfileMemoryStore(
         config=PostgresProjectProfileMemoryStoreConfig(dsn="postgresql://example.test/db"),
@@ -470,7 +468,11 @@ def test_memory_service_interfaces_instantiable() -> None:
     )
     semantic_resolver = SemanticResolverService()
     memory_persistence = MemoryPersistenceService(
-        long_term_store=long_term_store,
+        project_profile_store=project_profile_store,
+        decision_store=decision_store,
+        action_store=action_store,
+        preference_policy_store=preference_policy_store,
+        research_knowledge_store=research_knowledge_store,
         semantic_resolver=semantic_resolver,
     )
     continuity_manager = SessionContinuityManagerService(session_store=session_store)

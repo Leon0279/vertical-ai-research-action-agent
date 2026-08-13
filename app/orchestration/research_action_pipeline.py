@@ -186,7 +186,7 @@ class ResearchActionPipeline:
         candidates: list[MemoryCandidate] = await self._dependencies.memory_distiller.distill(
             context
         )
-        await self._dependencies.memory_persistence.persist(candidates)
+        await self._dependencies.memory_persistence.persist(context, candidates)
 
     async def _output(self, context: ExecutionContext) -> StructuredOutput:
         """Update session continuity and build final response."""
