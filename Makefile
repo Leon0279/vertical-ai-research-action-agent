@@ -11,4 +11,4 @@ test: check-venv
 	PYTHONPYCACHEPREFIX="$(PYCACHE_PREFIX)" $(PYTEST) tests
 
 test-unit: check-venv
-	PYTHONPYCACHEPREFIX="$(PYCACHE_PREFIX)" $(PYTEST) tests/unit
+	PYTHONPYCACHEPREFIX="$(PYCACHE_PREFIX)" $(PYTEST) tests/app
