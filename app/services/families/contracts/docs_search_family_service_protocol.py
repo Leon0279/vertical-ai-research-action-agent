@@ -14,4 +14,11 @@ class DocsSearchFamilyServiceProtocol(Protocol):
 Runtime-facing interface for the docs_search family service."""
 
     async def run(self, request: DocsSearchFamilyRequest) -> DocsSearchFamilyResult:
-        """Select a docs_search tool, execute it, and return a family-level result."""
+        """执行文档搜索检索族，并返回 family 层归一化结果。
+
+        Args:
+            request (DocsSearchFamilyRequest): 文档检索族请求，包含目标问题、查询、证据需求与执行限制。
+
+        Returns:
+            DocsSearchFamilyResult: 选用工具后的文档检索结果、归一化条目、执行摘要、追踪信息与获取状态。
+        """

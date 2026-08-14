@@ -17,4 +17,11 @@ Provider-neutral interface for paper fulltext fetch adapters."""
         self,
         request: PaperContentFetchRequest,
     ) -> PaperContentFetchResult:
-        """Fetch and extract paper content for the given request."""
+        """根据 typed 论文标识抓取并提取论文正文内容。
+
+        Args:
+            request (PaperContentFetchRequest): 包含 paper_id 与 paper_id_type 的论文内容获取请求。
+
+        Returns:
+            PaperContentFetchResult: 论文内容获取结果，包含提取正文、来源 URL、状态与错误信息。
+        """

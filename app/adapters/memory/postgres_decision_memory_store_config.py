@@ -23,7 +23,14 @@ Typed runtime settings for the decision_memory adapter."""
 
     @classmethod
     def from_env(cls) -> "PostgresDecisionMemoryStoreConfig":
-        """Build config from environment variables."""
+        """从环境变量构造 PostgreSQL 决策记忆存储配置。
+
+        Args:
+            无显式业务参数。配置从决策记忆 DSN、schema 名称和连接相关环境变量读取。
+
+        Returns:
+            PostgresDecisionMemoryStoreConfig: 已完成环境变量解析的决策记忆存储配置；缺少必填 DSN 时抛出配置异常。
+        """
 
         load_env_file()
         dsn = os.getenv("POSTGRES_DECISION_MEMORY_DSN", "").strip()

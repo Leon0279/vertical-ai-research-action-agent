@@ -20,4 +20,11 @@ Runtime-facing interface for generating retrieval queries."""
         self,
         request: RetrievalQueryGenerationRequest,
     ) -> RetrievalQueryGenerationResult:
-        """Generate an initial retrieval query for the selected family."""
+        """为已选 retrieval family 生成适配该 family 的检索查询。
+
+        Args:
+            request (RetrievalQueryGenerationRequest): 包含目标问题、证据形状、已选 family、上下文和约束的查询生成请求。
+
+        Returns:
+            RetrievalQueryGenerationResult: 生成后的查询文本、结构化查询辅助信息、状态与错误信息。
+        """

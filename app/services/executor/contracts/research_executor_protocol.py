@@ -14,5 +14,12 @@ class ResearchExecutorProtocol(Protocol):
 Executes the evidence-driven research loop."""
 
     async def execute(self, stage_input: ResearchStageInput) -> ResearchStageResult:
-        """Execute the research stage from a projected stage input."""
+        """执行研究阶段的有限轮证据驱动流程。
+
+        Args:
+            stage_input (ResearchStageInput): 由 pipeline 从执行上下文投影出的研究目标、规划参考、补充上下文和运行时限制。
+
+        Returns:
+            ResearchStageResult: 研究阶段产出的来源引用、证据摘要、中间发现、开放问题、执行状态与轮次数。
+        """
         ...

@@ -137,6 +137,15 @@ class EvidenceProcessingSummary(BaseModel):
     )
 
     def get(self, key: str, default: Any = None) -> Any:
+        """以兼容字典的方式读取正式摘要字段或 observability 扩展字段。
+
+        Args:
+            key (str): 需要读取的摘要字段或 observability 字段名称。
+            default (Any): key 不存在时返回的默认值，默认是 None。
+
+        Returns:
+            Any: 已声明字段、observability 中对应的值，或找不到时的 default。
+        """
         if hasattr(self, key):
             return getattr(self, key)
         return self.observability.get(key, default)

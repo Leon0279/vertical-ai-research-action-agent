@@ -24,7 +24,14 @@ Typed runtime settings for the research_knowledge_units adapter."""
 
     @classmethod
     def from_env(cls) -> "PostgresResearchKnowledgeMemoryStoreConfig":
-        """Build config from environment variables."""
+        """从环境变量构造 PostgreSQL 研究知识记忆存储配置。
+
+        Args:
+            无显式业务参数。配置从研究知识记忆 DSN、schema、召回数量上限和连接相关环境变量读取。
+
+        Returns:
+            PostgresResearchKnowledgeMemoryStoreConfig: 已完成环境变量解析的研究知识记忆存储配置；缺少必填 DSN 时抛出配置异常。
+        """
 
         load_env_file()
         dsn = os.getenv("POSTGRES_RESEARCH_KNOWLEDGE_MEMORY_DSN", "").strip()

@@ -18,4 +18,12 @@ Persists long-term memory candidates."""
         context: ExecutionContext,
         candidates: list[MemoryCandidate],
     ) -> MemoryPersistenceResult:
-        """Persist memory candidates and return per-candidate write outcomes."""
+        """校验、解析并持久化记忆候选，返回逐条写入结果。
+
+        Args:
+            context (ExecutionContext): 提供用户、会话和项目范围等持久化边界的当前执行上下文。
+            candidates (list[MemoryCandidate]): 待处理的长期记忆候选列表。
+
+        Returns:
+            MemoryPersistenceResult: 包含每个候选的写入动作、状态、失败原因和批次统计的持久化结果。
+        """

@@ -20,4 +20,11 @@ Runtime-facing interface for request completion and recovery evaluation."""
         self,
         request: RequestCompletionEvaluationRequest,
     ) -> RequestCompletionEvaluationResult:
-        """Evaluate whether the current retrieval request is complete or needs recovery."""
+        """评估当前 retrieval 尝试是否已满足请求，或是否需要重试、回退或结束。
+
+        Args:
+            request (RequestCompletionEvaluationRequest): 当前 family 执行结果、证据需求、尝试历史和恢复预算组成的评估请求。
+
+        Returns:
+            RequestCompletionEvaluationResult: 完成度判断、恢复动作、理由及可能的 fallback family 建议。
+        """

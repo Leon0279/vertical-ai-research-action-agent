@@ -14,4 +14,11 @@ class FamilySelectionServiceProtocol(Protocol):
 Runtime-facing interface for selecting a retrieval family."""
 
     async def select_family(self, request: FamilySelectionRequest) -> FamilySelectionResult:
-        """Choose a family for downstream family service invocation."""
+        """根据检索意图、范围和约束选择下一次调用的 retrieval family。
+
+        Args:
+            request (FamilySelectionRequest): 包含目标问题、证据需求、允许或偏好的 family 与 action mode 的选择请求。
+
+        Returns:
+            FamilySelectionResult: family 候选排序、最终选择、选择理由和无匹配时的状态信息。
+        """

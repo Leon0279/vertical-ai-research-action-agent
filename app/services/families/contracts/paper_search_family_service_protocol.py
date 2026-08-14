@@ -14,4 +14,11 @@ class PaperSearchFamilyServiceProtocol(Protocol):
 Runtime-facing interface for the paper_search family service."""
 
     async def run(self, request: PaperSearchFamilyRequest) -> PaperSearchFamilyResult:
-        """Select a paper_search tool, execute it, and return a family-level result."""
+        """执行论文搜索检索族，并返回 family 层归一化结果。
+
+        Args:
+            request (PaperSearchFamilyRequest): 论文检索族请求，包含研究目标、查询、证据形状与结果数量限制。
+
+        Returns:
+            PaperSearchFamilyResult: 选用工具后的论文检索结果、归一化条目、执行摘要、追踪信息与获取状态。
+        """

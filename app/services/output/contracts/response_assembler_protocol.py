@@ -14,4 +14,11 @@ class ResponseAssemblerProtocol(Protocol):
 Assembles final user-facing outputs."""
 
     async def assemble(self, context: ExecutionContext) -> StructuredOutput:
-        """Create a final structured output."""
+        """将已写入执行上下文的结论状态组装为上游可直接返回的结构化响应。
+
+        Args:
+            context (ExecutionContext): 已完成各阶段处理的执行上下文，重点读取其中的最终答案、摘要、引用和行动项。
+
+        Returns:
+            StructuredOutput: 面向调用方和用户的最终结构化输出。
+        """

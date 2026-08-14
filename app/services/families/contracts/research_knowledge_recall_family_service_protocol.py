@@ -20,4 +20,11 @@ Runtime-facing interface for the research_knowledge_recall family service."""
         self,
         request: ResearchKnowledgeRecallFamilyRequest,
     ) -> ResearchKnowledgeRecallFamilyResult:
-        """Select a research_knowledge_recall tool, execute it, and return a family-level result."""
+        """执行研究知识召回检索族，并返回 family 层归一化结果。
+
+        Args:
+            request (ResearchKnowledgeRecallFamilyRequest): 研究知识召回请求，包含用户边界、项目范围、查询向量或文本及召回限制。
+
+        Returns:
+            ResearchKnowledgeRecallFamilyResult: 已召回知识的归一化条目、执行摘要、追踪信息与获取状态。
+        """

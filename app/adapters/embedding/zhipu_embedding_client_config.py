@@ -26,7 +26,14 @@ Typed runtime settings for Zhipu embeddings."""
 
     @model_validator(mode="after")
     def validate_model_dimensions(self) -> "ZhipuEmbeddingClientConfig":
-        """Validate model-specific dimension options."""
+        """校验智谱 embedding 模型与向量维度组合是否兼容。
+
+        Args:
+            无显式业务参数。当前实例中的 model 与 dimensions 是待校验的配置值。
+
+        Returns:
+            ZhipuEmbeddingClientConfig: 校验通过后的当前配置实例；模型或维度不兼容时抛出配置异常。
+        """
 
         if self.model == "embedding-3" and self.dimensions not in {256, 512, 1024, 2048}:
             raise ZhipuEmbeddingClientError(
@@ -42,7 +49,14 @@ Typed runtime settings for Zhipu embeddings."""
 
     @classmethod
     def from_env(cls) -> "ZhipuEmbeddingClientConfig":
-        """Build config from environment variables."""
+        """从环境变量构造智谱 embedding 客户端配置。
+
+        Args:
+            无显式业务参数。配置从 API Key、服务地址、模型名、向量维度和超时等环境变量读取。
+
+        Returns:
+            ZhipuEmbeddingClientConfig: 已完成环境变量解析与模型维度校验的 embedding 客户端配置。
+        """
 
         load_env_file()
         api_key = os.getenv("ZHIPU_API_KEY", "").strip()

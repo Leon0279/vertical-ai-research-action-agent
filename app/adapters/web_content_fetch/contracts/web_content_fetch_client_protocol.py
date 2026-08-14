@@ -17,4 +17,11 @@ Provider-neutral interface for normalized web content fetch adapters."""
         self,
         request: WebContentFetchRequest,
     ) -> WebContentFetchResponse:
-        """Fetch and normalize extracted content for one or more URLs."""
+        """抓取一个或多个 URL 的正文并归一化为内容获取响应。
+
+        Args:
+            request (WebContentFetchRequest): URL 列表、抽取深度和内容格式等正文抓取请求。
+
+        Returns:
+            WebContentFetchResponse: 成功与失败条目均已归一化的网页内容获取响应。
+        """

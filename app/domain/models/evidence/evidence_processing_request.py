@@ -96,7 +96,14 @@ class EvidenceProcessingRequest(BaseModel):
         cls,
         result: ToolExecutionLayerResult,
     ) -> "EvidenceProcessingRequest":
-        """Build an evidence-processing request from TEL final output."""
+        """从 Tool Execution Layer 最终结果构造证据处理请求。
+
+        Args:
+            result (ToolExecutionLayerResult): TEL 输出的归一化候选材料、获取状态、执行摘要和检索追踪信息。
+
+        Returns:
+            EvidenceProcessingRequest: 可直接传入 EvidenceProcessingService 的请求，保留 TEL 输出中的处理所需字段。
+        """
 
         return cls(
             normalized_items=result.normalized_items,

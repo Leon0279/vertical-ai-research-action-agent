@@ -180,6 +180,15 @@ class RetrievalTrace(BaseModel):
         }
 
     def get(self, key: str, default: Any = None) -> Any:
+        """以兼容字典的方式读取检索追踪字段、context、errors 或 observability 扩展字段。
+
+        Args:
+            key (str): 需要读取的正式追踪字段或任一扩展字段名称。
+            default (Any): key 不存在时返回的默认值，默认是 None。
+
+        Returns:
+            Any: 已声明字段、context、errors 或 observability 中的值，或找不到时的 default。
+        """
         if hasattr(self, key):
             return getattr(self, key)
         if key in self.context:
@@ -204,6 +213,14 @@ class RetrievalTrace(BaseModel):
         yield from self.to_legacy_dict().items()
 
     def to_legacy_dict(self) -> dict[str, Any]:
+        """将 typed 检索追踪转换为历史兼容的扁平字典。
+
+        Args:
+            无显式业务参数。转换基于当前实例的正式字段、尝试记录和各类扩展字段完成。
+
+        Returns:
+            dict[str, Any]: 正式追踪字段、历史格式尝试记录、context、errors 与 observability 合并后的扁平字典。
+        """
         data = {
             "target_problem": self.target_problem,
             "selected_family": self.selected_family,

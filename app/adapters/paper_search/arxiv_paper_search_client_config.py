@@ -27,7 +27,14 @@ Typed runtime settings for arXiv paper search."""
 
     @classmethod
     def from_env(cls) -> "ArxivPaperSearchClientConfig":
-        """Build config from environment variables."""
+        """从环境变量构造 arXiv 论文搜索客户端配置。
+
+        Args:
+            无显式业务参数。配置从 arXiv 服务地址、请求身份、User-Agent、超时和最大结果数等环境变量读取。
+
+        Returns:
+            ArxivPaperSearchClientConfig: 已完成环境变量解析的论文搜索客户端配置；缺少必填 User-Agent 时抛出配置异常。
+        """
 
         load_env_file()
         user_agent = os.getenv("ARXIV_PAPER_SEARCH_USER_AGENT", "").strip()

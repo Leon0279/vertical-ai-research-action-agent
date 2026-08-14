@@ -139,6 +139,15 @@ class RetrievalExecutionSummary(BaseModel):
         }
 
     def get(self, key: str, default: Any = None) -> Any:
+        """以兼容字典的方式读取执行摘要字段、metrics 或 observability 扩展字段。
+
+        Args:
+            key (str): 需要读取的执行摘要、metrics 或 observability 字段名称。
+            default (Any): key 不存在时返回的默认值，默认是 None。
+
+        Returns:
+            Any: 已声明字段、metrics 或 observability 中的值，或找不到时的 default。
+        """
         if hasattr(self, key):
             return getattr(self, key)
         if key in self.metrics:
@@ -155,6 +164,14 @@ class RetrievalExecutionSummary(BaseModel):
         yield from self.to_legacy_dict().items()
 
     def to_legacy_dict(self) -> dict[str, Any]:
+        """将 typed 执行摘要转换为历史兼容的扁平字典。
+
+        Args:
+            无显式业务参数。转换基于当前实例的正式字段、metrics 和 observability 完成。
+
+        Returns:
+            dict[str, Any]: 正式执行摘要、metrics 和 observability 合并后的扁平字典。
+        """
         data = {
             "policy": self.policy,
             "execution_status": self.execution_status,

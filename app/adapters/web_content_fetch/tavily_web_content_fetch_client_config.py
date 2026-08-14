@@ -33,7 +33,14 @@ Typed runtime settings for Tavily Extract-backed content fetch."""
 
     @classmethod
     def from_env(cls) -> "TavilyWebContentFetchClientConfig":
-        """Build config from environment variables."""
+        """从环境变量构造 Tavily 网页正文获取客户端配置。
+
+        Args:
+            无显式业务参数。配置从 Tavily API Key、服务地址、抽取深度、超时和内容限制等环境变量读取。
+
+        Returns:
+            TavilyWebContentFetchClientConfig: 已完成环境变量解析的网页正文获取配置；缺少必填 API Key 时抛出配置异常。
+        """
 
         load_env_file()
         api_key = os.getenv("TAVILY_API_KEY", "").strip()

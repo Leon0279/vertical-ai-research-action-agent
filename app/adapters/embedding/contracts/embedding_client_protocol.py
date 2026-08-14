@@ -14,7 +14,21 @@ class EmbeddingClientProtocol(Protocol):
 Protocol for text embedding generation adapters."""
 
     async def embed_text(self, text: str) -> EmbeddingResult:
-        """Generate an embedding for one text."""
+        """为单段文本生成 embedding 向量。
+
+        Args:
+            text (str): 需要向量化的非空文本。
+
+        Returns:
+            EmbeddingResult: 对应文本索引、向量、模型与 provider token 用量的结构化结果。
+        """
 
     async def embed_texts(self, texts: list[str]) -> list[EmbeddingResult]:
-        """Generate embeddings for a batch of texts."""
+        """为一批文本生成 embedding 向量。
+
+        Args:
+            texts (list[str]): 按输入顺序需要向量化的文本列表。
+
+        Returns:
+            list[EmbeddingResult]: 与输入文本一一对应的 embedding 结果列表，保留输入索引。
+        """

@@ -70,6 +70,15 @@ class RetrievalSourceSummary(BaseModel):
         }
 
     def get(self, key: str, default: Any = None) -> Any:
+        """以兼容字典的方式读取来源摘要字段或 metadata 扩展字段。
+
+        Args:
+            key (str): 需要读取的来源摘要字段或 metadata 字段名称。
+            default (Any): key 不存在时返回的默认值，默认是 None。
+
+        Returns:
+            Any: 已声明字段、metadata 中对应的值，或找不到时的 default。
+        """
         if hasattr(self, key):
             return getattr(self, key)
         return self.metadata.get(key, default)
@@ -84,6 +93,14 @@ class RetrievalSourceSummary(BaseModel):
         yield from self.to_legacy_dict().items()
 
     def to_legacy_dict(self) -> dict[str, Any]:
+        """将 typed 来源摘要转换为历史兼容的扁平字典。
+
+        Args:
+            无显式业务参数。转换基于当前实例的正式字段和 metadata 扩展字段完成。
+
+        Returns:
+            dict[str, Any]: family、tool、归一化数量与 metadata 合并后的扁平字典。
+        """
         data = {
             "selected_family": self.selected_family,
             "selected_tool": self.selected_tool,

@@ -24,7 +24,14 @@ Typed runtime settings for Zhipu chat completions."""
 
     @classmethod
     def from_env(cls) -> "ZhipuLLMClientConfig":
-        """Build config from environment variables."""
+        """从环境变量构造智谱 LLM 客户端配置。
+
+        Args:
+            无显式业务参数。配置从 API Key、服务地址、模型名和调用超时等环境变量读取。
+
+        Returns:
+            ZhipuLLMClientConfig: 已完成环境变量解析的 LLM 客户端配置；缺少必填 API Key 时抛出配置异常。
+        """
 
         load_env_file()
         api_key = os.getenv("ZHIPU_API_KEY", "").strip()

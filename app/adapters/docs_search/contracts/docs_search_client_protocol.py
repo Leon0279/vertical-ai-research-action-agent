@@ -14,4 +14,11 @@ class DocsSearchClientProtocol(Protocol):
 Provider-neutral interface for docs-oriented retrieval adapters."""
 
     async def search_docs(self, query: DocsSearchQuery) -> DocsSearchResponse:
-        """Search documentation sources for normalized docs fragments."""
+        """在配置的文档来源中检索并返回归一化结果。
+
+        Args:
+            query (DocsSearchQuery): 文档检索查询，包含查询文本、结果数量及可选来源过滤条件。
+
+        Returns:
+            DocsSearchResponse: adapter 归一化后的文档检索响应，包含结果、丢弃统计和来源摘要。
+        """

@@ -49,7 +49,14 @@ Typed runtime settings for llms.txt docs search."""
 
     @classmethod
     def from_env(cls) -> "LlmsTxtDocsSearchClientConfig":
-        """Build config from environment variables."""
+        """从环境变量构造 llms.txt 文档搜索客户端配置。
+
+        Args:
+            无显式业务参数。配置从文档来源、超时、默认结果数等相关环境变量读取。
+
+        Returns:
+            LlmsTxtDocsSearchClientConfig: 已完成默认值填充和环境变量解析的文档搜索客户端配置。
+        """
 
         load_env_file()
         sources_json = os.getenv("DOCS_SEARCH_SOURCES_JSON", "").strip()

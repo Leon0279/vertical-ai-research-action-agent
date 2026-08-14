@@ -28,7 +28,14 @@ Typed runtime settings for Tavily-backed web search."""
 
     @classmethod
     def from_env(cls) -> "TavilyWebSearchClientConfig":
-        """Build config from environment variables."""
+        """从环境变量构造 Tavily 网页搜索客户端配置。
+
+        Args:
+            无显式业务参数。配置从 Tavily API Key、服务地址、超时和默认搜索选项等环境变量读取。
+
+        Returns:
+            TavilyWebSearchClientConfig: 已完成环境变量解析的网页搜索客户端配置；缺少必填 API Key 时抛出配置异常。
+        """
 
         load_env_file()
         api_key = os.getenv("TAVILY_API_KEY", "").strip()

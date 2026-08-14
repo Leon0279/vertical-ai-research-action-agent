@@ -28,6 +28,14 @@ Fixed outer workflow with stage-by-stage execution."""
         self._dependencies = dependencies
 
     async def run(self, request: RequestContext) -> StructuredOutput:
+        """执行固定外层研究工作流，并返回面向调用方的最终结构化响应。
+
+        Args:
+            request (RequestContext): 外部传入的请求上下文，包含用户输入、身份与会话边界、能力声明和运行时约束。
+
+        Returns:
+            StructuredOutput: 经请求接入、规划、研究、结论、记忆写回和输出组装后得到的用户可读结果。
+        """
         context = await self._request_intake(request)
         await self._task_interpretation(context)
         await self._context_memory_load(context)

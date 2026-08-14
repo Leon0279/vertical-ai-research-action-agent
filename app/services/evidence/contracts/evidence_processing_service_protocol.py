@@ -17,4 +17,11 @@ Converts Tool Execution Layer outputs into processed evidence units."""
         self,
         request: EvidenceProcessingRequest,
     ) -> EvidenceProcessingResult:
-        """Process one current-round candidate material set."""
+        """处理当前轮次的候选材料，并生成可供后续研究使用的结构化证据。
+
+        Args:
+            request (EvidenceProcessingRequest): 包含检索候选材料、来源信息和处理上下文的证据处理请求。
+
+        Returns:
+            EvidenceProcessingResult: 处理后的证据单元、覆盖摘要、处理状态及可能的错误信息。
+        """

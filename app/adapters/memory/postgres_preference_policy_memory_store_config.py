@@ -24,7 +24,14 @@ Typed runtime settings for the preference_policy_memory adapter."""
 
     @classmethod
     def from_env(cls) -> "PostgresPreferencePolicyMemoryStoreConfig":
-        """Build config from environment variables."""
+        """从环境变量构造 PostgreSQL 偏好与策略记忆存储配置。
+
+        Args:
+            无显式业务参数。配置从偏好策略记忆 DSN、schema 名称和连接相关环境变量读取。
+
+        Returns:
+            PostgresPreferencePolicyMemoryStoreConfig: 已完成环境变量解析的偏好与策略记忆存储配置；缺少必填 DSN 时抛出配置异常。
+        """
 
         load_env_file()
         dsn = os.getenv("POSTGRES_PREFERENCE_POLICY_MEMORY_DSN", "").strip()

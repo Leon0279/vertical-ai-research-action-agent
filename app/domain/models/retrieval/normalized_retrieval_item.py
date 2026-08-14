@@ -76,6 +76,15 @@ class NormalizedRetrievalItem(BaseModel):
     )
 
     def get(self, key: str, default: Any = None) -> Any:
+        """以兼容字典的方式读取归一化材料字段或 metadata 扩展字段。
+
+        Args:
+            key (str): 需要读取的正式材料字段或 metadata 字段名称。
+            default (Any): key 不存在时返回的默认值，默认是 None。
+
+        Returns:
+            Any: 已声明字段、metadata 中对应的值，或找不到时的 default。
+        """
         if hasattr(self, key):
             return getattr(self, key)
         return self.metadata.get(key, default)

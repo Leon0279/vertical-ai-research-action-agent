@@ -20,4 +20,11 @@ Runtime-facing interface for the llms_txt_docs_search tool."""
         self,
         request: LlmsTxtDocsSearchToolRequest,
     ) -> LlmsTxtDocsSearchToolResult:
-        """Execute the tool using the given request and return normalized retrieval output."""
+        """执行 llms.txt 文档检索，并返回归一化检索输出。
+
+        Args:
+            request (LlmsTxtDocsSearchToolRequest): 包含文档查询、站点或路径范围、结果限制和研究上下文的工具请求。
+
+        Returns:
+            LlmsTxtDocsSearchToolResult: 归一化文档材料、来源摘要、执行统计、检索追踪与获取状态。
+        """

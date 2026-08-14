@@ -14,4 +14,11 @@ class ArxivPaperSearchToolProtocol(Protocol):
 Runtime-facing interface for the arxiv_paper_search tool."""
 
     async def run(self, request: ArxivPaperSearchToolRequest) -> ArxivPaperSearchToolResult:
-        """Execute the tool using the given request and return normalized retrieval output."""
+        """执行 arXiv 论文搜索与正文获取，并返回归一化检索输出。
+
+        Args:
+            request (ArxivPaperSearchToolRequest): 包含论文检索查询、结果限制、内容获取设置和研究上下文的工具请求。
+
+        Returns:
+            ArxivPaperSearchToolResult: 归一化论文材料、来源摘要、执行统计、检索追踪与获取状态。
+        """

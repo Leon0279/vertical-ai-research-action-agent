@@ -14,4 +14,11 @@ class PaperSearchClientProtocol(Protocol):
 Provider-neutral interface for paper search adapters."""
 
     async def search_papers(self, query: PaperSearchQuery) -> PaperSearchResponse:
-        """Search for papers using a provider-backed query implementation."""
+        """使用 provider-backed 实现检索论文元数据。
+
+        Args:
+            query (PaperSearchQuery): 论文检索查询，包含查询文本、数量限制和可选过滤条件。
+
+        Returns:
+            PaperSearchResponse: 归一化论文搜索响应，包含结果、丢弃统计和 provider 摘要。
+        """

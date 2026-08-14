@@ -26,7 +26,14 @@ Typed runtime settings for arXiv PDF content fetch."""
 
     @classmethod
     def from_env(cls) -> "ArxivPaperContentFetchClientConfig":
-        """Build config from environment variables."""
+        """从环境变量构造 arXiv 论文正文获取客户端配置。
+
+        Args:
+            无显式业务参数。配置从 PDF 服务地址、请求身份、User-Agent、超时和正文长度限制等环境变量读取。
+
+        Returns:
+            ArxivPaperContentFetchClientConfig: 已完成环境变量解析的论文正文获取配置；缺少必填 User-Agent 时抛出配置异常。
+        """
 
         load_env_file()
         user_agent = os.getenv("ARXIV_PAPER_CONTENT_FETCH_USER_AGENT", "").strip()

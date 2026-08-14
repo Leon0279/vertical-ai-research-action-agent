@@ -14,4 +14,11 @@ class WebSearchClientProtocol(Protocol):
 Provider-neutral interface for normalized web search adapters."""
 
     async def search_web(self, query: WebSearchQuery) -> WebSearchResponse:
-        """Search the web and return normalized result items."""
+        """执行网页搜索并返回归一化结果条目。
+
+        Args:
+            query (WebSearchQuery): 网页检索查询，包含查询文本、结果数量与 provider 相关选项。
+
+        Returns:
+            WebSearchResponse: adapter 归一化后的网页搜索响应，包含结果、丢弃统计和来源摘要。
+        """

@@ -21,7 +21,14 @@ Typed settings for Redis session memory storage."""
 
     @classmethod
     def from_env(cls) -> "RedisSessionMemoryStoreConfig":
-        """Build Redis session memory settings from environment variables."""
+        """从环境变量构造 Redis 会话记忆存储配置。
+
+        Args:
+            无显式业务参数。配置从 Redis 连接地址、key 前缀、TTL 和超时等环境变量读取。
+
+        Returns:
+            RedisSessionMemoryStoreConfig: 已完成环境变量解析的会话记忆存储配置；缺少必填 Redis 地址时抛出配置异常。
+        """
 
         load_env_file()
         redis_url = os.getenv("REDIS_SESSION_MEMORY_URL", "").strip()

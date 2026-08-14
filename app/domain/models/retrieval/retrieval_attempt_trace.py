@@ -121,6 +121,14 @@ class RetrievalAttemptTrace(BaseModel):
         return normalized
 
     def to_legacy_dict(self) -> dict[str, Any]:
+        """将 typed 单次检索尝试追踪转换为历史兼容的扁平字典。
+
+        Args:
+            无显式业务参数。转换基于当前实例的正式字段和 metadata 扩展字段完成。
+
+        Returns:
+            dict[str, Any]: 正式字段与 metadata 合并后的扁平字典，供仍依赖旧 dict 结构的读取方使用。
+        """
         data = self.model_dump(exclude={"metadata"})
         data.update(self.metadata)
         return data
