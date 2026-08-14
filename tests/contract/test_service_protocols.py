@@ -146,6 +146,9 @@ from app.services.memory.context_memory_loader_service import ContextMemoryLoade
 from app.services.memory.contracts.context_memory_loader_protocol import ContextMemoryLoaderProtocol
 from app.services.memory.contracts.memory_persistence_protocol import MemoryPersistenceProtocol
 from app.services.memory.contracts.semantic_resolver_protocol import SemanticResolverProtocol
+from app.services.memory.contracts.session_continuity_manager_protocol import (
+    SessionContinuityManagerProtocol,
+)
 from app.services.memory.memory_distiller_service import MemoryDistillerService
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
 from app.services.memory.semantic_resolver_service import SemanticResolverService
@@ -481,5 +484,5 @@ def test_memory_service_interfaces_instantiable() -> None:
     assert isinstance(memory_loader, ContextMemoryLoaderProtocol)
     assert isinstance(memory_persistence, MemoryPersistenceProtocol)
     assert isinstance(semantic_resolver, SemanticResolverProtocol)
-    assert hasattr(continuity_manager, "update")
+    assert isinstance(continuity_manager, SessionContinuityManagerProtocol)
     assert hasattr(response_assembler, "assemble")

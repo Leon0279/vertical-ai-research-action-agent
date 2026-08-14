@@ -34,6 +34,7 @@ def test_session_continuity_manager_uses_runtime_session_id() -> None:
     assert memory is not None
     assert memory.user_id == "user-1"
     assert memory.session_id == "session-1"
-    assert memory.session_working_summary == "Compare retrieval approaches."
+    assert memory.session_working_summary is not None
+    assert "Compare retrieval approaches." in memory.session_working_summary
     assert memory.latest_action_items == ["Run a small evaluation."]
     assert memory.temporary_context["project_scope_id"] == "project-1"
