@@ -6,7 +6,6 @@ from app.adapters.memory.contracts.action_memory_store_protocol import (
 from app.adapters.memory.contracts.decision_memory_store_protocol import (
     DecisionMemoryStoreProtocol,
 )
-from app.adapters.memory.contracts.long_term_memory_store_protocol import LongTermMemoryStoreProtocol
 from app.adapters.memory.contracts.preference_policy_memory_store_protocol import (
     PreferencePolicyMemoryStoreProtocol,
 )
@@ -17,8 +16,6 @@ from app.adapters.memory.contracts.research_knowledge_memory_store_protocol impo
     ResearchKnowledgeMemoryStoreProtocol,
 )
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
-from app.adapters.memory.in_memory_long_term_store import InMemoryLongTermStore
-from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.adapters.memory.postgres_action_memory_store import PostgresActionMemoryStore
 from app.adapters.memory.postgres_action_memory_store_config import (
     PostgresActionMemoryStoreConfig,
@@ -68,14 +65,11 @@ from app.adapters.memory.redis_session_memory_store_error import RedisSessionMem
 
 __all__ = [
     "SessionMemoryStoreProtocol",
-    "LongTermMemoryStoreProtocol",
     "ActionMemoryStoreProtocol",
     "DecisionMemoryStoreProtocol",
     "PreferencePolicyMemoryStoreProtocol",
     "ProjectProfileMemoryStoreProtocol",
     "ResearchKnowledgeMemoryStoreProtocol",
-    "InMemorySessionStore",
-    "InMemoryLongTermStore",
     "PostgresActionMemoryStore",
     "PostgresActionMemoryStoreConfig",
     "PostgresActionMemoryStoreError",

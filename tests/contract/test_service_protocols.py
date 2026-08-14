@@ -85,7 +85,6 @@ from app.services.tools.arxiv_paper_search_tool import ArxivPaperSearchTool
 from app.services.tools.llms_txt_docs_search_tool import LlmsTxtDocsSearchTool
 from app.services.tools.research_knowledge_memory_tool import ResearchKnowledgeMemoryTool
 from app.services.tools.tavily_web_search_tool import TavilyWebSearchTool
-from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.adapters.memory.contracts.action_memory_store_protocol import (
     ActionMemoryStoreProtocol,
 )
@@ -134,14 +133,10 @@ from app.adapters.memory.postgres_research_knowledge_memory_store_config import 
 )
 from app.adapters.memory.redis_session_memory_store import RedisSessionMemoryStore
 from app.adapters.memory.redis_session_memory_store_config import RedisSessionMemoryStoreConfig
-from app.adapters.retrieval.contracts.retriever_protocol import RetrieverProtocol
-from app.adapters.retrieval.stub_retriever import StubRetriever
 from app.services.evidence.contracts.evidence_processing_service_protocol import (
     EvidenceProcessingServiceProtocol,
 )
-from app.services.evidence.contracts.evidence_processor_protocol import EvidenceProcessorProtocol
 from app.services.evidence.evidence_processing_service import EvidenceProcessingService
-from app.services.evidence.evidence_processor_service import EvidenceProcessorService
 from app.services.memory.context_memory_loader_service import ContextMemoryLoaderService
 from app.services.memory.contracts.context_memory_loader_protocol import ContextMemoryLoaderProtocol
 from app.services.memory.contracts.memory_persistence_protocol import MemoryPersistenceProtocol
@@ -163,8 +158,6 @@ from app.services.planner.contracts.task_interpreter_protocol import TaskInterpr
 from app.services.planner.decomposition_planner_service import DecompositionPlannerService
 from app.services.planner.task_interpreter_service import TaskInterpreterService
 from app.services.planner.workflow_router_service import WorkflowRouterService
-from app.services.retrieval.contracts.retrieval_service_protocol import RetrievalServiceProtocol
-from app.services.retrieval.retrieval_service import RetrievalService
 from app.services.tool_execution_layer.contracts.family_selection_service_protocol import (
     FamilySelectionServiceProtocol,
 )
@@ -275,7 +268,6 @@ def test_adapter_protocol_conformance() -> None:
         ),
         SessionMemoryStoreProtocol,
     )
-    assert isinstance(StubRetriever(), RetrieverProtocol)
 
 
 def test_service_protocol_conformance() -> None:
@@ -294,7 +286,6 @@ def test_service_protocol_conformance() -> None:
         ResearchExecutorProtocol,
     )
     assert isinstance(EvidenceProcessingService(), EvidenceProcessingServiceProtocol)
-    assert isinstance(EvidenceProcessorService(), EvidenceProcessorProtocol)
     assert isinstance(
         ConclusionGeneratorService(llm_client=StubLLMClient()),
         ConclusionGeneratorProtocol,
@@ -429,15 +420,14 @@ def test_service_protocol_conformance() -> None:
 
 
 def test_memory_service_interfaces_instantiable() -> None:
-    retriever = StubRetriever()
-    retrieval_service = RetrievalService(retriever=retriever)
-    assert isinstance(retrieval_service, RetrievalServiceProtocol)
-
     # Structural checks for services requiring adapters, without real persistence.
     assert hasattr(MemoryDistillerService(llm_client=StubLLMClient()), "distill")
     assert hasattr(WorkflowRouterService(), "route")
 
-    session_store = InMemorySessionStore()
+    session_store = RedisSessionMemoryStore(
+        config=RedisSessionMemoryStoreConfig(redis_url="redis://example.test/0"),
+        redis_client=object(),
+    )
     project_profile_store = PostgresProjectProfileMemoryStore(
         config=PostgresProjectProfileMemoryStoreConfig(dsn="postgresql://example.test/db"),
         pool=object(),

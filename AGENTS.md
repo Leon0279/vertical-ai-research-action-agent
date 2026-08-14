@@ -245,8 +245,8 @@ docs/
 
 例如：
 
-* `EvidenceProcessorProtocol` -> `evidence_processor_protocol.py`
-* `EvidenceProcessorService` -> `evidence_processor_service.py`
+* `EvidenceProcessingServiceProtocol` -> `evidence_processing_service_protocol.py`
+* `EvidenceProcessingService` -> `evidence_processing_service.py`
 
 不要使用以下泛化文件名来承载多个类型：
 
@@ -265,10 +265,10 @@ docs/
 
 * 如果实现类位于当前目录，例如：
 
-  * `app/services/evidence/evidence_processor_service.py`
+  * `app/services/evidence/evidence_processing_service.py`
 * 则对应接口必须位于当前目录下的 `contracts` 子目录，例如：
 
-  * `app/services/evidence/contracts/evidence_processor_protocol.py`
+  * `app/services/evidence/contracts/evidence_processing_service_protocol.py`
 
 也就是说：
 

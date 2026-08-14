@@ -2,13 +2,26 @@
 
 import asyncio
 
-from app.adapters.memory.in_memory_session_store import InMemorySessionStore
 from app.domain.models import ExecutionContext, RunningState, RuntimeContext, SessionMemory
 from app.services.memory.session_continuity_manager_service import SessionContinuityManagerService
 
 
+class _SessionMemoryStoreFake:
+    def __init__(self) -> None:
+        self._store: dict[tuple[str, str], SessionMemory] = {}
+
+    async def load(self, *, user_id: str, session_id: str | None) -> SessionMemory | None:
+        if not user_id or not session_id:
+            return None
+        return self._store.get((user_id, session_id))
+
+    async def save(self, memory: SessionMemory) -> None:
+        if memory.user_id and memory.session_id:
+            self._store[(memory.user_id, memory.session_id)] = memory
+
+
 def test_session_continuity_manager_uses_runtime_session_id() -> None:
-    session_store = InMemorySessionStore()
+    session_store = _SessionMemoryStoreFake()
     context = ExecutionContext(
         running_state=RunningState(
             original_query="Compare retrieval methods.",

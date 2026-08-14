@@ -14,10 +14,8 @@ from app.adapters.memory.postgres_research_knowledge_memory_store import (
     PostgresResearchKnowledgeMemoryStore,
 )
 from app.adapters.memory.redis_session_memory_store import RedisSessionMemoryStore
+from app.adapters.memory.redis_session_memory_store_config import RedisSessionMemoryStoreConfig
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
-from app.adapters.memory.in_memory_session_store import InMemorySessionStore
-from app.adapters.retrieval.contracts.retriever_protocol import RetrieverProtocol
-from app.adapters.retrieval.stub_retriever import StubRetriever
 from app.orchestration.research_action_pipeline import ResearchActionPipeline, build_default_pipeline
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
 from app.services.planner.contracts.task_interpreter_protocol import TaskInterpreterProtocol
@@ -63,6 +61,11 @@ def test_default_dependencies_satisfy_pipeline_protocols() -> None:
     assert isinstance(loader._embedding_client, ZhipuEmbeddingClient)
 
 
-def test_adapter_implementations_satisfy_runtime_checkable_protocols() -> None:
-    assert isinstance(InMemorySessionStore(), SessionMemoryStoreProtocol)
-    assert isinstance(StubRetriever(), RetrieverProtocol)
+def test_redis_session_memory_store_satisfies_runtime_checkable_protocol() -> None:
+    assert isinstance(
+        RedisSessionMemoryStore(
+            config=RedisSessionMemoryStoreConfig(redis_url="redis://example.test/0"),
+            redis_client=object(),
+        ),
+        SessionMemoryStoreProtocol,
+    )
