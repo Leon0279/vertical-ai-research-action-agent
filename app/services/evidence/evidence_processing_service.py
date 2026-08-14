@@ -30,8 +30,13 @@ class _LLMEvidenceUnitPayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    content: str = Field(min_length=1)
-    evidence_type: EvidenceType
+    content: str = Field(
+        min_length=1,
+        description="必填字段。LLM 从单条候选材料中保留的结构化证据正文，不应包含来源 attribution 或推理过程。",
+    )
+    evidence_type: EvidenceType = Field(
+        description="必填字段。该证据单元的归一化类型，用于后续 evidence consolidation 和 coverage 统计。",
+    )
 
 
 class _LLMStructuringPayload(BaseModel):
@@ -39,8 +44,13 @@ class _LLMStructuringPayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    decision: Literal["keep", "drop"]
-    evidence_units: list[_LLMEvidenceUnitPayload] = Field(default_factory=list)
+    decision: Literal["keep", "drop"] = Field(
+        description="必填字段。LLM 对当前候选材料的结构化处理决定：keep 表示保留证据，drop 表示丢弃。",
+    )
+    evidence_units: list[_LLMEvidenceUnitPayload] = Field(
+        default_factory=list,
+        description="可选字段，默认空列表。当 decision 为 keep 时从材料提取出的一个或多个 evidence unit；drop 时应为空。",
+    )
 
 
 class EvidenceProcessingService(EvidenceProcessingServiceProtocol):

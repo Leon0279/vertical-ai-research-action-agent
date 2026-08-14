@@ -14,41 +14,41 @@ class WorkflowExecutionPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     planning_depth: PlanningDepth = Field(
-        description="Default planning depth that downstream planning should prefer.",
+        description="必填字段。下游规划阶段应优先采用的默认 planning depth。",
     )
     evidence_strategy: str = Field(
         min_length=1,
-        description="High-level evidence strategy emphasis for research execution.",
+        description="必填字段。research execution 应强调的高层 evidence strategy。",
     )
     output_emphasis: str = Field(
         min_length=1,
-        description="High-level output structure emphasis for conclusion generation.",
+        description="必填字段。conclusion generation 应侧重的高层输出结构或表达重点。",
     )
     memory_writeback_focus: list[MemoryType] = Field(
         default_factory=list,
-        description="Long-term memory categories that downstream write-back should emphasize.",
+        description="可选字段，默认空列表。下游 memory write-back 应重点考虑的长期 memory 类别。",
     )
     comparison_needed: bool = Field(
         default=False,
-        description="Whether downstream stages should emphasize structured comparison.",
+        description="下游 stage 是否应重点产出结构化比较；当前默认 False。",
     )
     recommendation_needed: bool = Field(
         default=False,
-        description="Whether downstream stages should produce a decision-oriented recommendation.",
+        description="下游 stage 是否应产出面向决策的 recommendation；当前默认 False。",
     )
     action_generation_needed: bool = Field(
         default=False,
-        description="Whether downstream stages should produce next-step action outputs.",
+        description="下游 stage 是否应产出下一步 action 项；当前默认 False。",
     )
     tracking_needed: bool = Field(
         default=False,
-        description="Whether downstream stages should emphasize update tracking.",
+        description="下游 stage 是否应强调状态更新与 tracking；当前默认 False。",
     )
     routing_confidence: str = Field(
         min_length=1,
-        description="Router confidence label, such as high or low.",
+        description="必填字段。workflow router 对当前路由结果的置信度标签，例如 high 或 low。",
     )
     fallback_reason: str | None = Field(
         default=None,
-        description="Reason the router fell back to a conservative workflow, if any.",
+        description="可选字段。router 退回保守 workflow 时的原因；未发生 fallback 时为 None。",
     )

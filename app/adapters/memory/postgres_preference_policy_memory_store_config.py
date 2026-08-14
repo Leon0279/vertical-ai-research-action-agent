@@ -15,10 +15,10 @@ from app.config.env_loader import load_env_file
 class PostgresPreferencePolicyMemoryStoreConfig(BaseModel):
     """Typed runtime settings for the preference_policy_memory adapter."""
 
-    dsn: str
-    schema_name: str = Field(default="public", min_length=1)
-    table_name: str = Field(default="preference_policy_memory", min_length=1)
-    system_user_id: str = Field(default="__system__", min_length=1)
+    dsn: str = Field(description="必填字段。连接 PostgreSQL preference/policy memory 存储所使用的数据源连接字符串。")
+    schema_name: str = Field(default="public", min_length=1, description="preference/policy memory 表所在 PostgreSQL schema 名称。")
+    table_name: str = Field(default="preference_policy_memory", min_length=1, description="保存 PreferencePolicyMemoryRecord 的 PostgreSQL 表名。")
+    system_user_id: str = Field(default="__system__", min_length=1, description="系统级 policy record 使用的用户标识，用于与真实用户范围区分。")
 
     @classmethod
     def from_env(cls) -> "PostgresPreferencePolicyMemoryStoreConfig":

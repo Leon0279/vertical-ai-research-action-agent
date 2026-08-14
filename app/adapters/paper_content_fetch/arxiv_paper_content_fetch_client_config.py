@@ -15,12 +15,12 @@ from app.config.env_loader import load_env_file
 class ArxivPaperContentFetchClientConfig(BaseModel):
     """Typed runtime settings for arXiv PDF content fetch."""
 
-    pdf_base_url: str = "https://arxiv.org/pdf"
-    timeout_seconds: float = Field(default=20.0, gt=0)
-    max_download_bytes: int = Field(default=25_000_000, gt=0)
-    max_extracted_chars: int = Field(default=200_000, gt=0)
-    user_agent: str
-    client_identity: str | None = None
+    pdf_base_url: str = Field(default="https://arxiv.org/pdf", description="用于由 arXiv paper id 构造 PDF 下载地址的基础 URL。")
+    timeout_seconds: float = Field(default=20.0, gt=0, description="下载单篇 arXiv PDF 的 HTTP 超时时间，单位秒。")
+    max_download_bytes: int = Field(default=25_000_000, gt=0, description="单篇 PDF 允许下载的最大字节数，用于限制网络和内存消耗。")
+    max_extracted_chars: int = Field(default=200_000, gt=0, description="从单篇 PDF 提取并保留的最大文本字符数。")
+    user_agent: str = Field(description="必填字段。访问 arXiv 时发送的 HTTP User-Agent，便于服务端识别客户端。")
+    client_identity: str | None = Field(default=None, description="可选字段。追加到 User-Agent 或请求身份中的客户端标识；未配置时为 None。")
 
     @classmethod
     def from_env(cls) -> "ArxivPaperContentFetchClientConfig":

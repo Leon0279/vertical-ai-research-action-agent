@@ -19,12 +19,12 @@ class _MemoryDistillationInput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    task_context: dict[str, Any]
-    planning_context: dict[str, Any]
-    conclusion_outputs: dict[str, Any]
-    supporting_context: dict[str, list[dict[str, Any]]]
-    source_references: list[dict[str, Any]]
-    provenance: dict[str, str]
+    task_context: dict[str, Any] = Field(description="必填字段。供 memory distillation 使用的当前任务、项目范围和约束摘要。")
+    planning_context: dict[str, Any] = Field(description="必填字段。当前 run 的计划、子问题、比较对象和初始 evidence guidance。")
+    conclusion_outputs: dict[str, Any] = Field(description="必填字段。最终结论、中间发现、行动项、caveat 等可提炼的稳定输出。")
+    supporting_context: dict[str, list[dict[str, Any]]] = Field(description="必填字段。按来源类别组织的 distilled supporting context，不包含原始数据库记录。")
+    source_references: list[dict[str, Any]] = Field(description="必填字段。带稳定 index 的 JSON-safe SourceReference 列表，供 LLM 对 candidate 做 provenance grounding。")
+    provenance: dict[str, str] = Field(description="必填字段。当前 run 和 session 的来源标识，用于系统补齐 candidate provenance。")
 
 
 class _LLMMemoryCandidateDraft(BaseModel):
@@ -32,14 +32,14 @@ class _LLMMemoryCandidateDraft(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    memory_type: str = Field(min_length=1)
-    semantic_type: str = Field(min_length=1)
-    summary: str = Field(min_length=1)
-    payload: dict[str, Any] = Field(default_factory=dict)
-    confidence: Literal["low", "medium", "high"]
-    stability: Literal["tentative", "stable"]
-    persistability: Literal["durable", "temporary", "uncertain"]
-    source_reference_indexes: list[int] = Field(default_factory=list)
+    memory_type: str = Field(min_length=1, description="必填字段。LLM 提议的目标 MemoryType 字符串，后续由系统验证并转换为枚举。")
+    semantic_type: str = Field(min_length=1, description="必填字段。candidate 的稳定语义分类，用于校验其与 memory_type 是否匹配。")
+    summary: str = Field(min_length=1, description="必填字段。适合长期保存的简短 candidate 摘要，不得复制原始回答或调试信息。")
+    payload: dict[str, Any] = Field(default_factory=dict, description="可选字段，默认空字典。仅包含 memory-type-specific 的 JSON-safe 补充信息。")
+    confidence: Literal["low", "medium", "high"] = Field(description="必填字段。LLM 对 candidate 内容可靠性的离散评估。")
+    stability: Literal["tentative", "stable"] = Field(description="必填字段。candidate 是否已经足够稳定、适合跨 session 保存。")
+    persistability: Literal["durable", "temporary", "uncertain"] = Field(description="必填字段。LLM 对该内容是否适合长期持久化的初步判断。")
+    source_reference_indexes: list[int] = Field(default_factory=list, description="可选字段，默认空列表。candidate 依赖的输入 SourceReference 索引；系统会忽略越界或无效索引。")
 
 
 class _LLMMemoryDistillationPayload(BaseModel):
@@ -47,7 +47,7 @@ class _LLMMemoryDistillationPayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    candidates: list[_LLMMemoryCandidateDraft] = Field(default_factory=list)
+    candidates: list[_LLMMemoryCandidateDraft] = Field(default_factory=list, description="可选字段，默认空列表。LLM 识别出的可持久化 memory candidate drafts；没有合适内容时为空。")
 
 
 class MemoryDistillerService(MemoryDistillerProtocol):

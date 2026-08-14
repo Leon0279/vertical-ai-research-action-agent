@@ -15,13 +15,13 @@ from app.config.env_loader import load_env_file
 class ArxivPaperSearchClientConfig(BaseModel):
     """Typed runtime settings for arXiv paper search."""
 
-    base_url: str = "https://export.arxiv.org/api"
-    timeout_seconds: float = Field(default=10.0, gt=0)
-    default_limit: int = Field(default=5, gt=0)
-    max_limit: int = Field(default=20, gt=0)
-    min_interval_seconds: float = Field(default=3.0, ge=0)
-    user_agent: str
-    client_identity: str | None = None
+    base_url: str = Field(default="https://export.arxiv.org/api", description="arXiv Atom search API 的基础地址。")
+    timeout_seconds: float = Field(default=10.0, gt=0, description="单次 arXiv search HTTP 请求的超时时间，单位秒。")
+    default_limit: int = Field(default=5, gt=0, description="调用方未指定 limit 时返回的默认论文结果数量。")
+    max_limit: int = Field(default=20, gt=0, description="单次 paper search 允许请求的最大论文结果数量。")
+    min_interval_seconds: float = Field(default=3.0, ge=0, description="连续 arXiv API 请求之间最少间隔的秒数，用于遵守 provider 访问节流。")
+    user_agent: str = Field(description="必填字段。访问 arXiv search API 时发送的 HTTP User-Agent。")
+    client_identity: str | None = Field(default=None, description="可选字段。客户端身份文本；没有额外身份信息时为 None。")
 
     @classmethod
     def from_env(cls) -> "ArxivPaperSearchClientConfig":

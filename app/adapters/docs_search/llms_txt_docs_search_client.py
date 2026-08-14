@@ -34,16 +34,23 @@ TOKEN_PATTERN = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*")
 
 @dataclass(frozen=True)
 class _ManifestEntry:
+    # llms.txt 中声明的页面标题，作为结果展示和全文抓取的语义标签。
     title: str
+    # 页面绝对 URL，是构造 SourceReference 与抓取正文的稳定定位地址。
     url: str
+    # 清单提供的可选页面摘要；缺失时为 None。
     summary: str | None
+    # 此页面所属 docs 子来源类型，例如 openai_api。
     sub_source_type: str
+    # 清单条目所在的可选章节名，供结果 metadata 和展示使用。
     section: str | None
 
 
 @dataclass(frozen=True)
 class _ScoredEntry:
+    # 已解析的 llms.txt 清单条目。
     entry: _ManifestEntry
+    # adapter 依据 query token 计算的内部相关性分数，仅用于本次排序。
     score: float
 
 

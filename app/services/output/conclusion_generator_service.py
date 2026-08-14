@@ -22,8 +22,8 @@ class _LLMConclusionCitationPayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    source: str = Field(min_length=1)
-    note: str | None = None
+    source: str = Field(min_length=1, description="必填字段。LLM 选择的 citation 展示句柄，必须逐字匹配输入允许的来源。")
+    note: str | None = Field(default=None, description="可选字段。该 citation 支撑的结论或作用说明；没有补充时为 None。")
 
 
 class _LLMConclusionPayload(BaseModel):
@@ -31,13 +31,13 @@ class _LLMConclusionPayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    final_answer: str = Field(min_length=1)
-    final_summary: str = Field(min_length=1)
-    final_recommendation: str | None = None
-    action_items: list[str] = Field(default_factory=list)
-    citations: list[_LLMConclusionCitationPayload] = Field(default_factory=list)
-    confidence: ConclusionConfidence
-    caveats: list[str] = Field(default_factory=list)
+    final_answer: str = Field(min_length=1, description="必填字段。面向用户的完整最终答案正文。")
+    final_summary: str = Field(min_length=1, description="必填字段。最终答案的简短摘要或 TL;DR。")
+    final_recommendation: str | None = Field(default=None, description="可选字段。主推荐或主判断；纯信息型回答不适用时为 None。")
+    action_items: list[str] = Field(default_factory=list, description="可选字段，默认空列表。用户可执行的下一步行动项。")
+    citations: list[_LLMConclusionCitationPayload] = Field(default_factory=list, description="可选字段，默认空列表。LLM 提议的轻量引用，随后会由系统按来源白名单过滤。")
+    confidence: ConclusionConfidence = Field(description="必填字段。最终答案的整体置信度标签，只能是 low、medium 或 high。")
+    caveats: list[str] = Field(default_factory=list, description="可选字段，默认空列表。最终答案的限制、风险或未解决事项。")
 
 
 class ConclusionGeneratorService(ConclusionGeneratorProtocol):

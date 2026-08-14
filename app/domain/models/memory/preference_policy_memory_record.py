@@ -15,102 +15,101 @@ class PreferencePolicyMemoryRecord(BaseModel):
 
     policy_id: str = Field(
         min_length=1,
-        description="Primary identifier for one durable preference or policy record.",
+        description="必填字段。一条 durable preference 或 policy record 的主标识。",
     )
     user_id: str = Field(
         min_length=1,
-        description="Owner user identifier for this policy record.",
+        description="必填字段。该 policy record 的所属用户标识，用于用户级隔离。",
     )
     project_id: str | None = Field(
         default=None,
-        description="Optional project identifier when the rule is project-scoped.",
+        description="可选字段。规则属于项目范围时关联的 project 标识；非项目规则时为 None。",
     )
     owner_scope_type: str = Field(
         min_length=1,
-        description="Owner scope layer of the rule, such as global, user, or project.",
+        description="必填字段。规则的拥有者 scope 层级，例如 global、user 或 project。",
     )
     owner_scope_value: str | None = Field(
         default=None,
-        description="Optional owner scope discriminator, such as the system owner id for global rules.",
+        description="可选字段。进一步区分 owner scope 的值，例如 global 规则的系统 owner id。",
     )
     target_scope_type: str | None = Field(
         default=None,
-        description="Optional target scope type, such as task_type or memory_type.",
+        description="可选字段。规则作用目标的类型，例如 task_type 或 memory_type；不限制时为 None。",
     )
     target_scope_value: str | None = Field(
         default=None,
-        description="Optional target scope value that refines where the rule applies.",
+        description="可选字段。进一步限定规则作用位置的 target scope 值；不限制时为 None。",
     )
     policy_type: str = Field(
         min_length=1,
-        description="Rule category, such as preference, constraint, format_rule, or behavior_rule.",
+        description="必填字段。规则类别，例如 preference、constraint、format_rule 或 behavior_rule。",
     )
     policy_text: str = Field(
         min_length=1,
-        description="Reusable rule text or policy statement.",
+        description="必填字段。可跨 session 复用的规则文本或 policy 声明。",
     )
     conditions: dict[str, Any] = Field(
         default_factory=dict,
-        description="Optional JSON conditions that further constrain when the rule should apply.",
+        description="可选字段，默认空字典。进一步限制规则生效条件的 JSON-safe 条件集合。",
     )
     priority: int | None = Field(
         default=None,
-        description="Conflict-handling priority for this rule.",
+        description="可选字段。规则冲突时的优先级数值；未设置时由调用方策略决定。",
     )
     enforcement_level: str | None = Field(
         default=None,
-        description="Execution strength of the rule, such as soft, default, or strict.",
+        description="可选字段。规则约束强度，例如 soft、default 或 strict。",
     )
     record_status: str = Field(
         min_length=1,
         description=(
-            "Lifecycle status of this memory record, such as active, superseded, "
-            "archived, or pruned."
+            "必填字段。该 memory record 的生命周期状态，例如 active、superseded、archived 或 pruned。"
         ),
     )
     confidence: float | None = Field(
         default=None,
-        description="Confidence score for the current preference/policy record.",
+        description="可选字段。当前 preference/policy record 内容的可信度数值；未评估时为 None。",
     )
     supersedes_policy_id: str | None = Field(
         default=None,
-        description="Optional older policy record superseded by this rule.",
+        description="可选字段。被当前规则 supersede 的旧 policy record 标识。",
     )
     superseded_by_policy_id: str | None = Field(
         default=None,
-        description="Optional newer policy record that superseded this rule.",
+        description="可选字段。已经 supersede 当前记录的新 policy record 标识。",
     )
     embedding_text: str | None = Field(
         default=None,
         description=(
-            "Embedding input text used for same-type similarity-assisted candidate resolution."
+            "可选字段。用于同类型语义相似度解析的 embedding 输入文本。"
         ),
     )
     embedding_model: str | None = Field(
         default=None,
-        description="Embedding model used to generate the associated embedding representation.",
+        description="可选字段。生成关联 embedding 表示时使用的模型名称。",
     )
     embedding_version: str | None = Field(
         default=None,
-        description="Version of the embedding model or embedding generation configuration.",
+        description="可选字段。embedding 模型或生成配置的版本标识。",
     )
     created_at: datetime | None = Field(
         default=None,
-        description="Timestamp when this preference/policy record was created.",
+        description="可选字段。该 preference/policy record 首次创建时间。",
     )
     updated_at: datetime | None = Field(
         default=None,
-        description="Timestamp when this preference/policy record was last updated.",
+        description="可选字段。该 preference/policy record 最近更新时间。",
     )
     derived_from_session_id: str | None = Field(
         default=None,
-        description="Optional source session identifier from which this record was distilled.",
+        description="可选字段。提炼出该记录的来源 session 标识；无 session 来源时为 None。",
     )
     derived_from_run_id: str | None = Field(
         default=None,
-        description="Optional source run identifier from which this record was distilled.",
+        description="可选字段。提炼出该记录的来源 run 标识；无 run 来源时为 None。",
     )
     source_refs: list[str] = Field(
         default_factory=list,
-        description="Optional supporting source references for this policy record.",
+        description="可选字段，默认空列表。支撑该 policy record 的轻量来源句柄列表，不保存完整 SourceReference。",
     )

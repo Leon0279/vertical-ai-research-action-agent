@@ -14,105 +14,103 @@ class DecisionMemoryRecord(BaseModel):
 
     decision_id: str = Field(
         min_length=1,
-        description="Primary identifier for one durable decision memory record.",
+        description="必填字段。一条 durable decision memory record 的主标识，用于版本关联与 supersession。",
     )
     user_id: str = Field(
         min_length=1,
-        description="User ownership boundary for this project-scoped decision memory.",
+        description="必填字段。该项目范围 decision memory 的用户归属边界，用于访问隔离。",
     )
     project_id: str = Field(
         min_length=1,
-        description="Stable logical project identifier under which this decision belongs.",
+        description="必填字段。该 decision 所属的稳定逻辑 project 标识。",
     )
     decision_title: str | None = Field(
         default=None,
-        description="Short title of the decision.",
+        description="可选字段。决策的简短标题；未命名时为 None。",
     )
     decision_question: str | None = Field(
         default=None,
-        description="Question or problem this decision aims to resolve.",
+        description="可选字段。该决策要解决的问题或取舍；未知时为 None。",
     )
     chosen_option: str | None = Field(
         default=None,
-        description="Final chosen option for the decision.",
+        description="可选字段。决策最终选择的方案；尚未确定或未记录时为 None。",
     )
     alternatives: list[str] = Field(
         default_factory=list,
-        description="Alternative options considered for the decision.",
+        description="可选字段，默认空列表。形成决策时考虑过的备选方案。",
     )
     rationale: str | None = Field(
         default=None,
-        description="Reasoning or rationale supporting the decision.",
+        description="可选字段。支撑该决策的主要理由、证据或判断依据。",
     )
     tradeoffs: list[str] = Field(
         default_factory=list,
-        description="Key trade-offs associated with the decision.",
+        description="可选字段，默认空列表。该决策涉及的关键 trade-off。",
     )
     decision_state: str | None = Field(
         default=None,
         description=(
-            "Domain-specific business state of the decision, such as proposed, "
-            "accepted, reconsidering, or rejected."
+            "可选字段。decision 的业务状态，例如 proposed、accepted、reconsidering 或 rejected。"
         ),
     )
     record_status: str = Field(
         min_length=1,
         description=(
-            "Lifecycle status of this memory record, such as active, superseded, "
-            "archived, or pruned."
+            "必填字段。该 memory record 的生命周期状态，例如 active、superseded、archived 或 pruned。"
         ),
     )
     impact_scope: str | None = Field(
         default=None,
-        description="Scope of impact for this decision.",
+        description="可选字段。该决策影响的项目、模块、用户或业务范围。",
     )
     confidence: float | None = Field(
         default=None,
-        description="Confidence score for the current decision record.",
+        description="可选字段。当前 decision record 内容的可信度数值；未评估时为 None。",
     )
     decided_at: datetime | None = Field(
         default=None,
-        description="Timestamp when the decision was formed, if known.",
+        description="可选字段。该决策形成时间；未知时为 None。",
     )
     supersedes_decision_id: str | None = Field(
         default=None,
-        description="Optional older decision record superseded by this decision.",
+        description="可选字段。被当前决策 supersede 的旧 decision record 标识。",
     )
     superseded_by_decision_id: str | None = Field(
         default=None,
-        description="Optional newer decision record that superseded this decision.",
+        description="可选字段。已经 supersede 当前记录的新 decision record 标识。",
     )
     embedding_text: str | None = Field(
         default=None,
         description=(
-            "Embedding input text used for same-type similarity-assisted candidate resolution."
+            "可选字段。用于同类型语义相似度解析的 embedding 输入文本。"
         ),
     )
     embedding_model: str | None = Field(
         default=None,
-        description="Embedding model used to generate the associated embedding representation.",
+        description="可选字段。生成关联 embedding 表示时使用的模型名称。",
     )
     embedding_version: str | None = Field(
         default=None,
-        description="Version of the embedding model or embedding generation configuration.",
+        description="可选字段。embedding 模型或生成配置的版本标识。",
     )
     created_at: datetime | None = Field(
         default=None,
-        description="Timestamp when this decision memory record was created.",
+        description="可选字段。该 decision memory record 首次创建时间。",
     )
     updated_at: datetime | None = Field(
         default=None,
-        description="Timestamp when this decision memory record was last updated.",
+        description="可选字段。该 decision memory record 最近更新时间。",
     )
     derived_from_session_id: str | None = Field(
         default=None,
-        description="Optional source session identifier from which this record was distilled.",
+        description="可选字段。提炼出该记录的来源 session 标识；无 session 来源时为 None。",
     )
     derived_from_run_id: str | None = Field(
         default=None,
-        description="Optional source run identifier from which this record was distilled.",
+        description="可选字段。提炼出该记录的来源 run 标识；无 run 来源时为 None。",
     )
     source_refs: list[str] = Field(
         default_factory=list,
-        description="Optional supporting source references for this decision record.",
+        description="可选字段，默认空列表。支撑该 decision record 的轻量来源句柄列表，不保存完整 SourceReference。",
     )

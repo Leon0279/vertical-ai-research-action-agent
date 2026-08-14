@@ -60,16 +60,27 @@ from app.services.tool_execution_layer.tool_execution_layer_service import (
 class PipelineDependencies:
     """All service dependencies used by orchestration stages."""
 
+    # 初始化 ExecutionContext 的请求入口 service。
     request_intake: RequestIntakeProtocol
+    # 解析用户目标、任务类型和约束的任务理解 service。
     task_interpreter: TaskInterpreterProtocol
+    # 选择当前请求 workflow pattern 的路由 service。
     workflow_router: WorkflowRouterProtocol
+    # 生成计划、子问题与初始 evidence guidance 的规划 service。
     decomposition_planner: DecompositionPlannerProtocol
+    # 读取 session 和长期 memory 并填充 supplemental context 的 service。
     context_memory_loader: ContextMemoryLoaderProtocol
+    # 驱动 evidence-driven research loop 的研究执行 service。
     research_executor: ResearchExecutorProtocol
+    # 基于 research state 生成最终用户可读结论的 service。
     conclusion_generator: ConclusionGeneratorProtocol
+    # 从当前 run 稳定输出中提取长期 memory candidate 的 service。
     memory_distiller: MemoryDistillerProtocol
+    # 将 memory candidate 写入 typed durable store 的持久化 service。
     memory_persistence: MemoryPersistenceProtocol
+    # 滚动更新短期 session continuity memory 的 service。
     session_continuity_manager: SessionContinuityManagerProtocol
+    # 将 ExecutionContext 映射为 API 层 StructuredOutput 的输出组装 service。
     response_assembler: ResponseAssemblerProtocol
 
 

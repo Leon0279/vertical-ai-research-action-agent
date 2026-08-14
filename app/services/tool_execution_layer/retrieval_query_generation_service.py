@@ -22,9 +22,9 @@ class _LLMQueryGenerationPayload(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    generated_query: str = Field(min_length=1)
-    query_focus: str = Field(min_length=1)
-    preserved_terms: list[str] = Field(default_factory=list)
+    generated_query: str = Field(min_length=1, description="必填字段。为已选 retrieval family 生成的可执行检索查询文本。")
+    query_focus: str = Field(min_length=1, description="必填字段。该查询优先覆盖的证据目标或问题焦点说明。")
+    preserved_terms: list[str] = Field(default_factory=list, description="可选字段，默认空列表。生成查询时必须保留的关键实体、约束或术语。")
 
 
 class RetrievalQueryGenerationService(RetrievalQueryGenerationServiceProtocol):

@@ -16,20 +16,32 @@ from app.config.env_loader import load_env_file
 class LlmsTxtDocsSourceConfig(BaseModel):
     """Single llms.txt documentation source configuration."""
 
-    sub_source_type: str = Field(min_length=1)
-    llms_txt_url: str = Field(min_length=1)
-    allowed_url_prefixes: list[str] = Field(default_factory=list)
+    sub_source_type: str = Field(
+        min_length=1,
+        description="必填字段。docs 子来源类型标识，例如 openai_api；用于筛选和标记检索结果。",
+    )
+    llms_txt_url: str = Field(
+        min_length=1,
+        description="必填字段。该文档来源公开 llms.txt 清单的地址，adapter 会从这里加载可检索页面。",
+    )
+    allowed_url_prefixes: list[str] = Field(
+        default_factory=list,
+        description="可选字段，默认空列表。允许从该 llms.txt 清单继续抓取正文的 URL 前缀白名单。",
+    )
 
 
 class LlmsTxtDocsSearchClientConfig(BaseModel):
     """Typed runtime settings for llms.txt docs search."""
 
-    sources: list[LlmsTxtDocsSourceConfig] = Field(default_factory=list)
-    timeout_seconds: float = Field(default=10.0, gt=0)
-    default_limit: int = Field(default=5, gt=0)
-    max_limit: int = Field(default=20, gt=0)
-    fetch_top_pages: int = Field(default=3, ge=0)
-    max_page_chars: int = Field(default=60_000, gt=0)
+    sources: list[LlmsTxtDocsSourceConfig] = Field(
+        default_factory=list,
+        description="可选字段，默认空列表。可供 docs search 使用的 llms.txt 文档来源配置集合。",
+    )
+    timeout_seconds: float = Field(default=10.0, gt=0, description="单次文档清单或页面 HTTP 请求的超时时间，单位秒。")
+    default_limit: int = Field(default=5, gt=0, description="调用方未指定 limit 时返回的默认文档结果数量。")
+    max_limit: int = Field(default=20, gt=0, description="单次 docs search 允许请求的最大结果数量，用于防止过量抓取。")
+    fetch_top_pages: int = Field(default=3, ge=0, description="每次搜索后最多抓取正文的高排名页面数量；0 表示只返回清单摘要。")
+    max_page_chars: int = Field(default=60_000, gt=0, description="单个抓取页面允许保留的最大字符数，用于限制正文体积。")
 
     @classmethod
     def from_env(cls) -> "LlmsTxtDocsSearchClientConfig":

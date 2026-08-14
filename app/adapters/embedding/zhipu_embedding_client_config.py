@@ -15,12 +15,12 @@ from app.config.env_loader import load_env_file
 class ZhipuEmbeddingClientConfig(BaseModel):
     """Typed runtime settings for Zhipu embeddings."""
 
-    api_key: str
-    base_url: str = "https://open.bigmodel.cn/api/paas/v4"
-    model: str = "embedding-3"
-    dimensions: int = Field(default=1024, gt=0)
-    timeout_seconds: float = Field(default=30.0, gt=0)
-    max_batch_size: int = Field(default=64, gt=0)
+    api_key: str = Field(description="必填字段。调用智谱 embedding API 所需的认证密钥，不应写入日志或返回结果。")
+    base_url: str = Field(default="https://open.bigmodel.cn/api/paas/v4", description="智谱 embedding API 的基础地址。")
+    model: str = Field(default="embedding-3", description="要调用的智谱 embedding 模型名称；模型与 dimensions 的组合会被校验。")
+    dimensions: int = Field(default=1024, gt=0, description="请求 embedding 向量维度；可选值受具体模型能力限制。")
+    timeout_seconds: float = Field(default=30.0, gt=0, description="单次 embedding HTTP 调用的超时时间，单位秒。")
+    max_batch_size: int = Field(default=64, gt=0, description="一次 embedding 请求允许打包的最大文本数量。")
 
     @model_validator(mode="after")
     def validate_model_dimensions(self) -> "ZhipuEmbeddingClientConfig":

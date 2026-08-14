@@ -15,14 +15,14 @@ from app.config.env_loader import load_env_file
 class TavilyWebSearchClientConfig(BaseModel):
     """Typed runtime settings for Tavily-backed web search."""
 
-    api_key: str
-    base_url: str = "https://api.tavily.com"
-    timeout_seconds: float = Field(default=10.0, gt=0)
-    default_limit: int = Field(default=5, gt=0)
-    max_limit: int = Field(default=20, gt=0)
-    topic: str = "general"
-    include_answer: bool = False
-    include_raw_content: bool = False
+    api_key: str = Field(description="必填字段。调用 Tavily web search API 的认证密钥，不应进入日志或最终输出。")
+    base_url: str = Field(default="https://api.tavily.com", description="Tavily web search API 的基础地址。")
+    timeout_seconds: float = Field(default=10.0, gt=0, description="单次 Tavily search HTTP 请求的超时时间，单位秒。")
+    default_limit: int = Field(default=5, gt=0, description="调用方未指定 limit 时返回的默认 web 结果数量。")
+    max_limit: int = Field(default=20, gt=0, description="单次 web search 允许请求的最大结果数量。")
+    topic: str = Field(default="general", description="Tavily search 使用的主题分类；当前默认 general。")
+    include_answer: bool = Field(default=False, description="是否请求 Tavily 返回其 provider 级 answer 摘要；当前默认关闭，避免把它当作最终结论。")
+    include_raw_content: bool = Field(default=False, description="是否请求 Tavily 返回 raw content；当前默认关闭以控制 payload 大小。")
 
     @classmethod
     def from_env(cls) -> "TavilyWebSearchClientConfig":

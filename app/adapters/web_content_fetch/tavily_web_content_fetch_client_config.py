@@ -19,15 +19,15 @@ ContentFormat = Literal["markdown", "text"]
 class TavilyWebContentFetchClientConfig(BaseModel):
     """Typed runtime settings for Tavily Extract-backed content fetch."""
 
-    api_key: str
-    base_url: str = "https://api.tavily.com"
-    http_timeout_seconds: float = Field(default=20.0, gt=0)
-    default_extract_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
-    default_extract_depth: ExtractDepth = "basic"
-    default_format: ContentFormat = "markdown"
-    default_include_images: bool = False
-    default_include_favicon: bool = False
-    default_include_usage: bool = False
+    api_key: str = Field(description="必填字段。调用 Tavily Extract API 的认证密钥，不应进入日志或最终输出。")
+    base_url: str = Field(default="https://api.tavily.com", description="Tavily Extract API 的基础地址。")
+    http_timeout_seconds: float = Field(default=20.0, gt=0, description="调用 Tavily Extract HTTP 接口的网络超时时间，单位秒。")
+    default_extract_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0, description="请求 Tavily Extract 在 provider 侧处理内容的默认超时时间，单位秒。")
+    default_extract_depth: ExtractDepth = Field(default="basic", description="默认正文抽取深度：basic 更轻量，advanced 通常更深入但成本更高。")
+    default_format: ContentFormat = Field(default="markdown", description="默认返回内容格式，可为 markdown 或 text。")
+    default_include_images: bool = Field(default=False, description="是否在抽取响应中包含图片相关信息；当前默认关闭。")
+    default_include_favicon: bool = Field(default=False, description="是否在抽取响应中包含站点 favicon 信息；当前默认关闭。")
+    default_include_usage: bool = Field(default=False, description="是否在抽取响应中包含 provider usage 信息；当前默认关闭。")
 
     @classmethod
     def from_env(cls) -> "TavilyWebContentFetchClientConfig":

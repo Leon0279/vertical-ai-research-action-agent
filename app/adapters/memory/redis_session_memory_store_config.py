@@ -13,9 +13,9 @@ from app.config.env_loader import load_env_file
 class RedisSessionMemoryStoreConfig(BaseModel):
     """Typed settings for Redis session memory storage."""
 
-    redis_url: str
-    key_prefix: str = Field(default="session_memory", min_length=1)
-    ttl_seconds: int = Field(default=86_400, gt=0)
+    redis_url: str = Field(description="必填字段。连接 Redis session memory 存储所使用的 URL。")
+    key_prefix: str = Field(default="session_memory", min_length=1, description="Redis session memory key 的统一前缀，用于与其它缓存类型隔离。")
+    ttl_seconds: int = Field(default=86_400, gt=0, description="session memory 写入 Redis 后的存活时间，单位秒；过期不会影响长期 memory。")
 
     @classmethod
     def from_env(cls) -> "RedisSessionMemoryStoreConfig":

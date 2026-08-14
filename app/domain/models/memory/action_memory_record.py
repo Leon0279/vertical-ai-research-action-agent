@@ -14,101 +14,99 @@ class ActionMemoryRecord(BaseModel):
 
     action_id: str = Field(
         min_length=1,
-        description="Primary identifier for one durable action memory record.",
+        description="必填字段。一条 durable action memory record 的主标识，用于更新、状态迁移和关联。",
     )
     user_id: str = Field(
         min_length=1,
-        description="User ownership boundary for this project-scoped action memory.",
+        description="必填字段。该项目范围 action memory 的用户归属边界，用于访问隔离。",
     )
     project_id: str = Field(
         min_length=1,
-        description="Stable logical project identifier under which this action belongs.",
+        description="必填字段。该 action 所属的稳定逻辑 project 标识。",
     )
     parent_decision_id: str | None = Field(
         default=None,
-        description="Optional linked decision that this action originated from.",
+        description="可选字段。该 action 派生自的上游 decision record 标识；没有关联决策时为 None。",
     )
     action_title: str | None = Field(
         default=None,
-        description="Short title of the action item.",
+        description="可选字段。行动项的简短标题；没有标题时为 None。",
     )
     action_description: str | None = Field(
         default=None,
-        description="Detailed description of the action item.",
+        description="可选字段。行动项的详细执行描述、范围或预期产出；没有说明时为 None。",
     )
     action_status: str = Field(
         min_length=1,
         description=(
-            "Domain-specific business state of the action, such as todo, "
-            "in_progress, blocked, done, or cancelled."
+            "必填字段。action 的业务状态，例如 todo、in_progress、blocked、done 或 cancelled。"
         ),
     )
     priority: str | None = Field(
         default=None,
-        description="Priority of the action item.",
+        description="可选字段。行动项优先级，用于排序和执行安排。",
     )
     owner: str | None = Field(
         default=None,
-        description="Optional owner responsible for the action item.",
+        description="可选字段。负责该行动项的 owner；未指定时为 None。",
     )
     due_at: datetime | None = Field(
         default=None,
-        description="Optional due date for the action item.",
+        description="可选字段。行动项的截止时间；未设置时为 None。",
     )
     blocking_reason: str | None = Field(
         default=None,
-        description="Optional reason that the action is currently blocked.",
+        description="可选字段。行动项当前受阻的原因；非 blocked 状态或未知时为 None。",
     )
     result_summary: str | None = Field(
         default=None,
-        description="Optional summary of the outcome after the action completes.",
+        description="可选字段。行动完成后的结果摘要；尚未完成或未记录结果时为 None。",
     )
     completed_at: datetime | None = Field(
         default=None,
-        description="Timestamp when the action was completed, if known.",
+        description="可选字段。行动完成的时间；尚未完成或未知时为 None。",
     )
     record_status: str = Field(
         min_length=1,
         description=(
-            "Lifecycle status of this memory record, such as active, archived, "
-            "or pruned."
+            "必填字段。该 memory record 的生命周期状态，例如 active、archived 或 pruned。"
         ),
     )
     confidence: float | None = Field(
         default=None,
-        description="Confidence score for the current action record.",
+        description="可选字段。当前 action record 内容的可信度数值；未评估时为 None。",
     )
     embedding_text: str | None = Field(
         default=None,
         description=(
-            "Embedding input text used for same-type similarity-assisted candidate resolution."
+            "可选字段。用于同类型语义相似度解析的 embedding 输入文本。"
         ),
     )
     embedding_model: str | None = Field(
         default=None,
-        description="Embedding model used to generate the associated embedding representation.",
+        description="可选字段。生成关联 embedding 表示时使用的模型名称。",
     )
     embedding_version: str | None = Field(
         default=None,
-        description="Version of the embedding model or embedding generation configuration.",
+        description="可选字段。embedding 模型或生成配置的版本标识。",
     )
     created_at: datetime | None = Field(
         default=None,
-        description="Timestamp when this action memory record was created.",
+        description="可选字段。该 action memory record 首次创建时间。",
     )
     updated_at: datetime | None = Field(
         default=None,
-        description="Timestamp when this action memory record was last updated.",
+        description="可选字段。该 action memory record 最近更新时间。",
     )
     derived_from_session_id: str | None = Field(
         default=None,
-        description="Optional source session identifier from which this record was distilled.",
+        description="可选字段。提炼出该记录的来源 session 标识；无 session 来源时为 None。",
     )
     derived_from_run_id: str | None = Field(
         default=None,
-        description="Optional source run identifier from which this record was distilled.",
+        description="可选字段。提炼出该记录的来源 run 标识；无 run 来源时为 None。",
     )
     source_refs: list[str] = Field(
         default_factory=list,
-        description="Optional supporting source references for this action record.",
+        description="可选字段，默认空列表。支撑该 action record 的轻量来源句柄列表，不保存完整 SourceReference。",
     )

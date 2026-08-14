@@ -27,39 +27,39 @@ class RequestCompletionEvaluationResult(BaseModel):
     """Output of evaluating request completion and recovery need."""
 
     evaluation_status: EvaluationStatus = Field(
-        description="Whether evaluation completed successfully or failed due to bad input.",
+        description="必填字段。evaluation 是否成功完成，或因输入/内部异常而失败。",
     )
     request_completion_status: RequestCompletionStatus | None = Field(
         default=None,
-        description="Whether the request is complete, recoverable, or unrecoverable.",
+        description="可选字段。当前请求是 complete、可恢复未完成还是不可恢复未完成；evaluation 失败时为 None。",
     )
     request_completed: bool = Field(
-        description="Whether the current request should be considered complete.",
+        description="当前请求是否应被视为完成，用于 TEL 控制是否继续 attempt。",
     )
     needs_recovery: bool = Field(
-        description="Whether a recovery path should be considered by downstream orchestration.",
+        description="下游 orchestration 是否应考虑 retry 或 fallback 等恢复路径。",
     )
     recovery_action: RecoveryAction | None = Field(
         default=None,
-        description="Minimal recovery action signal; never a direct execution command.",
+        description="可选字段。最小恢复动作信号，不是直接执行命令；没有恢复需求时为 None。",
     )
     recovery_reason: str | None = Field(
         default=None,
-        description="Human-readable explanation for the recovery or stop decision.",
+        description="可选字段。对恢复或停止决策的人类可读说明；没有说明时为 None。",
     )
     next_step_hint: NextStepHint | None = Field(
         default=None,
-        description="Compact hint for the next orchestration step.",
+        description="可选字段。供 ToolExecutionLayerService 解释下一步处理的紧凑提示。",
     )
     evaluation_summary: dict[str, Any] = Field(
         default_factory=dict,
-        description="Compact summary of evaluation outcome and policy.",
+        description="可选字段，默认空字典。evaluation outcome 与策略判断的紧凑摘要；仅放稳定观测信息。",
     )
     evaluation_trace: dict[str, Any] = Field(
         default_factory=dict,
-        description="Trace of normalized inputs and computed recovery availability.",
+        description="可选字段，默认空字典。归一化输入与 recovery 可用性计算过程的 trace，用于调试与观测。",
     )
     error_info: str | None = Field(
         default=None,
-        description="Top-level evaluation failure explanation when evaluation_status is failed.",
+        description="可选字段。当 evaluation_status 为 failed 时的顶层失败说明；成功时为 None。",
     )
