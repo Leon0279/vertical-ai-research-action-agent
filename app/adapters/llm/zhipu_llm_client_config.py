@@ -11,7 +11,9 @@ from app.config.env_loader import load_env_file
 
 
 class ZhipuLLMClientConfig(BaseModel):
-    """Typed runtime settings for Zhipu chat completions."""
+    """提供智谱大语言模型客户端所需的类型化运行时配置。
+
+Typed runtime settings for Zhipu chat completions."""
 
     api_key: str = Field(description="必填字段。调用智谱 LLM API 所需的认证密钥，不应出现在日志、prompt 或最终输出中。")
     base_url: str = Field(default="https://open.bigmodel.cn/api/paas/v4", description="智谱 chat completion API 的基础地址。")

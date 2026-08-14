@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class PreferencePolicyMemoryRecord(BaseModel):
-    """Typed preference/policy memory record aligned with the adjusted table schema."""
+    """表示偏好策略记忆的持久化记录。
+
+Typed preference/policy memory record aligned with the adjusted table schema."""
 
     model_config = ConfigDict(extra="forbid")
 

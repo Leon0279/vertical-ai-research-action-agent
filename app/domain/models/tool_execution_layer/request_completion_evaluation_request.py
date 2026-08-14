@@ -30,7 +30,9 @@ FallbackPolicy = Literal[
 
 
 class RequestCompletionEvaluationRequest(BaseModel):
-    """Input for evaluating request completion and recovery need after one execution."""
+    """表示请求完成度评估的输入请求。
+
+Input for evaluating request completion and recovery need after one execution."""
 
     target_problem: str = Field(
         description="必填字段。本次 Tool Execution Layer attempt 要解决的当前 retrieval target problem。",

@@ -15,7 +15,9 @@ from app.domain.models import SessionMemory
 
 
 class RedisSessionMemoryStore(SessionMemoryStoreProtocol):
-    """Persist compact session continuity memory in Redis."""
+    """提供Redis会话记忆的持久化存储适配。
+
+Persist compact session continuity memory in Redis."""
 
     def __init__(
         self,

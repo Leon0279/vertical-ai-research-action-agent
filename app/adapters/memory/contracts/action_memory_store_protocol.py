@@ -9,7 +9,9 @@ from app.domain.models import ActionMemoryRecord
 
 @runtime_checkable
 class ActionMemoryStoreProtocol(Protocol):
-    """Protocol for the action_memory table adapter."""
+    """定义行动记忆存储的抽象交互契约。
+
+Protocol for the action_memory table adapter."""
 
     async def list_active_actions(
         self,

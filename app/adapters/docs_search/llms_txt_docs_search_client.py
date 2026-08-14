@@ -35,6 +35,7 @@ TOKEN_PATTERN = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*")
 @dataclass(frozen=True)
 class _ManifestEntry:
     # llms.txt 中声明的页面标题，作为结果展示和全文抓取的语义标签。
+    """表示从 llms.txt 解析出的文档清单条目。"""
     title: str
     # 页面绝对 URL，是构造 SourceReference 与抓取正文的稳定定位地址。
     url: str
@@ -49,13 +50,16 @@ class _ManifestEntry:
 @dataclass(frozen=True)
 class _ScoredEntry:
     # 已解析的 llms.txt 清单条目。
+    """表示附带相关性分数的文档清单条目。"""
     entry: _ManifestEntry
     # adapter 依据 query token 计算的内部相关性分数，仅用于本次排序。
     score: float
 
 
 class LlmsTxtDocsSearchClient(DocsSearchClientProtocol):
-    """Search configured official documentation sources exposed through llms.txt."""
+    """封装基于 llms.txt 的官方文档搜索调用。
+
+Search configured official documentation sources exposed through llms.txt."""
 
     def __init__(
         self,

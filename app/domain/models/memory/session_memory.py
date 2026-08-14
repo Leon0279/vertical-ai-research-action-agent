@@ -11,7 +11,9 @@ from app.domain.models.memory.session_turn_summary import SessionTurnSummary
 
 
 class SessionMemory(BaseModel):
-    """Redis-backed compact working memory for one user session."""
+    """表示单个用户会话的紧凑工作记忆。
+
+Redis-backed compact working memory for one user session."""
 
     model_config = ConfigDict(extra="forbid")
 

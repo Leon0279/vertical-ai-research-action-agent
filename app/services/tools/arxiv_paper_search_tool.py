@@ -30,7 +30,9 @@ from app.services.tools.contracts.arxiv_paper_search_tool_protocol import (
 
 
 class ArxivPaperSearchTool(ArxivPaperSearchToolProtocol):
-    """Tool service that searches arXiv papers and fetches full text for top candidates."""
+    """封装arXiv论文搜索的工具调用逻辑。
+
+Tool service that searches arXiv papers and fetches full text for top candidates."""
 
     def __init__(
         self,

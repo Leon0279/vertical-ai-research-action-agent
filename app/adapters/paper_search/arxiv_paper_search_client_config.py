@@ -13,7 +13,9 @@ from app.config.env_loader import load_env_file
 
 
 class ArxivPaperSearchClientConfig(BaseModel):
-    """Typed runtime settings for arXiv paper search."""
+    """提供arXiv论文搜索客户端所需的类型化运行时配置。
+
+Typed runtime settings for arXiv paper search."""
 
     base_url: str = Field(default="https://export.arxiv.org/api", description="arXiv Atom search API 的基础地址。")
     timeout_seconds: float = Field(default=10.0, gt=0, description="单次 arXiv search HTTP 请求的超时时间，单位秒。")

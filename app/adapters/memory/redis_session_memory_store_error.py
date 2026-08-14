@@ -2,4 +2,6 @@
 
 
 class RedisSessionMemoryStoreError(Exception):
-    """Redis session memory adapter configuration or setup error."""
+    """表示Redis会话记忆存储执行过程中发生的错误。
+
+Redis session memory adapter configuration or setup error."""

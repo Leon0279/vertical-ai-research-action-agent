@@ -19,7 +19,9 @@ from app.domain.models import ProjectProfileMemoryRecord
 
 
 class PostgresProjectProfileMemoryStore(ProjectProfileMemoryStoreProtocol):
-    """Persist project profile memory records in PostgreSQL."""
+    """提供PostgreSQL项目档案记忆的持久化存储适配。
+
+Persist project profile memory records in PostgreSQL."""
 
     def __init__(
         self,

@@ -6,7 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ResearchKnowledgeRecallQuery(BaseModel):
-    """Metadata filters plus a precomputed query embedding for knowledge recall."""
+    """表示从研究知识库召回信息的查询条件。
+
+Metadata filters plus a precomputed query embedding for knowledge recall."""
 
     model_config = ConfigDict(extra="forbid")
 

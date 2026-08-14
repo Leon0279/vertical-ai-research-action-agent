@@ -15,7 +15,9 @@ from app.services.planner.contracts.task_interpreter_protocol import TaskInterpr
 
 
 class TaskInterpreterService(TaskInterpreterProtocol):
-    """Interpret task intent with an optional LLM and deterministic fallback."""
+    """负责处理任务Interpreter相关业务逻辑的服务。
+
+Interpret task intent with an optional LLM and deterministic fallback."""
 
     def __init__(self, llm_client: LLMClientProtocol | None = None) -> None:
         self._llm_client = llm_client

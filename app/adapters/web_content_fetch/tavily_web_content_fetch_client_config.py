@@ -17,7 +17,9 @@ ContentFormat = Literal["markdown", "text"]
 
 
 class TavilyWebContentFetchClientConfig(BaseModel):
-    """Typed runtime settings for Tavily Extract-backed content fetch."""
+    """提供Tavily网页内容获取客户端所需的类型化运行时配置。
+
+Typed runtime settings for Tavily Extract-backed content fetch."""
 
     api_key: str = Field(description="必填字段。调用 Tavily Extract API 的认证密钥，不应进入日志或最终输出。")
     base_url: str = Field(default="https://api.tavily.com", description="Tavily Extract API 的基础地址。")

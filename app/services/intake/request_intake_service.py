@@ -8,7 +8,9 @@ from app.services.intake.contracts.request_intake_protocol import RequestIntakeP
 
 
 class RequestIntakeService(RequestIntakeProtocol):
-    """Normalize request input and initialize the execution context."""
+    """负责处理请求接入相关业务逻辑的服务。
+
+Normalize request input and initialize the execution context."""
 
     async def intake(self, request: RequestContext) -> ExecutionContext:
         original_query = request.original_query.strip()

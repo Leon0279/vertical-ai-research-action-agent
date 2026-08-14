@@ -12,7 +12,9 @@ from app.adapters.llm.zhipu_llm_client_error import ZhipuLLMClientError
 
 
 class ZhipuLLMClient(LLMClientProtocol):
-    """HTTP client for Zhipu chat completions."""
+    """封装智谱聊天补全接口的 HTTP 调用。
+
+HTTP client for Zhipu chat completions."""
 
     def __init__(
         self,

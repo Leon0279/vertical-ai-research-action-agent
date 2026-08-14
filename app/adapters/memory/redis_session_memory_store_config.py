@@ -11,7 +11,9 @@ from app.config.env_loader import load_env_file
 
 
 class RedisSessionMemoryStoreConfig(BaseModel):
-    """Typed settings for Redis session memory storage."""
+    """提供Redis会话记忆存储所需的类型化运行时配置。
+
+Typed settings for Redis session memory storage."""
 
     redis_url: str = Field(description="必填字段。连接 Redis session memory 存储所使用的 URL。")
     key_prefix: str = Field(default="session_memory", min_length=1, description="Redis session memory key 的统一前缀，用于与其它缓存类型隔离。")

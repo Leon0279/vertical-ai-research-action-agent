@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 
 
 class ContextItem(BaseModel):
-    """Selected supporting context retained outside core running state."""
+    """表示可注入执行上下文的单条信息。
+
+Selected supporting context retained outside core running state."""
 
     id: str = Field(
         min_length=1,

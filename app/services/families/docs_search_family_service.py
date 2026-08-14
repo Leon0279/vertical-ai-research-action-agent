@@ -21,7 +21,9 @@ from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
 
 
 class DocsSearchFamilyService(DocsSearchFamilyServiceProtocol):
-    """Resolve a docs_search family request to a concrete docs tool."""
+    """负责处理文档搜索检索族相关业务逻辑的服务。
+
+Resolve a docs_search family request to a concrete docs tool."""
 
     _FAMILY_NAME = FamilyName.DOCS_SEARCH
     _DEFAULT_TOOL_ID = "llms_txt_docs_search_v1"

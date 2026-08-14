@@ -8,7 +8,9 @@ from app.domain.models.conclusion.final_recommendation import FinalRecommendatio
 
 
 class ConclusionResult(BaseModel):
-    """Aggregated structured conclusion."""
+    """表示结论的处理结果。
+
+Aggregated structured conclusion."""
 
     summary: str = Field(description="必填字段。结论的简短摘要，用于快速表达当前回答的核心信息，不承载完整用户答案。")
     recommendation: FinalRecommendation | None = Field(

@@ -2,4 +2,6 @@
 
 
 class LlmsTxtDocsSearchClientError(RuntimeError):
-    """Raised when docs search configuration, retrieval, or parsing fails."""
+    """表示 llms.txt 文档搜索过程中的错误。
+
+Raised when docs search configuration, retrieval, or parsing fails."""

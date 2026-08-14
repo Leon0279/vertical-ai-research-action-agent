@@ -13,7 +13,9 @@ from app.config.env_loader import load_env_file
 
 
 class ZhipuEmbeddingClientConfig(BaseModel):
-    """Typed runtime settings for Zhipu embeddings."""
+    """提供智谱嵌入客户端所需的类型化运行时配置。
+
+Typed runtime settings for Zhipu embeddings."""
 
     api_key: str = Field(description="必填字段。调用智谱 embedding API 所需的认证密钥，不应写入日志或返回结果。")
     base_url: str = Field(default="https://open.bigmodel.cn/api/paas/v4", description="智谱 embedding API 的基础地址。")

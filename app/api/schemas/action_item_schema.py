@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 
 
 class ActionItemSchema(BaseModel):
-    """User-facing action item structure."""
+    """定义行动条目的传输与校验模式。
+
+User-facing action item structure."""
 
     title: str = Field(description="必填字段。向 API 调用方展示的行动项标题，说明用户下一步可执行的事项。")
     description: str | None = Field(

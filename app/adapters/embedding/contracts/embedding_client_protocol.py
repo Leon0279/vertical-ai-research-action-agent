@@ -9,7 +9,9 @@ from app.domain.models import EmbeddingResult
 
 @runtime_checkable
 class EmbeddingClientProtocol(Protocol):
-    """Protocol for text embedding generation adapters."""
+    """定义嵌入客户端的抽象交互契约。
+
+Protocol for text embedding generation adapters."""
 
     async def embed_text(self, text: str) -> EmbeddingResult:
         """Generate an embedding for one text."""

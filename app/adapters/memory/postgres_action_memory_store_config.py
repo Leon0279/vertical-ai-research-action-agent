@@ -13,7 +13,9 @@ from app.config.env_loader import load_env_file
 
 
 class PostgresActionMemoryStoreConfig(BaseModel):
-    """Typed runtime settings for the action_memory adapter."""
+    """提供PostgreSQL行动记忆存储所需的类型化运行时配置。
+
+Typed runtime settings for the action_memory adapter."""
 
     dsn: str = Field(description="必填字段。连接 PostgreSQL action memory 存储所使用的数据源连接字符串。")
     schema_name: str = Field(default="public", min_length=1, description="action memory 表所在 PostgreSQL schema 名称。")

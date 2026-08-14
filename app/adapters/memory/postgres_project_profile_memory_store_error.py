@@ -2,4 +2,6 @@
 
 
 class PostgresProjectProfileMemoryStoreError(Exception):
-    """Project profile PostgreSQL adapter configuration or persistence error."""
+    """表示PostgreSQL项目档案记忆存储执行过程中发生的错误。
+
+Project profile PostgreSQL adapter configuration or persistence error."""

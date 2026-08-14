@@ -14,7 +14,9 @@ from app.config.env_loader import load_env_file
 
 
 class LlmsTxtDocsSourceConfig(BaseModel):
-    """Single llms.txt documentation source configuration."""
+    """提供单个 llms.txt 文档来源的类型化配置。
+
+Single llms.txt documentation source configuration."""
 
     sub_source_type: str = Field(
         min_length=1,
@@ -31,7 +33,9 @@ class LlmsTxtDocsSourceConfig(BaseModel):
 
 
 class LlmsTxtDocsSearchClientConfig(BaseModel):
-    """Typed runtime settings for llms.txt docs search."""
+    """提供 llms.txt 文档搜索客户端的类型化运行时配置。
+
+Typed runtime settings for llms.txt docs search."""
 
     sources: list[LlmsTxtDocsSourceConfig] = Field(
         default_factory=list,

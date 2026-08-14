@@ -6,7 +6,9 @@ from app.services.executor.execution_guardrails import ExecutionGuardrails
 
 
 class LoopControllerService(LoopControllerProtocol):
-    """Simple loop controller bounded by static guardrails."""
+    """根据执行边界决定研究循环是否继续。
+
+Simple loop controller bounded by static guardrails."""
 
     def __init__(self, guardrails: ExecutionGuardrails | None = None) -> None:
         self._guardrails = guardrails or ExecutionGuardrails()

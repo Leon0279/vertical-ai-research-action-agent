@@ -13,7 +13,9 @@ from app.config.env_loader import load_env_file
 
 
 class PostgresResearchKnowledgeMemoryStoreConfig(BaseModel):
-    """Typed runtime settings for the research_knowledge_units adapter."""
+    """提供PostgreSQL研究知识记忆存储所需的类型化运行时配置。
+
+Typed runtime settings for the research_knowledge_units adapter."""
 
     dsn: str = Field(description="必填字段。连接 PostgreSQL research knowledge memory 存储所使用的数据源连接字符串。")
     schema_name: str = Field(default="public", min_length=1, description="research knowledge unit 表所在 PostgreSQL schema 名称。")

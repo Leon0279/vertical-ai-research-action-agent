@@ -8,7 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProjectProfileMemoryRecord(BaseModel):
-    """Typed project profile memory record aligned with the LLD table schema."""
+    """表示项目档案记忆的持久化记录。
+
+Typed project profile memory record aligned with the LLD table schema."""
 
     model_config = ConfigDict(extra="forbid")
 

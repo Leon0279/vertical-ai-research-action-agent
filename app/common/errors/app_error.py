@@ -2,5 +2,7 @@
 
 
 class AppError(Exception):
-    """Base class for project-specific errors."""
+    """表示应用内部异常的基础类型。
+
+Base class for project-specific errors."""
 

@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 
 
 class RequestTrace(BaseModel):
-    """Minimal request-level trace metadata."""
+    """记录单次请求在工作流中的追踪信息。
+
+Minimal request-level trace metadata."""
 
     trace_id: str = Field(description="必填字段。当前请求运行的唯一追踪标识，用于日志关联和问题排查。")
     task_type: str | None = Field(

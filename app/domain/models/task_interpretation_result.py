@@ -8,7 +8,9 @@ from app.domain.enums.task_type import TaskType
 
 
 class TaskInterpretationResult(BaseModel):
-    """Initial semantic interpretation of a normalized user request."""
+    """表示任务理解的处理结果。
+
+Initial semantic interpretation of a normalized user request."""
 
     model_config = ConfigDict(extra="forbid")
 

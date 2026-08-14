@@ -7,7 +7,9 @@ from app.services.output.contracts.response_assembler_protocol import ResponseAs
 
 
 class ResponseAssemblerService(ResponseAssemblerProtocol):
-    """Assemble final structured output from execution context."""
+    """负责处理响应组装器相关业务逻辑的服务。
+
+Assemble final structured output from execution context."""
 
     async def assemble(self, context: ExecutionContext) -> StructuredOutput:
         state = context.running_state

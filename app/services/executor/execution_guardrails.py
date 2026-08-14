@@ -5,7 +5,9 @@ from dataclasses import dataclass
 
 @dataclass(slots=True)
 class ExecutionGuardrails:
-    """Budget and boundary settings for research execution."""
+    """定义研究执行过程中的预算与边界限制。
+
+Budget and boundary settings for research execution."""
 
     # 单次 ResearchExecutorService.execute 调用允许执行的最大 research iteration 数。
     max_iterations: int = 2

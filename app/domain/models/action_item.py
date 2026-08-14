@@ -8,7 +8,9 @@ from pydantic import BaseModel, Field
 
 
 class ActionItem(BaseModel):
-    """Actionable next step."""
+    """表示面向用户的行动建议条目。
+
+Actionable next step."""
 
     title: str = Field(description="必填字段。面向用户或下游任务系统展示的行动项标题，应简洁说明下一步要做什么。")
     description: str | None = Field(

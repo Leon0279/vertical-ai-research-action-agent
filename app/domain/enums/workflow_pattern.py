@@ -4,7 +4,9 @@ from enum import StrEnum
 
 
 class WorkflowPattern(StrEnum):
-    """Execution patterns selected by the workflow router."""
+    """定义工作流模式的可选枚举值。
+
+Execution patterns selected by the workflow router."""
 
     TOPIC_EXPLORATION = "TOPIC_EXPLORATION_FLOW"
     COMPARISON = "COMPARISON_FLOW"

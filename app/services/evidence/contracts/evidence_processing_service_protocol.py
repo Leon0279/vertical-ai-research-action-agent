@@ -9,7 +9,9 @@ from app.domain.models import EvidenceProcessingRequest, EvidenceProcessingResul
 
 @runtime_checkable
 class EvidenceProcessingServiceProtocol(Protocol):
-    """Converts Tool Execution Layer outputs into processed evidence units."""
+    """定义证据处理服务的抽象交互契约。
+
+Converts Tool Execution Layer outputs into processed evidence units."""
 
     async def process(
         self,

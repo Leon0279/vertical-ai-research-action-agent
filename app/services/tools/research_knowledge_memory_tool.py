@@ -27,7 +27,9 @@ from app.services.tools.contracts.research_knowledge_memory_tool_protocol import
 
 
 class ResearchKnowledgeMemoryTool(ResearchKnowledgeMemoryToolProtocol):
-    """Tool service that recalls reusable research knowledge from memory."""
+    """封装研究知识记忆的工具调用逻辑。
+
+Tool service that recalls reusable research knowledge from memory."""
 
     def __init__(
         self,

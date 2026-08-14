@@ -4,7 +4,9 @@ from enum import StrEnum
 
 
 class MemoryType(StrEnum):
-    """Memory categories aligned with HLD memory architecture."""
+    """定义记忆类型的可选值。
+
+Memory categories aligned with HLD memory architecture."""
 
     PROJECT_PROFILE = "PROJECT_PROFILE"
     RESEARCH_KNOWLEDGE = "RESEARCH_KNOWLEDGE"

@@ -10,7 +10,9 @@ from app.services.planner.contracts.decomposition_planner_protocol import Decomp
 
 
 class DecompositionPlannerService(DecompositionPlannerProtocol):
-    """Produce deterministic MVP planning artifacts."""
+    """负责处理拆解规划器相关业务逻辑的服务。
+
+Produce deterministic MVP planning artifacts."""
 
     async def plan(self, context: ExecutionContext) -> None:
         state = context.running_state

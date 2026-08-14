@@ -9,7 +9,9 @@ from app.domain.models import ExecutionContext
 
 @runtime_checkable
 class ConclusionGeneratorProtocol(Protocol):
-    """Generates structured conclusion payloads."""
+    """定义结论Generator的抽象交互契约。
+
+Generates structured conclusion payloads."""
 
     async def generate(self, context: ExecutionContext) -> None:
         """Create a conclusion from execution context."""

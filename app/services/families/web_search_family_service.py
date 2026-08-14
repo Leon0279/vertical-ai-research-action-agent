@@ -21,7 +21,9 @@ from app.services.tools.contracts.tavily_web_search_tool_protocol import (
 
 
 class WebSearchFamilyService(WebSearchFamilyServiceProtocol):
-    """Resolve a web_search family request to a concrete web tool."""
+    """负责处理网页搜索检索族相关业务逻辑的服务。
+
+Resolve a web_search family request to a concrete web tool."""
 
     _FAMILY_NAME = FamilyName.WEB_SEARCH
     _DEFAULT_TOOL_ID = "tavily_web_search_v1"

@@ -26,7 +26,9 @@ from app.domain.models import (
 
 
 class TavilyWebContentFetchClient(WebContentFetchClientProtocol):
-    """HTTP client for provider-backed web content fetch through Tavily Extract."""
+    """封装Tavily网页内容获取相关的客户端调用。
+
+HTTP client for provider-backed web content fetch through Tavily Extract."""
 
     def __init__(
         self,

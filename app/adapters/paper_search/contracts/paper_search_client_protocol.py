@@ -9,7 +9,9 @@ from app.domain.models import PaperSearchQuery, PaperSearchResponse
 
 @runtime_checkable
 class PaperSearchClientProtocol(Protocol):
-    """Provider-neutral interface for paper search adapters."""
+    """定义论文搜索客户端的抽象交互契约。
+
+Provider-neutral interface for paper search adapters."""
 
     async def search_papers(self, query: PaperSearchQuery) -> PaperSearchResponse:
         """Search for papers using a provider-backed query implementation."""

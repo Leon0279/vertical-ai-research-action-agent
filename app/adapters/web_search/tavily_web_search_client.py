@@ -21,7 +21,9 @@ from app.domain.models import WebSearchQuery, WebSearchResponse, WebSearchResult
 
 
 class TavilyWebSearchClient(WebSearchClientProtocol):
-    """HTTP client for provider-backed web search through Tavily."""
+    """封装Tavily网页搜索相关的客户端调用。
+
+HTTP client for provider-backed web search through Tavily."""
 
     def __init__(
         self,

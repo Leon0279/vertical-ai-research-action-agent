@@ -9,7 +9,9 @@ from app.domain.models import PaperContentFetchRequest, PaperContentFetchResult
 
 @runtime_checkable
 class PaperContentFetchClientProtocol(Protocol):
-    """Provider-neutral interface for paper fulltext fetch adapters."""
+    """定义论文内容获取客户端的抽象交互契约。
+
+Provider-neutral interface for paper fulltext fetch adapters."""
 
     async def fetch_content(
         self,

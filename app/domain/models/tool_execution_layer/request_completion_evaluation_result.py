@@ -24,7 +24,9 @@ NextStepHint = Literal[
 
 
 class RequestCompletionEvaluationResult(BaseModel):
-    """Output of evaluating request completion and recovery need."""
+    """表示请求完成度评估的处理结果。
+
+Output of evaluating request completion and recovery need."""
 
     evaluation_status: EvaluationStatus = Field(
         description="必填字段。evaluation 是否成功完成，或因输入/内部异常而失败。",

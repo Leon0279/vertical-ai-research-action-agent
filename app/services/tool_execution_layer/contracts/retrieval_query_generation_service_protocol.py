@@ -12,7 +12,9 @@ from app.domain.models import (
 
 @runtime_checkable
 class RetrievalQueryGenerationServiceProtocol(Protocol):
-    """Runtime-facing interface for generating retrieval queries."""
+    """定义检索查询生成服务的抽象交互契约。
+
+Runtime-facing interface for generating retrieval queries."""
 
     async def generate_query(
         self,

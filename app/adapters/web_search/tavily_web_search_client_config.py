@@ -13,7 +13,9 @@ from app.config.env_loader import load_env_file
 
 
 class TavilyWebSearchClientConfig(BaseModel):
-    """Typed runtime settings for Tavily-backed web search."""
+    """提供Tavily网页搜索客户端所需的类型化运行时配置。
+
+Typed runtime settings for Tavily-backed web search."""
 
     api_key: str = Field(description="必填字段。调用 Tavily web search API 的认证密钥，不应进入日志或最终输出。")
     base_url: str = Field(default="https://api.tavily.com", description="Tavily web search API 的基础地址。")

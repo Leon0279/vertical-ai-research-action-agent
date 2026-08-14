@@ -24,7 +24,9 @@ from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
 
 
 class LlmsTxtDocsSearchTool(LlmsTxtDocsSearchToolProtocol):
-    """Tool service that searches official docs via the llms.txt adapter."""
+    """封装 llms.txt 文档搜索工具的执行逻辑。
+
+Tool service that searches official docs via the llms.txt adapter."""
 
     def __init__(self, docs_search_client: DocsSearchClientProtocol) -> None:
         self._docs_search_client = docs_search_client

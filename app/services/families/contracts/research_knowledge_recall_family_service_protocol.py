@@ -12,7 +12,9 @@ from app.domain.models import (
 
 @runtime_checkable
 class ResearchKnowledgeRecallFamilyServiceProtocol(Protocol):
-    """Runtime-facing interface for the research_knowledge_recall family service."""
+    """定义研究知识召回检索族服务的抽象交互契约。
+
+Runtime-facing interface for the research_knowledge_recall family service."""
 
     async def run(
         self,

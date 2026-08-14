@@ -15,7 +15,9 @@ from app.services.tool_execution_layer.contracts.request_completion_evaluation_s
 
 
 class RequestCompletionEvaluationService(RequestCompletionEvaluationServiceProtocol):
-    """Evaluate whether one family execution result is complete or needs recovery."""
+    """负责处理请求完成度评估相关业务逻辑的服务。
+
+Evaluate whether one family execution result is complete or needs recovery."""
 
     _POLICY_NAME = "request_completion_recovery_evaluator_v1"
     _SUPPORTED_FAMILIES = {

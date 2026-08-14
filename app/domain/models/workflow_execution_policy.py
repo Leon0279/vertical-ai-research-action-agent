@@ -9,7 +9,9 @@ from app.domain.enums.planning_depth import PlanningDepth
 
 
 class WorkflowExecutionPolicy(BaseModel):
-    """Lightweight downstream execution policy produced by workflow routing."""
+    """定义工作流执行的策略、规划深度与约束。
+
+Lightweight downstream execution policy produced by workflow routing."""
 
     model_config = ConfigDict(extra="forbid")
 

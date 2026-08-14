@@ -21,7 +21,9 @@ from app.services.tools.contracts.arxiv_paper_search_tool_protocol import (
 
 
 class PaperSearchFamilyService(PaperSearchFamilyServiceProtocol):
-    """Resolve a paper_search family request to a concrete paper tool."""
+    """负责处理论文搜索检索族相关业务逻辑的服务。
+
+Resolve a paper_search family request to a concrete paper tool."""
 
     _FAMILY_NAME = FamilyName.PAPER_SEARCH
     _DEFAULT_TOOL_ID = "arxiv_paper_search_v1"

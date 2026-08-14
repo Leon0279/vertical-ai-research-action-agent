@@ -9,7 +9,9 @@ from app.domain.models import WebContentFetchRequest, WebContentFetchResponse
 
 @runtime_checkable
 class WebContentFetchClientProtocol(Protocol):
-    """Provider-neutral interface for normalized web content fetch adapters."""
+    """定义网页内容获取客户端的抽象交互契约。
+
+Provider-neutral interface for normalized web content fetch adapters."""
 
     async def fetch_content(
         self,

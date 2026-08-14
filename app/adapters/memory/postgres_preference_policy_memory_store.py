@@ -20,7 +20,9 @@ from app.domain.models import PreferencePolicyMemoryRecord
 
 
 class PostgresPreferencePolicyMemoryStore(PreferencePolicyMemoryStoreProtocol):
-    """Persist preference/policy memory records in PostgreSQL."""
+    """提供PostgreSQL偏好策略记忆的持久化存储适配。
+
+Persist preference/policy memory records in PostgreSQL."""
 
     def __init__(
         self,

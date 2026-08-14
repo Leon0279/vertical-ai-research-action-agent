@@ -138,7 +138,9 @@ _EXTERNAL_ALL_CAPABILITY_NAMES = {
 
 
 class _LLMResearchAssessmentPayload(BaseModel):
-    """Service-private schema for the LLM's current-state assessment."""
+    """表示大语言模型研究评估的内部结构化载荷。
+
+Service-private schema for the LLM's current-state assessment."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -149,7 +151,9 @@ class _LLMResearchAssessmentPayload(BaseModel):
 
 
 class _LLMResearchGapPayload(BaseModel):
-    """Service-private schema for one LLM-identified research gap."""
+    """表示大语言模型研究缺口的内部结构化载荷。
+
+Service-private schema for one LLM-identified research gap."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -162,7 +166,9 @@ class _LLMResearchGapPayload(BaseModel):
 
 
 class _LLMNextEvidenceNeedPayload(BaseModel):
-    """Service-private schema for the current iteration's next evidence need."""
+    """表示大语言模型下一步证据需求的内部结构化载荷。
+
+Service-private schema for the current iteration's next evidence need."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -176,7 +182,9 @@ class _LLMNextEvidenceNeedPayload(BaseModel):
 
 
 class _LLMResearchAssessmentAndGapsPayload(BaseModel):
-    """Strict LLM output payload for the full 4.4 research decision block."""
+    """表示大语言模型对研究状态、信息缺口和下一步证据需求的结构化输出。
+
+Strict LLM output payload for the full 4.4 research decision block."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -188,7 +196,9 @@ class _LLMResearchAssessmentAndGapsPayload(BaseModel):
 
 
 class _LLMIntermediateFindingsPayload(BaseModel):
-    """Strict LLM output payload for full intermediate finding replacement."""
+    """表示大语言模型对中间发现的完整替换结果。
+
+Strict LLM output payload for full intermediate finding replacement."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -197,7 +207,9 @@ class _LLMIntermediateFindingsPayload(BaseModel):
 
 
 class _LLMIterationOutcomePayload(BaseModel):
-    """Strict LLM output payload for iteration-end outcome evaluation."""
+    """表示大语言模型对单轮研究迭代结果的结构化判断。
+
+Strict LLM output payload for iteration-end outcome evaluation."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -210,7 +222,9 @@ class _LLMIterationOutcomePayload(BaseModel):
 
 
 class ResearchExecutorService(ResearchExecutorProtocol):
-    """Research stage executor.
+    """负责处理研究执行器相关业务逻辑的服务。
+
+Research stage executor.
 
     The old context-mutating retrieval skeleton has intentionally been removed.
     Future iterations should implement the research loop against ResearchStageInput

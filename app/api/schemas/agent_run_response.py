@@ -11,7 +11,9 @@ from app.api.schemas.citation_schema import CitationSchema
 
 
 class AgentRunResponse(BaseModel):
-    """Single-entry response payload for the run endpoint."""
+    """表示智能体运行的响应数据。
+
+Single-entry response payload for the run endpoint."""
 
     trace_id: str | None = Field(default=None, description="可选字段。当前请求的 trace id。")
     task_type: str = Field(description="必填字段。当前请求的任务类型。")

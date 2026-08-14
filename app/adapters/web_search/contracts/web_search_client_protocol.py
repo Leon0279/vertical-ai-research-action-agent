@@ -9,7 +9,9 @@ from app.domain.models import WebSearchQuery, WebSearchResponse
 
 @runtime_checkable
 class WebSearchClientProtocol(Protocol):
-    """Provider-neutral interface for normalized web search adapters."""
+    """定义网页搜索客户端的抽象交互契约。
+
+Provider-neutral interface for normalized web search adapters."""
 
     async def search_web(self, query: WebSearchQuery) -> WebSearchResponse:
         """Search the web and return normalized result items."""

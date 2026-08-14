@@ -12,7 +12,9 @@ from app.domain.models import (
 
 @runtime_checkable
 class LlmsTxtDocsSearchToolProtocol(Protocol):
-    """Runtime-facing interface for the llms_txt_docs_search tool."""
+    """定义 llms.txt 文档搜索工具的抽象交互契约。
+
+Runtime-facing interface for the llms_txt_docs_search tool."""
 
     async def run(
         self,

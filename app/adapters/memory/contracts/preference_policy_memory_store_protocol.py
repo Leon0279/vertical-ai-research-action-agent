@@ -10,7 +10,9 @@ from app.domain.models import PreferencePolicyMemoryRecord
 
 @runtime_checkable
 class PreferencePolicyMemoryStoreProtocol(Protocol):
-    """Protocol for the preference_policy_memory table adapter."""
+    """定义偏好策略记忆存储的抽象交互契约。
+
+Protocol for the preference_policy_memory table adapter."""
 
     async def list_applicable_policies(
         self,

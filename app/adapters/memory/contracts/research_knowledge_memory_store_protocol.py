@@ -13,7 +13,9 @@ from app.domain.models import (
 
 @runtime_checkable
 class ResearchKnowledgeMemoryStoreProtocol(Protocol):
-    """Protocol for the research_knowledge_units adapter."""
+    """定义研究知识记忆存储的抽象交互契约。
+
+Protocol for the research_knowledge_units adapter."""
 
     async def get_knowledge_unit(
         self,

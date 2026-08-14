@@ -41,7 +41,9 @@ class _LLMConclusionPayload(BaseModel):
 
 
 class ConclusionGeneratorService(ConclusionGeneratorProtocol):
-    """Generate user-facing conclusions from the accumulated execution context."""
+    """负责处理结论Generator相关业务逻辑的服务。
+
+Generate user-facing conclusions from the accumulated execution context."""
 
     def __init__(self, llm_client: LLMClientProtocol) -> None:
         self._llm_client = llm_client

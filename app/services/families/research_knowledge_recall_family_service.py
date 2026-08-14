@@ -21,7 +21,9 @@ from app.services.tools.contracts.research_knowledge_memory_tool_protocol import
 
 
 class ResearchKnowledgeRecallFamilyService(ResearchKnowledgeRecallFamilyServiceProtocol):
-    """Resolve a research_knowledge_recall family request to a concrete recall tool."""
+    """负责处理研究知识召回检索族相关业务逻辑的服务。
+
+Resolve a research_knowledge_recall family request to a concrete recall tool."""
 
     _FAMILY_NAME = FamilyName.RESEARCH_KNOWLEDGE_RECALL
     _DEFAULT_TOOL_ID = "research_knowledge_memory_v1"

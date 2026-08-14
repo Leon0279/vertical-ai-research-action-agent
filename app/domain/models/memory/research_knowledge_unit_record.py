@@ -10,7 +10,9 @@ from app.domain.models.source import SourceReference
 
 
 class ResearchKnowledgeUnitRecord(BaseModel):
-    """Typed research knowledge unit aligned with the LLD storage schema."""
+    """表示研究知识单元的持久化记录。
+
+Typed research knowledge unit aligned with the LLD storage schema."""
 
     model_config = ConfigDict(extra="forbid")
 

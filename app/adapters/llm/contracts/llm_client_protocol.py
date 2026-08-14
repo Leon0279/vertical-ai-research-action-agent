@@ -7,7 +7,9 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class LLMClientProtocol(Protocol):
-    """Protocol for LLM interactions."""
+    """定义大语言模型客户端的抽象交互契约。
+
+Protocol for LLM interactions."""
 
     async def generate_text(self, prompt: str) -> str:
         """Return generated text for a prompt."""

@@ -9,7 +9,9 @@ from app.domain.models import ProjectProfileMemoryRecord
 
 @runtime_checkable
 class ProjectProfileMemoryStoreProtocol(Protocol):
-    """Protocol for the project_profile_memory table adapter."""
+    """定义项目档案记忆存储的抽象交互契约。
+
+Protocol for the project_profile_memory table adapter."""
 
     async def load_active_profile(
         self,

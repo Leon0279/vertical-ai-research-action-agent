@@ -35,7 +35,9 @@ logger = logging.getLogger(__name__)
 
 
 class ContextMemoryLoaderService(ContextMemoryLoaderProtocol):
-    """Load task-relevant short-term and long-term memory into execution context."""
+    """负责处理上下文记忆加载器相关业务逻辑的服务。
+
+Load task-relevant short-term and long-term memory into execution context."""
 
     _MAX_DECISION_ITEMS = 3
     _MAX_ACTION_ITEMS = 5

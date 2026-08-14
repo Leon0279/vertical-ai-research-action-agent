@@ -11,7 +11,9 @@ from app.domain.enums.memory_type import MemoryType
 
 
 class MemoryRecord(BaseModel):
-    """Durable long-term memory record."""
+    """表示记忆的持久化记录。
+
+Durable long-term memory record."""
 
     record_id: str = Field(description="必填字段。通用长期 memory record 的稳定标识，用于存储、更新和关联。")
     memory_type: MemoryType = Field(description="必填字段。该记录承载的 memory 语义类型，决定其 payload 解释和生命周期策略。")

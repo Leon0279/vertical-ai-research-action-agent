@@ -9,7 +9,9 @@ from app.domain.models import TavilyWebSearchToolRequest, TavilyWebSearchToolRes
 
 @runtime_checkable
 class TavilyWebSearchToolProtocol(Protocol):
-    """Runtime-facing interface for the tavily_web_search tool."""
+    """定义Tavily网页搜索工具的抽象交互契约。
+
+Runtime-facing interface for the tavily_web_search tool."""
 
     async def run(self, request: TavilyWebSearchToolRequest) -> TavilyWebSearchToolResult:
         """Execute the tool using the given request and return normalized retrieval output."""

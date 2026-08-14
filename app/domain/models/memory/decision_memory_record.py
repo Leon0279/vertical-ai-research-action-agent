@@ -8,7 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DecisionMemoryRecord(BaseModel):
-    """Typed decision memory record aligned with the LLD table schema."""
+    """表示决策记忆的持久化记录。
+
+Typed decision memory record aligned with the LLD table schema."""
 
     model_config = ConfigDict(extra="forbid")
 

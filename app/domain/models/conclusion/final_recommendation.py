@@ -4,7 +4,9 @@ from pydantic import BaseModel, Field
 
 
 class FinalRecommendation(BaseModel):
-    """Recommendation output."""
+    """表示最终建议及其依据。
+
+Recommendation output."""
 
     recommendation: str = Field(description="必填字段。最终推荐、决策方向或主判断的简短表达，供用户和下游结构化消费。")
     rationale: str | None = Field(

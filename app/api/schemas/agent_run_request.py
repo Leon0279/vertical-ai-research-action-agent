@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 
 
 class AgentRunRequest(BaseModel):
-    """Single-entry request payload for the run endpoint."""
+    """表示智能体运行的输入请求。
+
+Single-entry request payload for the run endpoint."""
 
     query: str = Field(..., min_length=1, description="必填字段。用户提交的原始问题或请求文本，是本次 agent run 的输入。")
     user_id: str = Field(..., min_length=1, description="必填字段。请求所属用户标识，用于运行时隔离与 memory 访问边界。")

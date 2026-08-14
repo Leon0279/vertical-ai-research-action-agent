@@ -20,7 +20,9 @@ T = TypeVar("T")
 
 
 class ResearchActionPipeline:
-    """Fixed outer workflow with stage-by-stage execution."""
+    """按固定阶段驱动研究与行动工作流。
+
+Fixed outer workflow with stage-by-stage execution."""
 
     def __init__(self, dependencies: PipelineDependencies) -> None:
         self._dependencies = dependencies

@@ -13,7 +13,9 @@ from app.config.env_loader import load_env_file
 
 
 class ArxivPaperContentFetchClientConfig(BaseModel):
-    """Typed runtime settings for arXiv PDF content fetch."""
+    """提供arXiv论文内容获取客户端所需的类型化运行时配置。
+
+Typed runtime settings for arXiv PDF content fetch."""
 
     pdf_base_url: str = Field(default="https://arxiv.org/pdf", description="用于由 arXiv paper id 构造 PDF 下载地址的基础 URL。")
     timeout_seconds: float = Field(default=20.0, gt=0, description="下载单篇 arXiv PDF 的 HTTP 超时时间，单位秒。")

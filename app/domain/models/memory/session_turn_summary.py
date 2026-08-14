@@ -8,7 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class SessionTurnSummary(BaseModel):
-    """Lightweight turn summary for session continuity."""
+    """汇总会话轮次的关键信息。
+
+Lightweight turn summary for session continuity."""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -19,7 +19,9 @@ from app.domain.models import DecisionMemoryRecord
 
 
 class PostgresDecisionMemoryStore(DecisionMemoryStoreProtocol):
-    """Persist decision memory records in PostgreSQL."""
+    """提供PostgreSQL决策记忆的持久化存储适配。
+
+Persist decision memory records in PostgreSQL."""
 
     def __init__(
         self,

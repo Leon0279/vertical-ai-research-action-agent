@@ -10,7 +10,9 @@ from app.services.tool_execution_layer.contracts.family_selection_service_protoc
 
 
 class FamilySelectionService(FamilySelectionServiceProtocol):
-    """Select a retrieval family without resolving a concrete tool."""
+    """负责处理检索族选择相关业务逻辑的服务。
+
+Select a retrieval family without resolving a concrete tool."""
 
     _MEMORY_FAMILIES = (FamilyName.RESEARCH_KNOWLEDGE_RECALL,)
     _EXTERNAL_FAMILIES = (

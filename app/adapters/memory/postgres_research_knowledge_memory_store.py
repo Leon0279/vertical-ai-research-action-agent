@@ -24,7 +24,9 @@ from app.domain.models import (
 
 
 class PostgresResearchKnowledgeMemoryStore(ResearchKnowledgeMemoryStoreProtocol):
-    """Persist and recall research knowledge units in PostgreSQL + pgvector."""
+    """提供PostgreSQL研究知识记忆的持久化存储适配。
+
+Persist and recall research knowledge units in PostgreSQL + pgvector."""
 
     def __init__(
         self,

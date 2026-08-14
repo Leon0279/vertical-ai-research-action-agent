@@ -26,7 +26,9 @@ from app.services.evidence.contracts.evidence_processing_service_protocol import
 
 
 class _LLMEvidenceUnitPayload(BaseModel):
-    """Strict evidence unit payload expected from the LLM."""
+    """表示大语言模型证据单元的内部结构化载荷。
+
+Strict evidence unit payload expected from the LLM."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -40,7 +42,9 @@ class _LLMEvidenceUnitPayload(BaseModel):
 
 
 class _LLMStructuringPayload(BaseModel):
-    """Strict structuring payload expected from the LLM."""
+    """表示大语言模型结构化的内部结构化载荷。
+
+Strict structuring payload expected from the LLM."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -54,7 +58,9 @@ class _LLMStructuringPayload(BaseModel):
 
 
 class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
-    """Convert candidate materials into current-round processed evidence units."""
+    """负责处理证据处理相关业务逻辑的服务。
+
+Convert candidate materials into current-round processed evidence units."""
 
     _POLICY_NAME = "evidence_processing_v1"
     _MIN_CONTENT_LENGTH = 8

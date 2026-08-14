@@ -4,7 +4,9 @@ from enum import StrEnum
 
 
 class PlanningDepth(StrEnum):
-    """Represents how deeply the system should plan before execution."""
+    """定义规划深度的可选枚举值。
+
+Represents how deeply the system should plan before execution."""
 
     NONE = "NONE"
     SHALLOW = "SHALLOW"

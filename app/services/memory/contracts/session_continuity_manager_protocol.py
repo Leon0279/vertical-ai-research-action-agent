@@ -9,7 +9,9 @@ from app.domain.models import ExecutionContext
 
 @runtime_checkable
 class SessionContinuityManagerProtocol(Protocol):
-    """Persists continuity fields for follow-up turns."""
+    """定义会话连续性Manager的抽象交互契约。
+
+Persists continuity fields for follow-up turns."""
 
     async def update(self, context: ExecutionContext) -> None:
         """Persist task-relevant continuity fields."""

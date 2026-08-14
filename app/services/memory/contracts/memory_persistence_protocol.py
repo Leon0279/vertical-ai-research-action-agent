@@ -9,7 +9,9 @@ from app.domain.models import ExecutionContext, MemoryCandidate, MemoryPersisten
 
 @runtime_checkable
 class MemoryPersistenceProtocol(Protocol):
-    """Persists long-term memory candidates."""
+    """定义记忆持久化的抽象交互契约。
+
+Persists long-term memory candidates."""
 
     async def persist(
         self,

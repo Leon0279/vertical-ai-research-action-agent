@@ -9,7 +9,9 @@ from app.domain.models import ToolExecutionLayerRequest, ToolExecutionLayerResul
 
 @runtime_checkable
 class ToolExecutionLayerServiceProtocol(Protocol):
-    """Research Executor-facing Tool Execution Layer service interface."""
+    """定义工具执行层服务的抽象交互契约。
+
+Research Executor-facing Tool Execution Layer service interface."""
 
     async def execute(
         self,

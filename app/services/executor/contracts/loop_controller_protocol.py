@@ -9,7 +9,9 @@ from app.domain.models import ExecutionContext
 
 @runtime_checkable
 class LoopControllerProtocol(Protocol):
-    """Controls continuation and termination of the research loop."""
+    """定义循环Controller的抽象交互契约。
+
+Controls continuation and termination of the research loop."""
 
     async def should_continue(self, context: ExecutionContext, iteration: int) -> bool:
         """Return whether another iteration is allowed."""

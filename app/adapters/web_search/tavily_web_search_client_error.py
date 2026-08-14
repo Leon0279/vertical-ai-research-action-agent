@@ -2,4 +2,6 @@
 
 
 class TavilyWebSearchClientError(RuntimeError):
-    """Raised when Tavily web search fails or returns invalid data."""
+    """表示Tavily网页搜索客户端执行过程中发生的错误。
+
+Raised when Tavily web search fails or returns invalid data."""

@@ -32,7 +32,9 @@ from app.services.tools.contracts.tavily_web_search_tool_protocol import (
 
 
 class TavilyWebSearchTool(TavilyWebSearchToolProtocol):
-    """Tool service that searches the web and fetches content for top candidates."""
+    """封装Tavily网页搜索的工具调用逻辑。
+
+Tool service that searches the web and fetches content for top candidates."""
 
     def __init__(
         self,

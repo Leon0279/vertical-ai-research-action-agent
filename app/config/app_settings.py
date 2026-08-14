@@ -11,7 +11,9 @@ from app.config.constants import (
 
 
 class AppSettings(BaseModel):
-    """Simple typed settings without external env dependency."""
+    """集中管理应用的运行时配置。
+
+Simple typed settings without external env dependency."""
 
     api_title: str = Field(
         default=API_TITLE,

@@ -6,7 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class EmbeddingResult(BaseModel):
-    """One embedding vector returned by an embedding adapter."""
+    """表示嵌入的处理结果。
+
+One embedding vector returned by an embedding adapter."""
 
     model_config = ConfigDict(extra="forbid")
 

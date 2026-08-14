@@ -58,7 +58,9 @@ from app.services.tool_execution_layer.tool_execution_layer_service import (
 
 @dataclass(slots=True)
 class PipelineDependencies:
-    """All service dependencies used by orchestration stages."""
+    """承载研究行动管线所需的依赖组件。
+
+All service dependencies used by orchestration stages."""
 
     # 初始化 ExecutionContext 的请求入口 service。
     request_intake: RequestIntakeProtocol

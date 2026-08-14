@@ -21,7 +21,9 @@ from app.domain.models import PaperContentFetchRequest, PaperContentFetchResult
 
 
 class ArxivPaperContentFetchClient(PaperContentFetchClientProtocol):
-    """HTTP client for fetching and extracting arXiv PDF text."""
+    """封装arXiv论文内容获取相关的客户端调用。
+
+HTTP client for fetching and extracting arXiv PDF text."""
 
     def __init__(
         self,

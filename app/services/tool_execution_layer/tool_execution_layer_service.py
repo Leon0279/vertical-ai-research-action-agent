@@ -60,7 +60,9 @@ _ExecutionDirective = Literal["continue", "complete"]
 
 
 class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
-    """Coordinate one bounded Tool Execution Layer request for Research Executor."""
+    """负责处理工具执行层相关业务逻辑的服务。
+
+Coordinate one bounded Tool Execution Layer request for Research Executor."""
 
     _POLICY_NAME = "tool_execution_layer_single_request_v1"
 

@@ -36,7 +36,9 @@ NAMESPACES = {
 
 
 class ArxivPaperSearchClient(PaperSearchClientProtocol):
-    """HTTP client for arXiv paper search."""
+    """封装arXiv论文搜索相关的客户端调用。
+
+HTTP client for arXiv paper search."""
 
     def __init__(
         self,

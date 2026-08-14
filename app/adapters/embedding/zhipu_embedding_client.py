@@ -19,7 +19,9 @@ from app.domain.models import EmbeddingResult
 
 
 class ZhipuEmbeddingClient(EmbeddingClientProtocol):
-    """HTTP client for Zhipu embeddings."""
+    """封装智谱嵌入相关的客户端调用。
+
+HTTP client for Zhipu embeddings."""
 
     def __init__(
         self,

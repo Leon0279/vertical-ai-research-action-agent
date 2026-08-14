@@ -9,7 +9,9 @@ from app.domain.models import ExecutionContext
 
 @runtime_checkable
 class WorkflowRouterProtocol(Protocol):
-    """Routes a task into a workflow pattern."""
+    """定义工作流路由器的抽象交互契约。
+
+Routes a task into a workflow pattern."""
 
     async def route(self, context: ExecutionContext) -> None:
         """Populate workflow pattern based on task type."""

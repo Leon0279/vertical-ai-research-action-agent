@@ -6,7 +6,9 @@ from pydantic import BaseModel, Field
 
 
 class PlanStep(BaseModel):
-    """A single executable planning step."""
+    """表示执行计划中的一个步骤。
+
+A single executable planning step."""
 
     step_id: str = Field(description="必填字段。计划步骤在当前 ExecutionPlan 内的稳定标识。")
     title: str = Field(description="必填字段。步骤的简短名称，说明该步骤要完成的工作。")

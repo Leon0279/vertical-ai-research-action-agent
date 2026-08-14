@@ -10,7 +10,9 @@ from app.domain.models.memory.research_knowledge_unit_record import (
 
 
 class ResearchKnowledgeRecallResult(BaseModel):
-    """A recalled knowledge unit plus its adapter-level semantic relevance score."""
+    """表示研究知识召回的处理结果。
+
+A recalled knowledge unit plus its adapter-level semantic relevance score."""
 
     model_config = ConfigDict(extra="forbid")
 

@@ -19,7 +19,9 @@ from app.domain.models import ActionMemoryRecord
 
 
 class PostgresActionMemoryStore(ActionMemoryStoreProtocol):
-    """Persist action memory records in PostgreSQL."""
+    """提供PostgreSQL行动记忆的持久化存储适配。
+
+Persist action memory records in PostgreSQL."""
 
     def __init__(
         self,

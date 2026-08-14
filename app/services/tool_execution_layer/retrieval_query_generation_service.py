@@ -18,7 +18,9 @@ from app.services.tool_execution_layer.contracts.retrieval_query_generation_serv
 
 
 class _LLMQueryGenerationPayload(BaseModel):
-    """Strict payload expected from the LLM."""
+    """表示大语言模型查询生成的内部结构化载荷。
+
+Strict payload expected from the LLM."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -28,7 +30,9 @@ class _LLMQueryGenerationPayload(BaseModel):
 
 
 class RetrievalQueryGenerationService(RetrievalQueryGenerationServiceProtocol):
-    """Generate a retrieval query without selecting tools or executing retrieval."""
+    """负责处理检索查询生成相关业务逻辑的服务。
+
+Generate a retrieval query without selecting tools or executing retrieval."""
 
     _POLICY_NAME = "llm_retrieval_query_generation_v1"
     _PARSER_NAME = "json_loads_pydantic_v1"

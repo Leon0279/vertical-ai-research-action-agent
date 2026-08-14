@@ -9,7 +9,9 @@ from app.domain.models import DecisionMemoryRecord
 
 @runtime_checkable
 class DecisionMemoryStoreProtocol(Protocol):
-    """Protocol for the decision_memory table adapter."""
+    """定义决策记忆存储的抽象交互契约。
+
+Protocol for the decision_memory table adapter."""
 
     async def list_active_decisions(
         self,

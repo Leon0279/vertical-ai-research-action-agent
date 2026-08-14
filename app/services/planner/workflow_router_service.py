@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class WorkflowRouterService(WorkflowRouterProtocol):
-    """Route interpreted task types to workflow patterns and execution policies."""
+    """负责处理工作流路由器相关业务逻辑的服务。
+
+Route interpreted task types to workflow patterns and execution policies."""
 
     _TASK_TO_WORKFLOW = {
         TaskType.TOPIC_EXPLORATION: WorkflowPattern.TOPIC_EXPLORATION,

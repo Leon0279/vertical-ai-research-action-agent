@@ -2,4 +2,6 @@
 
 
 class PostgresPreferencePolicyMemoryStoreError(Exception):
-    """Preference/policy PostgreSQL adapter configuration or persistence error."""
+    """表示PostgreSQL偏好策略记忆存储执行过程中发生的错误。
+
+Preference/policy PostgreSQL adapter configuration or persistence error."""
