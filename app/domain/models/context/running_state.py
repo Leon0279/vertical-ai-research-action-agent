@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.domain.enums.planning_depth import PlanningDepth
 from app.domain.enums.workflow_pattern import WorkflowPattern
 from app.domain.models.citation import Citation
+from app.domain.models.research_stage.research_stage_result import ResearchStageStatus
 from app.domain.models.source import SourceReference
 from app.domain.models.workflow_execution_policy import WorkflowExecutionPolicy
 
@@ -81,8 +82,9 @@ class RunningState(BaseModel):
     current_bottleneck_summary: str | None = Field(
         default=None,
         description=(
-            "可选字段。当前项目或任务最关键瓶颈的摘要。当前项目中有用但不一定每轮都有值：Planner 可用它调整推荐/行动计划方向，"
-            "ConclusionGenerator 可用它解释优先级。该字段应是稳定瓶颈摘要，不是临时推测。"
+            "可选字段。当前项目或任务最关键瓶颈的摘要。当前项目中有用但不一定每轮都有值："
+            "TaskInterpreterService 仅在用户明确描述阻塞、风险、性能瓶颈或推进困难时写入；Planner、ResearchExecutor 和 "
+            "ConclusionGenerator 可据此校准优先级。该字段应是稳定瓶颈摘要，不是系统自行猜测的临时问题。"
         ),
     )
     active_decision_summary: str | None = Field(
@@ -197,6 +199,24 @@ class RunningState(BaseModel):
             "可选字段，默认空列表。当前 run 仍未解决的问题、失败原因或待补 gap。当前项目中有用：ContextMemoryLoader "
             "可从 session memory 合并 open questions；ResearchExecutor 会在 TEL failed/no_result、EvidenceProcessing failed/no_result "
             "或 iteration budget exhausted 时追加说明。"
+        ),
+    )
+    research_status: ResearchStageStatus | None = Field(
+        default=None,
+        description=(
+            "可选字段。当前 run 的 Research Stage 顶层状态。当前项目中有用："
+            "ResearchActionPipeline 会从 ResearchStageResult 回写该字段；"
+            "ConclusionGeneratorService 据此决定是否必须返回确定性降级答案，"
+            "ResponseAssemblerService 会在安全 metadata 中输出该状态。Research Stage 尚未执行时为 None。"
+        ),
+    )
+    research_iteration_count: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "可选字段，默认 0。当前 run 的 Research Executor 实际完成的 iteration 数量。"
+            "当前项目中有用：ResearchActionPipeline 从 ResearchStageResult 回写，"
+            "ResponseAssemblerService 在 metadata 中输出该值，便于调用方了解 research loop 的实际执行规模。"
         ),
     )
 

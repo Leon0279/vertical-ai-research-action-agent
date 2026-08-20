@@ -3,6 +3,7 @@
 import asyncio
 import json
 
+from app.domain.enums import FamilyName
 from app.domain.models import (
     ContextItem,
     ExecutionContext,
@@ -98,8 +99,38 @@ class _FakeZhipuLLMClient:
         )
 
 
-def test_pipeline_stage_order(monkeypatch) -> None:
+class _FakeProviderClient:
+    """Avoid provider configuration and network access in dependency-graph tests."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        del args, kwargs
+
+
+class _FakeEmbeddingClient(_FakeProviderClient):
+    async def embed_text(self, text: str):
+        del text
+        raise RuntimeError("Embedding should not be required by this no-op research test.")
+
+
+def _patch_default_provider_clients(monkeypatch) -> None:
     monkeypatch.setattr(pipeline_dependencies, "ZhipuLLMClient", _FakeZhipuLLMClient)
+    monkeypatch.setattr(
+        pipeline_dependencies,
+        "ZhipuEmbeddingClient",
+        _FakeEmbeddingClient,
+    )
+    for client_name in (
+        "LlmsTxtDocsSearchClient",
+        "ArxivPaperSearchClient",
+        "ArxivPaperContentFetchClient",
+        "TavilyWebSearchClient",
+        "TavilyWebContentFetchClient",
+    ):
+        monkeypatch.setattr(pipeline_dependencies, client_name, _FakeProviderClient)
+
+
+def test_pipeline_stage_order(monkeypatch) -> None:
+    _patch_default_provider_clients(monkeypatch)
     pipeline = build_default_pipeline()
     output = asyncio.run(
         pipeline.run(
@@ -122,6 +153,35 @@ def test_pipeline_stage_order(monkeypatch) -> None:
         "memory_writeback",
         "output",
     ]
+
+
+def test_default_dependencies_register_the_same_capabilities_as_tel(monkeypatch) -> None:
+    _patch_default_provider_clients(monkeypatch)
+
+    dependencies = pipeline_dependencies.build_default_dependencies()
+    context = asyncio.run(
+        dependencies.request_intake.intake(
+            RequestContext(
+                original_query="Compare current retrieval options.",
+                user_id="user-1",
+            )
+        )
+    )
+
+    expected_families = [
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL.value,
+        FamilyName.DOCS_SEARCH.value,
+        FamilyName.PAPER_SEARCH.value,
+        FamilyName.WEB_SEARCH.value,
+    ]
+    assert context.runtime_context.available_tools == expected_families
+    assert context.runtime_context.tool_registry_version == (
+        "default_retrieval_families_v1"
+    )
+
+    tool_execution_layer = dependencies.research_executor._tool_execution_layer_service
+    assert set(tool_execution_layer._family_services) == set(FamilyName)
+    assert all(service is not None for service in tool_execution_layer._family_services.values())
 
 
 def test_research_stage_projects_input_and_applies_result() -> None:
@@ -171,6 +231,10 @@ def test_research_stage_projects_input_and_applies_result() -> None:
             sub_questions=["When should memory be preferred?"],
             comparison_candidates=["memory", "web"],
             information_gaps=["Need freshness tradeoffs."],
+            initial_evidence_strategy=["Prioritize fresh comparison evidence."],
+            active_decision_summary="Prefer memory-backed retrieval when evidence is fresh.",
+            current_action_status="Evaluation rollout is blocked on freshness evidence.",
+            current_bottleneck_summary="Freshness tradeoffs remain unverified.",
             evidence_summary="Existing evidence summary.",
             intermediate_findings=["Existing finding."],
             retrieved_evidence_refs=[existing_evidence_ref],
@@ -235,6 +299,10 @@ def test_research_stage_projects_input_and_applies_result() -> None:
         sub_questions=["When should memory be preferred?"],
         comparison_candidates=["memory", "web"],
         information_gaps=["Need freshness tradeoffs."],
+        initial_evidence_strategy=["Prioritize fresh comparison evidence."],
+        active_decision_summary="Prefer memory-backed retrieval when evidence is fresh.",
+        current_action_status="Evaluation rollout is blocked on freshness evidence.",
+        current_bottleneck_summary="Freshness tradeoffs remain unverified.",
         existing_intermediate_findings=["Existing finding."],
         research_support=[research_support],
         decision_support=[decision_support],
@@ -254,6 +322,8 @@ def test_research_stage_projects_input_and_applies_result() -> None:
         "Existing open question.",
         "New open question.",
     ]
+    assert context.running_state.research_status == "completed"
+    assert context.running_state.research_iteration_count == 1
 
 
 def test_empty_research_stage_result_does_not_clear_existing_state() -> None:

@@ -51,10 +51,34 @@ Generate user-facing conclusions from the accumulated execution context."""
     async def generate(self, context: ExecutionContext) -> None:
         """Generate the final answer and write it back to the execution context."""
 
+        if context.running_state.research_status == "failed":
+            self._apply_research_failure_fallback(context)
+            return
+
         prompt = self._build_conclusion_prompt(context)
         llm_output = await self._llm_client.generate_text(prompt)
         payload = self._parse_conclusion_output(llm_output)
         self._apply_conclusion_payload(context, payload)
+
+    def _apply_research_failure_fallback(self, context: ExecutionContext) -> None:
+        """Write a safe user-facing result when research could not produce reliable material."""
+
+        state = context.running_state
+        state.final_answer = (
+            "本次研究未能获得足够可靠的材料，因此暂时不能给出可信的事实性结论。"
+            "建议稍后重试，或补充更具体的研究范围与可用资料。"
+        )
+        state.final_summary = "本次研究未形成可靠材料，未生成事实性结论。"
+        state.final_recommendation = None
+        state.action_items = []
+        state.citations = []
+        state.confidence = "low"
+        state.caveats = self._unique_non_empty_texts(
+            [
+                "研究阶段未能形成可靠证据材料；本次回答不应被视为事实性结论。",
+                *state.open_questions,
+            ]
+        )
 
     def _apply_conclusion_payload(
         self,

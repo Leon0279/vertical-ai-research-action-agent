@@ -10,7 +10,16 @@ from app.services.intake.contracts.request_intake_protocol import RequestIntakeP
 class RequestIntakeService(RequestIntakeProtocol):
     """负责处理请求接入相关业务逻辑的服务。
 
-Normalize request input and initialize the execution context."""
+    Normalize request input and initialize the execution context."""
+
+    def __init__(
+        self,
+        *,
+        available_tools: list[str] | None = None,
+        tool_registry_version: str | None = None,
+    ) -> None:
+        self._available_tools = self._normalize_available_tools(available_tools or [])
+        self._tool_registry_version = tool_registry_version
 
     async def intake(self, request: RequestContext) -> ExecutionContext:
         original_query = request.original_query.strip()
@@ -54,9 +63,24 @@ Normalize request input and initialize the execution context."""
             user_id=user_id,
             session_id=session_id,
             session_id_generated=session_id_generated,
+            available_tools=list(self._available_tools),
+            tool_registry_version=self._tool_registry_version,
         )
         runtime_context.stage_history.append("request_intake")
         return ExecutionContext(
             running_state=running_state,
             runtime_context=runtime_context,
         )
+
+    @staticmethod
+    def _normalize_available_tools(available_tools: list[str]) -> list[str]:
+        """Return stable, non-empty server-registered capability names."""
+
+        normalized_tools: list[str] = []
+        seen: set[str] = set()
+        for tool_name in available_tools:
+            normalized = tool_name.strip().lower()
+            if normalized and normalized not in seen:
+                normalized_tools.append(normalized)
+                seen.add(normalized)
+        return normalized_tools

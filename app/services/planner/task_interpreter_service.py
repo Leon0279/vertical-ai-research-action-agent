@@ -56,7 +56,7 @@ Interpret task intent with an optional LLM and deterministic fallback."""
         return (
             "你正在执行一次无状态的任务理解调用。你只能依据本提示中的说明和最后给出的输入 JSON 工作，"
             "不能假设自己知道项目背景、历史对话或任何未提供的信息。\n\n"
-            "任务目标：理解当前用户请求，并将其中明确表达的目标、任务类别、约束和项目背景整理为结构化数据。"
+            "任务目标：理解当前用户请求，并将其中明确表达的目标、任务类别、约束、项目背景和当前瓶颈整理为结构化数据。"
             "不要回答用户问题，不要提供方案、结论或行动建议。\n\n"
             "输入 JSON：\n"
             "- user_query：当前唯一需要理解的用户原始请求。\n\n"
@@ -65,7 +65,8 @@ Interpret task intent with an optional LLM and deterministic fallback."""
             "2. constraints 只保留用户请求中明确表达的限制；没有则返回空数组。\n"
             "3. project_context_summary 只总结请求中明确出现的项目背景；没有则返回 null。\n"
             "4. task_framing 是帮助后续分析理解问题范围的一句简洁表述；不需要时返回 null。\n"
-            "5. 不要补充、猜测或虚构输入中没有出现的背景、限制或状态。\n\n"
+            "5. current_bottleneck_summary 只总结用户明确描述的当前阻塞、风险、性能瓶颈或推进困难；没有时返回 null。\n"
+            "6. 不要补充、猜测或虚构输入中没有出现的背景、限制或状态。\n\n"
             "task_type 必须是以下值之一：\n"
             f"{task_types}\n"
             "- TOPIC_EXPLORATION：理解、探索或解释某个主题。\n"
@@ -79,7 +80,8 @@ Interpret task intent with an optional LLM and deterministic fallback."""
             '  "task_type": "上述允许值之一",\n'
             '  "task_framing": "问题范围的简洁表述；不需要时为 null",\n'
             '  "constraints": ["用户明确提出的限制"],\n'
-            '  "project_context_summary": "请求中明确出现的项目背景；没有时为 null"\n'
+            '  "project_context_summary": "请求中明确出现的项目背景；没有时为 null",\n'
+            '  "current_bottleneck_summary": "用户明确描述的当前瓶颈；没有时为 null"\n'
             "}\n\n"
             "输入 JSON：\n"
             f"{json.dumps(prompt_input, ensure_ascii=False, indent=2)}"
@@ -121,19 +123,26 @@ Interpret task intent with an optional LLM and deterministic fallback."""
         state.task_framing = result.task_framing
         state.constraints = result.constraints
         state.project_context_summary = result.project_context_summary
+        state.current_bottleneck_summary = result.current_bottleneck_summary
 
     def _apply_fallback(self, context: ExecutionContext) -> None:
         state = context.running_state
         state.user_goal = state.user_goal or state.original_query
         lowered = state.original_query.lower()
 
-        if "compare" in lowered or "vs" in lowered:
+        if any(keyword in lowered for keyword in ("compare", "vs", "比较", "对比")):
             state.task_type = TaskType.COMPARISON.value
-        elif "recommend" in lowered:
+        elif any(keyword in lowered for keyword in ("recommend", "推荐", "建议", "选哪个", "选择")):
             state.task_type = TaskType.RECOMMENDATION.value
-        elif "plan" in lowered or "roadmap" in lowered:
+        elif any(
+            keyword in lowered
+            for keyword in ("plan", "roadmap", "计划", "规划", "路线图", "实施")
+        ):
             state.task_type = TaskType.ACTION_PLANNING.value
-        elif "track" in lowered or "update" in lowered:
+        elif any(
+            keyword in lowered
+            for keyword in ("track", "update", "跟踪", "追踪", "进展", "最新")
+        ):
             state.task_type = TaskType.TRACKING.value
         else:
             state.task_type = TaskType.TOPIC_EXPLORATION.value

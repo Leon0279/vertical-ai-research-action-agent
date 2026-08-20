@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.adapters.docs_search.llms_txt_docs_search_client import LlmsTxtDocsSearchClient
 from app.adapters.embedding.zhipu_embedding_client import ZhipuEmbeddingClient
 from app.adapters.llm.zhipu_llm_client import ZhipuLLMClient
 from app.adapters.memory.postgres_action_memory_store import PostgresActionMemoryStore
@@ -18,9 +19,24 @@ from app.adapters.memory.postgres_research_knowledge_memory_store import (
     PostgresResearchKnowledgeMemoryStore,
 )
 from app.adapters.memory.redis_session_memory_store import RedisSessionMemoryStore
+from app.adapters.paper_content_fetch.arxiv_paper_content_fetch_client import (
+    ArxivPaperContentFetchClient,
+)
+from app.adapters.paper_search.arxiv_paper_search_client import ArxivPaperSearchClient
+from app.adapters.web_content_fetch.tavily_web_content_fetch_client import (
+    TavilyWebContentFetchClient,
+)
+from app.adapters.web_search.tavily_web_search_client import TavilyWebSearchClient
+from app.domain.enums import FamilyName
 from app.services.evidence.evidence_processing_service import EvidenceProcessingService
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
 from app.services.executor.research_executor_service import ResearchExecutorService
+from app.services.families.docs_search_family_service import DocsSearchFamilyService
+from app.services.families.paper_search_family_service import PaperSearchFamilyService
+from app.services.families.research_knowledge_recall_family_service import (
+    ResearchKnowledgeRecallFamilyService,
+)
+from app.services.families.web_search_family_service import WebSearchFamilyService
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
 from app.services.intake.request_intake_service import RequestIntakeService
 from app.services.memory.contracts.context_memory_loader_protocol import ContextMemoryLoaderProtocol
@@ -54,6 +70,13 @@ from app.services.tool_execution_layer.retrieval_query_generation_service import
 from app.services.tool_execution_layer.tool_execution_layer_service import (
     ToolExecutionLayerService,
 )
+from app.services.tools.arxiv_paper_search_tool import ArxivPaperSearchTool
+from app.services.tools.llms_txt_docs_search_tool import LlmsTxtDocsSearchTool
+from app.services.tools.research_knowledge_memory_tool import ResearchKnowledgeMemoryTool
+from app.services.tools.tavily_web_search_tool import TavilyWebSearchTool
+
+
+_DEFAULT_TOOL_REGISTRY_VERSION = "default_retrieval_families_v1"
 
 
 @dataclass(slots=True)
@@ -98,12 +121,46 @@ def build_default_dependencies() -> PipelineDependencies:
     embedding_client = ZhipuEmbeddingClient()
     semantic_resolver = SemanticResolverService()
 
+    docs_search_family_service = DocsSearchFamilyService(
+        LlmsTxtDocsSearchTool(LlmsTxtDocsSearchClient())
+    )
+    paper_search_family_service = PaperSearchFamilyService(
+        ArxivPaperSearchTool(
+            paper_search_client=ArxivPaperSearchClient(),
+            paper_content_fetch_client=ArxivPaperContentFetchClient(),
+        )
+    )
+    web_search_family_service = WebSearchFamilyService(
+        TavilyWebSearchTool(
+            web_search_client=TavilyWebSearchClient(),
+            web_content_fetch_client=TavilyWebContentFetchClient(),
+        )
+    )
+    research_knowledge_recall_family_service = ResearchKnowledgeRecallFamilyService(
+        ResearchKnowledgeMemoryTool(
+            research_knowledge_store=research_knowledge_store,
+            embedding_client=embedding_client,
+        )
+    )
+    registered_families = (
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+        FamilyName.DOCS_SEARCH,
+        FamilyName.PAPER_SEARCH,
+        FamilyName.WEB_SEARCH,
+    )
+
     tool_execution_layer_service = ToolExecutionLayerService(
         family_selection_service=FamilySelectionService(),
         query_generation_service=RetrievalQueryGenerationService(
             llm_client=ZhipuLLMClient(),
         ),
         completion_evaluation_service=RequestCompletionEvaluationService(),
+        docs_search_family_service=docs_search_family_service,
+        paper_search_family_service=paper_search_family_service,
+        web_search_family_service=web_search_family_service,
+        research_knowledge_recall_family_service=(
+            research_knowledge_recall_family_service
+        ),
     )
     research_executor = ResearchExecutorService(
         llm_client=ZhipuLLMClient(),
@@ -112,8 +169,11 @@ def build_default_dependencies() -> PipelineDependencies:
     )
 
     return PipelineDependencies(
-        request_intake=RequestIntakeService(),
-        task_interpreter=TaskInterpreterService(),
+        request_intake=RequestIntakeService(
+            available_tools=[family.value for family in registered_families],
+            tool_registry_version=_DEFAULT_TOOL_REGISTRY_VERSION,
+        ),
+        task_interpreter=TaskInterpreterService(llm_client=ZhipuLLMClient()),
         workflow_router=WorkflowRouterService(),
         decomposition_planner=DecompositionPlannerService(),
         context_memory_loader=ContextMemoryLoaderService(

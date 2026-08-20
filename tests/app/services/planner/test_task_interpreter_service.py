@@ -55,7 +55,8 @@ def test_task_interpreter_calls_llm_and_maps_valid_json() -> None:
           "task_type": "RECOMMENDATION",
           "task_framing": "Project-specific prioritization request.",
           "constraints": ["MVP scope", "avoid heavy infrastructure"],
-          "project_context_summary": "The user is building a retrieval MVP."
+          "project_context_summary": "The user is building a retrieval MVP.",
+          "current_bottleneck_summary": "当前评测结果不足以支持下一步优先级判断。"
         }
         """
     )
@@ -76,6 +77,9 @@ def test_task_interpreter_calls_llm_and_maps_valid_json() -> None:
     assert context.running_state.task_framing == "Project-specific prioritization request."
     assert context.running_state.constraints == ["MVP scope", "avoid heavy infrastructure"]
     assert context.running_state.project_context_summary == "The user is building a retrieval MVP."
+    assert context.running_state.current_bottleneck_summary == (
+        "当前评测结果不足以支持下一步优先级判断。"
+    )
 
 
 def test_task_interpreter_accepts_fenced_json() -> None:
@@ -160,6 +164,21 @@ def test_task_interpreter_falls_back_when_llm_raises() -> None:
 
     assert context.running_state.user_goal == "Create a roadmap for evaluation."
     assert context.running_state.task_type == TaskType.ACTION_PLANNING.value
+
+
+def test_task_interpreter_fallback_recognizes_chinese_task_keywords() -> None:
+    cases = [
+        ("请比较向量检索和混合检索。", TaskType.COMPARISON),
+        ("请推荐下一步优先做什么。", TaskType.RECOMMENDATION),
+        ("请规划评测系统的实施路线图。", TaskType.ACTION_PLANNING),
+        ("请追踪这个项目的最新进展。", TaskType.TRACKING),
+    ]
+
+    for query, expected_task_type in cases:
+        context = _context(query)
+        asyncio.run(TaskInterpreterService().interpret(context))
+
+        assert context.running_state.task_type == expected_task_type.value
 
 
 def test_task_interpreter_rejects_memory_status_fields_from_llm() -> None:

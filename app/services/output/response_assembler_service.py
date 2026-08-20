@@ -30,6 +30,9 @@ Assemble final structured output from execution context."""
             metadata={
                 "session_id": runtime_context.session_id,
                 "session_id_generated": runtime_context.session_id_generated,
+                "research_status": state.research_status,
+                "research_iteration_count": state.research_iteration_count,
+                "tool_registry_version": runtime_context.tool_registry_version,
             },
         )
 

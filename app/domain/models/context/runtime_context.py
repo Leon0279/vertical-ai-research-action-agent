@@ -53,16 +53,18 @@ class RuntimeContext(BaseModel):
     available_tools: list[str] = Field(
         default_factory=list,
         description=(
-            "可选字段，默认空列表。当前 run 可用 tool/capability 的轻量列表。当前项目中有用但默认可能为空："
-            "后续 ResearchExecutor 或 stage input projection 可读取它约束工具使用。列表元素应是工具或能力标识字符串，"
-            "不是完整 tool config。"
+            "可选字段，默认空列表。当前 run 可用 tool/capability 的轻量列表。当前项目中有用："
+            "默认 RequestIntakeService 会从服务端已注册且已注入 ToolExecutionLayerService 的 retrieval family 生成该列表，"
+            "ResearchExecutor 会通过 ResearchStageInput 读取它决定是否允许 acquisition。列表元素是 family/capability 标识字符串，"
+            "不是完整 tool config，也不由 API 调用方直接声明。"
         ),
     )
     tool_registry_version: str | None = Field(
         default=None,
         description=(
-            "可选字段。当前 active tool registry 的版本标识。当前项目中暂未稳定使用，但对未来 tool capability "
-            "排查和复现实验有用。没有版本信息时为 None。"
+            "可选字段。当前服务端 active tool registry 的版本标识。当前项目中有用："
+            "RequestIntakeService 会将默认依赖注册表版本写入该字段，ResponseAssemblerService 会在"
+            "最终 metadata 中输出它，便于 capability 排查和复现实验。没有版本信息时为 None。"
         ),
     )
     latency_budget_ms: int | None = Field(
@@ -91,7 +93,8 @@ class RuntimeContext(BaseModel):
     environment_flags: list[str] = Field(
         default_factory=list,
         description=(
-            "可选字段，默认空列表。影响当前 run 行为的环境标记。当前项目中有用但当前多数路径暂不读取："
-            "可用于表达测试模式、只读模式、禁用外部网络、启用实验能力等运行时开关。列表项应是稳定 flag 字符串。"
+            "可选字段，默认空列表。影响当前 run 行为的环境标记。当前默认 pipeline 暂不读取该字段，"
+            "因此它当前只作为保留的 runtime 扩展边界；未来可表达测试模式、只读模式、禁用外部网络或实验能力。"
+            "列表项应是稳定 flag 字符串。"
         ),
     )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import TypeVar
 
 from app.domain.models import (
@@ -17,6 +18,7 @@ from app.domain.models import (
 from app.orchestration.pipeline_dependencies import PipelineDependencies, build_default_dependencies
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 class ResearchActionPipeline:
@@ -103,6 +105,10 @@ Fixed outer workflow with stage-by-stage execution."""
             sub_questions=state.sub_questions,
             comparison_candidates=state.comparison_candidates,
             information_gaps=state.information_gaps,
+            initial_evidence_strategy=state.initial_evidence_strategy,
+            active_decision_summary=state.active_decision_summary,
+            current_action_status=state.current_action_status,
+            current_bottleneck_summary=state.current_bottleneck_summary,
             existing_intermediate_findings=state.intermediate_findings,
             research_support=supplemental_context.research_support,
             decision_support=supplemental_context.decision_support,
@@ -133,9 +139,20 @@ Fixed outer workflow with stage-by-stage execution."""
             state.open_questions,
             result.open_questions,
         )
+        state.research_status = result.research_status
+        state.research_iteration_count = result.executed_iteration_count
 
         if result.evidence_summary is not None:
             state.evidence_summary = result.evidence_summary
+        if result.error_info:
+            logger.warning(
+                "Research stage returned an error result.",
+                extra={
+                    "research_status": result.research_status,
+                    "research_error_info": result.error_info,
+                    "trace_id": context.runtime_context.request_id,
+                },
+            )
 
     @staticmethod
     def _append_unique(existing: list[T], additions: list[T]) -> list[T]:

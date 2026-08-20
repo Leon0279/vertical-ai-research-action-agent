@@ -31,8 +31,23 @@ Initial semantic interpretation of a normalized user request."""
         default=None,
         description="可选字段。请求中明确提供的项目背景摘要；没有项目上下文时为 None。",
     )
+    current_bottleneck_summary: str | None = Field(
+        default=None,
+        description=(
+            "可选字段。用户请求中明确描述的当前项目或任务瓶颈摘要。当前项目中有用："
+            "TaskInterpreterService 会把该字段写入 RunningState，供 Planner、Research Executor、"
+            "ConclusionGenerator 和 memory 相关阶段了解当前最需要突破的问题。没有明确瓶颈时为 None；"
+            "不得根据未提供的信息推测或虚构瓶颈。"
+        ),
+    )
 
-    @field_validator("user_goal", "task_framing", "project_context_summary", mode="before")
+    @field_validator(
+        "user_goal",
+        "task_framing",
+        "project_context_summary",
+        "current_bottleneck_summary",
+        mode="before",
+    )
     @classmethod
     def _strip_optional_text(cls, value: object) -> object:
         if isinstance(value, str):

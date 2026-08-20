@@ -1476,10 +1476,15 @@ Research stage executor.
             "- constraints：当前研究必须遵守的限制条件。\n"
             "- project_context_summary：项目背景摘要。它只用于判断材料是否适合当前项目语境，"
             "不得用来扩大研究范围。\n\n"
+            "- current_bottleneck_summary：当前最关键瓶颈摘要。它只用于判断现有 gap 的优先级和行动价值，"
+            "不得据此创造新的研究目标。\n"
+            "- active_decision_summary：当前仍生效的关键决策摘要。它用于避免将既有决策误判为待重新研究的问题。\n"
+            "- current_action_status：当前执行状态摘要。它用于 ACTION_PLANNING 或 TRACKING 任务中的进展和阻塞判断。\n\n"
             "2. planning_guidance\n"
             "- plan：上游给出的高层计划，只作为参考，不是必须逐条执行的脚本。\n"
             "- sub_questions：上游拆解出的子问题，用于判断哪些问题已有覆盖、哪些仍缺材料。\n"
             "- comparison_candidates：如果任务涉及比较，这里列出需要比较的对象，用于判断候选对象覆盖是否不平衡。\n"
+            "- initial_evidence_strategy：上游提出的初始 evidence gathering guidance，用于校准下一步 evidence need 的方向。\n"
             "这些 planning 信息只能作为边界和参考，不要改写、删除或扩展它们。\n\n"
             "3. supporting_context\n"
             "- research_support：已整理过的研究知识摘要。\n"
@@ -1650,11 +1655,15 @@ Research stage executor.
                 "task_framing": stage_input.task_framing,
                 "constraints": stage_input.constraints,
                 "project_context_summary": stage_input.project_context_summary,
+                "current_bottleneck_summary": stage_input.current_bottleneck_summary,
+                "active_decision_summary": stage_input.active_decision_summary,
+                "current_action_status": stage_input.current_action_status,
             },
             "planning_guidance": {
                 "plan": stage_input.plan,
                 "sub_questions": stage_input.sub_questions,
                 "comparison_candidates": stage_input.comparison_candidates,
+                "initial_evidence_strategy": stage_input.initial_evidence_strategy,
             },
             "supporting_context": supporting_context,
             "evidence_state": {

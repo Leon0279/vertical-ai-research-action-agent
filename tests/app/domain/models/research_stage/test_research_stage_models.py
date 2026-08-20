@@ -14,6 +14,10 @@ def test_research_stage_input_minimal_construction() -> None:
     assert stage_input.plan == []
     assert stage_input.sub_questions == []
     assert stage_input.owner_user_id is None
+    assert stage_input.initial_evidence_strategy == []
+    assert stage_input.active_decision_summary is None
+    assert stage_input.current_action_status is None
+    assert stage_input.current_bottleneck_summary is None
     assert stage_input.research_support == []
     assert stage_input.decision_support == []
     assert stage_input.action_support == []

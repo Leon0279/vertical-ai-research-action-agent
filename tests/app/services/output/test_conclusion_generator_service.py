@@ -123,6 +123,30 @@ def test_conclusion_generator_accepts_fenced_json() -> None:
     assert context.running_state.final_summary == "fenced summary"
 
 
+def test_conclusion_generator_uses_safe_fallback_when_research_failed() -> None:
+    llm = _FakeLLMClient(json.dumps(_valid_payload(), ensure_ascii=False))
+    context = _context()
+    context.running_state.research_status = "failed"
+
+    result = asyncio.run(ConclusionGeneratorService(llm_client=llm).generate(context))
+
+    assert result is None
+    assert llm.prompts == []
+    assert context.running_state.final_answer == (
+        "本次研究未能获得足够可靠的材料，因此暂时不能给出可信的事实性结论。"
+        "建议稍后重试，或补充更具体的研究范围与可用资料。"
+    )
+    assert context.running_state.final_summary == "本次研究未形成可靠材料，未生成事实性结论。"
+    assert context.running_state.final_recommendation is None
+    assert context.running_state.action_items == []
+    assert context.running_state.citations == []
+    assert context.running_state.confidence == "low"
+    assert "研究阶段未能形成可靠证据材料；本次回答不应被视为事实性结论。" in (
+        context.running_state.caveats
+    )
+    assert "缺少线上流量验证。" in context.running_state.caveats
+
+
 def test_conclusion_generator_rejects_non_json_response() -> None:
     llm = _FakeLLMClient("not json")
 

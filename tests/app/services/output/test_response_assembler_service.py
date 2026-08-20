@@ -19,6 +19,7 @@ def test_response_assembler_includes_session_metadata() -> None:
             user_id="user-1",
             session_id="session-123",
             session_id_generated=True,
+            tool_registry_version="default-retrieval-v1",
         ),
     )
     context.runtime_context.stage_history.append("request_intake")
@@ -31,6 +32,9 @@ def test_response_assembler_includes_session_metadata() -> None:
     assert output.metadata == {
         "session_id": "session-123",
         "session_id_generated": True,
+        "research_status": None,
+        "research_iteration_count": 0,
+        "tool_registry_version": "default-retrieval-v1",
     }
     assert output.stage_history == ["request_intake"]
 
@@ -40,6 +44,8 @@ def test_response_assembler_converts_running_state_outputs() -> None:
         running_state=RunningState(
             original_query="Compare retrieval methods.",
             task_type=TaskType.COMPARISON.value,
+            research_status="partial_success",
+            research_iteration_count=2,
             final_answer="Use the simpler retrieval baseline first, then evaluate quality.",
             final_summary="Prefer the simple baseline first.",
             final_recommendation="Use the simpler retrieval baseline first.",
@@ -57,6 +63,7 @@ def test_response_assembler_converts_running_state_outputs() -> None:
             request_id="trace-123",
             user_id="user-1",
             session_id="session-123",
+            tool_registry_version="default-retrieval-v1",
         ),
     )
 
@@ -74,6 +81,9 @@ def test_response_assembler_converts_running_state_outputs() -> None:
     ]
     assert output.confidence == 0.5
     assert output.caveats == ["Needs validation on production-like traffic."]
+    assert output.metadata["research_status"] == "partial_success"
+    assert output.metadata["research_iteration_count"] == 2
+    assert output.metadata["tool_registry_version"] == "default-retrieval-v1"
 
 
 def test_response_assembler_prefers_routed_workflow_pattern() -> None:

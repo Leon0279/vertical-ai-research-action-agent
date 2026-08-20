@@ -102,8 +102,9 @@ class StructuredOutput(BaseModel):
     metadata: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "可选字段，默认空 dict。最终输出的非核心运行 metadata。当前项目中包含 session_id 和 "
-            "session_id_generated；未来可加入轻量 routing/debug 信息。不要把完整 prompt、raw tool payload、"
+            "可选字段，默认空 dict。最终输出的非核心运行 metadata。当前项目中包含 session_id、"
+            "session_id_generated、research_status、research_iteration_count 和 tool_registry_version，"
+            "用于说明会话边界、研究阶段结果和服务端 capability 注册版本；未来可加入轻量 routing/debug 信息。不要把完整 prompt、raw tool payload、"
             "完整 evidence 正文或敏感 provider response 放在这里。"
         ),
     )

@@ -49,6 +49,25 @@ def test_request_intake_service_preserves_existing_session_id() -> None:
     assert state.runtime_context.session_id_generated is False
 
 
+def test_request_intake_service_applies_server_registered_capabilities() -> None:
+    service = RequestIntakeService(
+        available_tools=[" docs_search ", "docs_search", "web_search", ""],
+        tool_registry_version="test-retrieval-v1",
+    )
+
+    state = asyncio.run(
+        service.intake(
+            RequestContext(
+                original_query="Find current documentation about retrieval.",
+                user_id="user-1",
+            )
+        )
+    )
+
+    assert state.runtime_context.available_tools == ["docs_search", "web_search"]
+    assert state.runtime_context.tool_registry_version == "test-retrieval-v1"
+
+
 def test_request_intake_service_rejects_blank_query() -> None:
     service = RequestIntakeService()
 

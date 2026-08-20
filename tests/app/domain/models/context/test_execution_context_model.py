@@ -26,6 +26,8 @@ def test_running_state_defaults_follow_context_construction_lld() -> None:
     assert state.initial_evidence_strategy == []
     assert state.retrieved_evidence_refs == []
     assert state.intermediate_findings == []
+    assert state.research_status is None
+    assert state.research_iteration_count == 0
     assert state.final_answer is None
     assert state.final_summary is None
     assert state.final_recommendation is None

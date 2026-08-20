@@ -67,6 +67,38 @@ class ResearchStageInput(BaseModel):
         default_factory=list,
         description="可选字段，默认空列表。当前已识别的信息缺口，后续可作为 retrieval / evidence target。",
     )
+    initial_evidence_strategy: list[str] = Field(
+        default_factory=list,
+        description=(
+            "可选字段，默认空列表。Planning 阶段给出的初始 evidence gathering guidance。"
+            "当前项目中有用：ResearchExecutorService 会把它作为 assessment 的 planning reference，"
+            "帮助判断下一步 evidence need 是否符合当前任务类型、项目约束与既有规划。"
+        ),
+    )
+    active_decision_summary: str | None = Field(
+        default=None,
+        description=(
+            "可选字段。当前 project scope 内仍会影响本次研究的关键决策摘要。"
+            "当前项目中有用：ResearchExecutorService 会在 assessment 中将它作为已有决策约束，"
+            "避免把已经确定的方向错误识别为待重新研究的问题。"
+        ),
+    )
+    current_action_status: str | None = Field(
+        default=None,
+        description=(
+            "可选字段。当前 project scope 的行动或执行状态摘要。当前项目中有用："
+            "ResearchExecutorService 会把它作为 ACTION_PLANNING/TRACKING assessment 的状态输入，"
+            "用于识别阻塞、进展和 actionability gap。"
+        ),
+    )
+    current_bottleneck_summary: str | None = Field(
+        default=None,
+        description=(
+            "可选字段。当前项目或任务最关键瓶颈的摘要。当前项目中有用："
+            "ResearchExecutorService 会将它作为 research objective 的优先级校准信息，"
+            "但不会仅凭该字段扩大原始研究范围。"
+        ),
+    )
     existing_intermediate_findings: list[str] = Field(
         default_factory=list,
         description="可选字段，默认空列表。进入 research stage 前已有的中间发现。",

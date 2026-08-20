@@ -20,7 +20,9 @@ class SupplementalContext(BaseModel):
         description=(
             "可选字段，默认空列表。来自 session / thread continuity 的支持性上下文。当前项目中有用："
             "ContextMemoryLoader 会把 session working summary、current local task framing、latest recommendation、"
-            "latest action items 等整理成 ContextItem 放入这里。通常用于 task interpretation、planning 和 continuity-aware output。"
+            "latest action items 等整理成 ContextItem 放入这里。当前默认 pipeline 中它主要服务 planning、"
+            "ConclusionGenerator 和 session continuity-aware output；TaskInterpreter 在 session memory 加载前执行，"
+            "因此不会直接消费该字段。"
         ),
     )
     project_support: list[ContextItem] = Field(
@@ -64,8 +66,8 @@ class SupplementalContext(BaseModel):
     external_evidence_support: list[ContextItem] = Field(
         default_factory=list,
         description=(
-            "可选字段，默认空列表。来自当前 run 或上游已筛选外部 evidence 的支持性上下文。当前项目中有用但当前写入较少："
-            "未来可用于让 ConclusionGenerator 消费少量高优先级 external evidence summary。该字段不应成为 raw retrieval results "
-            "或完整网页/论文正文的存放位置。"
+            "可选字段，默认空列表。来自当前 run 或上游已筛选外部 evidence 的支持性上下文。"
+            "当前默认 pipeline 暂未生产或消费该字段，保留它是为了后续将少量高优先级 external evidence summary "
+            "交给 ConclusionGenerator 等阶段；该字段不应成为 raw retrieval results 或完整网页/论文正文的存放位置。"
         ),
     )
