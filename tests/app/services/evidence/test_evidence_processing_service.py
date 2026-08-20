@@ -31,7 +31,7 @@ def _process(service: EvidenceProcessingService, request: EvidenceProcessingRequ
 
 
 def _prompt_input(prompt: str) -> dict:
-    return json.loads(prompt.split("输入如下：\n", maxsplit=1)[1])
+    return json.loads(prompt.split("输入 JSON：\n", maxsplit=1)[1])
 
 
 def _request(
@@ -261,7 +261,7 @@ def test_llm_json_successfully_structures_evidence() -> None:
     assert result.processing_status == "success"
     assert result.processed_evidence_units[0].evidence_type == "direct_fact"
     assert result.processed_evidence_units[0].content.startswith("Hybrid retrieval")
-    assert "Evidence Structuring" in llm.prompts[0]
+    assert "无状态的证据材料整理任务" in llm.prompts[0]
 
 
 def test_llm_prompt_uses_minimal_material_context() -> None:
@@ -305,6 +305,12 @@ def test_llm_prompt_uses_minimal_material_context() -> None:
     )
 
     prompt_input = _prompt_input(llm.prompts[0])
+    assert "无状态" in llm.prompts[0]
+    assert "task_context：当前研究问题及其边界" in llm.prompts[0]
+    assert "material.content：需要判断和提炼的原始材料正文" in llm.prompts[0]
+    assert "dedup" not in llm.prompts[0]
+    assert "provenance" not in llm.prompts[0]
+    assert "retrieval family" not in llm.prompts[0]
     assert prompt_input["task_context"]["target_problem"] == "Choose a retrieval baseline"
     assert prompt_input["task_context"]["evidence_goal"] == "establish_coverage"
     assert prompt_input["material"]["content"] == "Hybrid retrieval is a useful baseline."

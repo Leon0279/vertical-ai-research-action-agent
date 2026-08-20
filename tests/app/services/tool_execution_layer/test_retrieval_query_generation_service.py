@@ -66,6 +66,8 @@ def test_generate_query_maps_llm_json_to_result() -> None:
     )
     assert result.generation_trace["evidence_shape"]["breadth"] == "narrow"
     assert llm.last_prompt is not None
+    assert "无状态" in llm.last_prompt
+    assert "selected_family：已确定的资料渠道标识" in llm.last_prompt
     assert "docs_search" in llm.last_prompt
     assert "Find official Responses API structured output guidance" in llm.last_prompt
     assert "improve_actionability" in llm.last_prompt
@@ -94,7 +96,9 @@ def test_result_does_not_include_selected_tool_or_retrieval_request() -> None:
     assert "max_results" not in dumped
     assert "timeout_limit_ms" not in dumped
     assert llm.last_prompt is not None
-    assert "不得输出 selected_tool" in llm.last_prompt
+    assert "检索短语，不是工具参数、执行步骤" in llm.last_prompt
+    assert "selected_tool" not in llm.last_prompt
+    assert "timeout_limit_ms" not in llm.last_prompt
 
 
 def test_recent_low_value_queries_are_trimmed_filtered_and_limited() -> None:

@@ -64,7 +64,13 @@ def test_task_interpreter_calls_llm_and_maps_valid_json() -> None:
     asyncio.run(TaskInterpreterService(llm_client=llm_client).interpret(context))
 
     assert len(llm_client.prompts) == 1
-    assert "current bottlenecks" in llm_client.prompts[0].lower()
+    prompt = llm_client.prompts[0]
+    assert "无状态" in prompt
+    assert "输入 JSON" in prompt
+    assert '"user_query"' in prompt
+    assert "TOPIC_EXPLORATION" in prompt
+    assert "Task Interpretation Component" not in prompt
+    assert "fixed research workflow" not in prompt
     assert context.running_state.user_goal == "Choose the next retrieval improvement for the MVP."
     assert context.running_state.task_type == TaskType.RECOMMENDATION.value
     assert context.running_state.task_framing == "Project-specific prioritization request."
