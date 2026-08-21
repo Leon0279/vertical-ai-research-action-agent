@@ -199,7 +199,9 @@ def test_default_dependencies_register_the_same_capabilities_as_tel(monkeypatch)
         "default_retrieval_families_v1"
     )
 
-    tool_execution_layer = dependencies.research_executor._tool_execution_layer_service
+    tool_execution_layer = (
+        dependencies.research_executor._material_acquirer._tool_execution_layer_service
+    )
     assert set(tool_execution_layer._family_services) == set(FamilyName)
     assert all(service is not None for service in tool_execution_layer._family_services.values())
 

@@ -592,7 +592,7 @@ def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None
 def test_research_executor_builds_stable_coverage_targets() -> None:
     service = _research_executor()
 
-    targets = service._evidence_coverage_targets(
+    targets = service._coverage_tracker.coverage_targets(
         ResearchStageInput(
             original_query="Compare research retrieval strategies.",
             user_goal="Choose the most suitable retrieval strategy.",
@@ -633,7 +633,7 @@ def test_research_executor_builds_stable_coverage_targets() -> None:
 def test_research_executor_omits_comparison_targets_when_no_candidates_exist() -> None:
     service = _research_executor()
 
-    targets = service._evidence_coverage_targets(
+    targets = service._coverage_tracker.coverage_targets(
         ResearchStageInput(
             original_query="Investigate retrieval behavior.",
             sub_questions=["Which evidence is currently missing?"],
@@ -1226,7 +1226,12 @@ def test_research_executor_tracks_current_iteration_evidence_delta() -> None:
         service.processed_states[1]["current_iteration_processed_evidence_units"]
         == []
     )
-    assert service._did_new_evidence_arrive(service.processed_states[1]) is False
+    assert (
+        service._outcome_evaluator._did_new_evidence_arrive(
+            service.processed_states[1]
+        )
+        is False
+    )
 
 
 def test_research_executor_degrades_when_last_iteration_has_no_meaningful_gain() -> None:
