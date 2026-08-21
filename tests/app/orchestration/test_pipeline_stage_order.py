@@ -67,36 +67,56 @@ class _FakeZhipuLLMClient:
                 ensure_ascii=False,
             )
 
-        return json.dumps(
-            {
-                "assessment": {
-                    "coverage_status": "not_covered",
-                    "support_strength": "insufficient_support",
-                    "finding_maturity": "tentative",
-                    "assessment_summary": "默认 pipeline 测试中的 fake assessment。",
-                },
-                "identified_gaps": [],
-                "top_gap": {
-                    "gap_scope": "objective_level",
-                    "gap_nature": "none",
-                    "gap_severity": "none",
-                    "gap_summary": "默认 pipeline 测试没有 actionable gap。",
-                    "gap_target": None,
-                    "gap_actionability": None,
-                },
-                "next_evidence_need": {
-                    "need_scope": "objective_level",
-                    "need_target": None,
-                    "need_purpose": "none",
-                    "desired_evidence_kind": "none",
-                    "freshness_requirement": "none",
-                    "minimum_support_requirement": "none",
-                    "need_summary": "默认 pipeline 测试不触发新的 evidence need。",
-                },
-                "prioritization_summary": "默认 pipeline 测试不选择 top gap。",
+        payload = {
+            "assessment": {
+                "coverage_status": "not_covered",
+                "support_strength": "insufficient_support",
+                "finding_maturity": "tentative",
+                "assessment_summary": "默认 pipeline 测试中的 fake assessment。",
             },
-            ensure_ascii=False,
-        )
+            "identified_gaps": [],
+            "top_gap": {
+                "gap_scope": "objective_level",
+                "gap_nature": "none",
+                "gap_severity": "none",
+                "gap_summary": "默认 pipeline 测试没有 actionable gap。",
+                "gap_target": None,
+                "gap_actionability": None,
+            },
+            "next_evidence_need": {
+                "need_scope": "objective_level",
+                "need_target": None,
+                "need_purpose": "none",
+                "desired_evidence_kind": "none",
+                "freshness_requirement": "none",
+                "minimum_support_requirement": "none",
+                "need_summary": "默认 pipeline 测试不触发新的 evidence need。",
+                "coverage_target_key": "objective",
+            },
+            "evidence_coverage_snapshot": [
+                {
+                    "target_key": "objective",
+                    "coverage_status": "not_covered",
+                    "supporting_evidence_keys": [],
+                    "uncovered_aspects": ["默认 fake 未提供可验证证据。"],
+                    "coverage_summary": "默认 fake 未提供可验证证据。",
+                }
+            ],
+            "prioritization_summary": "默认 pipeline 测试不选择 top gap。",
+        }
+        if "研究状态判断" in prompt:
+            prompt_input = json.loads(prompt.rsplit("输入 JSON：\n", maxsplit=1)[1])
+            payload["evidence_coverage_snapshot"] = [
+                {
+                    "target_key": target["target_key"],
+                    "coverage_status": "not_covered",
+                    "supporting_evidence_keys": [],
+                    "uncovered_aspects": ["默认 fake 未提供可验证证据。"],
+                    "coverage_summary": "默认 fake 未提供可验证证据。",
+                }
+                for target in prompt_input["evidence_state"]["coverage_targets"]
+            ]
+        return json.dumps(payload, ensure_ascii=False)
 
 
 class _FakeProviderClient:

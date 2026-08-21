@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from copy import deepcopy
 from typing import Any
 
 import pytest
@@ -20,6 +21,9 @@ from app.domain.models import (
 from app.services.executor.research_executor_service import (
     ResearchExecutorService,
     ResearchIterationOutcome,
+)
+from app.services.executor.models.evidence_coverage_entry import (
+    EvidenceCoverageEntry,
 )
 
 
@@ -41,6 +45,8 @@ def _valid_assessment_payload(
     freshness_requirement: str = "normal",
     minimum_support_requirement: str = "any_relevant_signal",
     need_summary: str = "补充 memory-backed retrieval 的直接事实证据。",
+    coverage_target_key: str = "objective",
+    evidence_coverage_snapshot: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return {
         "assessment": {
@@ -75,7 +81,19 @@ def _valid_assessment_payload(
             "freshness_requirement": freshness_requirement,
             "minimum_support_requirement": minimum_support_requirement,
             "need_summary": need_summary,
+            "coverage_target_key": coverage_target_key,
         },
+        "evidence_coverage_snapshot": evidence_coverage_snapshot
+        if evidence_coverage_snapshot is not None
+        else [
+            {
+                "target_key": "objective",
+                "coverage_status": coverage_status,
+                "supporting_evidence_keys": [],
+                "uncovered_aspects": ["缺少直接证据。"],
+                "coverage_summary": "当前研究目标尚未获得充分直接证据。",
+            }
+        ],
         "prioritization_summary": "该 gap 直接影响当前轮 research objective，因此优先推进。",
     }
 
@@ -154,10 +172,30 @@ class _FakeLLMClient:
                 self._outcome_responses,
                 self._default_outcome_response,
             )
-        return self._next_response(
-            self._assessment_responses,
-            self._default_assessment_response,
-        )
+        if self._assessment_responses:
+            return self._next_response(
+                self._assessment_responses,
+                self._default_assessment_response,
+            )
+        return self._default_assessment_response_for_prompt(prompt)
+
+    def _default_assessment_response_for_prompt(self, prompt: str) -> str:
+        """Build a valid default snapshot for the target catalog included in a prompt."""
+
+        payload = json.loads(self._default_assessment_response)
+        prompt_input = json.loads(prompt.rsplit("输入 JSON：\n", maxsplit=1)[1])
+        targets = prompt_input["evidence_state"]["coverage_targets"]
+        payload["evidence_coverage_snapshot"] = [
+            {
+                "target_key": target["target_key"],
+                "coverage_status": payload["assessment"]["coverage_status"],
+                "supporting_evidence_keys": [],
+                "uncovered_aspects": ["缺少直接证据。"],
+                "coverage_summary": "当前研究目标尚未获得充分直接证据。",
+            }
+            for target in targets
+        ]
+        return json.dumps(payload, ensure_ascii=False)
 
     def _next_response(self, responses: list[str], default_response: str) -> str:
         if not responses:
@@ -369,6 +407,7 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         self.captured_states: list[dict[str, Any]] = []
         self.action_states: list[dict[str, Any]] = []
         self.processed_states: list[dict[str, Any]] = []
+        self.updated_states: list[dict[str, Any]] = []
         self.finding_states: list[dict[str, Any]] = []
         self.outcome_states: list[dict[str, Any]] = []
         self._outcomes = outcomes or []
@@ -382,7 +421,7 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
             stage_input,
             working_state,
         )
-        self.captured_states.append(dict(working_state))
+        self.captured_states.append(deepcopy(working_state))
 
     async def _decide_whether_external_action_is_needed(
         self,
@@ -393,7 +432,7 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
             stage_input,
             working_state,
         )
-        self.action_states.append(dict(working_state))
+        self.action_states.append(deepcopy(working_state))
         return result
 
     async def _evaluate_iteration_outcome(
@@ -404,7 +443,7 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         if self._outcomes:
             return self._outcomes.pop(0)
         outcome = await super()._evaluate_iteration_outcome(stage_input, working_state)
-        self.outcome_states.append(dict(working_state))
+        self.outcome_states.append(deepcopy(working_state))
         return outcome
 
     async def _process_candidate_material_into_usable_evidence(
@@ -416,7 +455,15 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
             stage_input,
             working_state,
         )
-        self.processed_states.append(dict(working_state))
+        self.processed_states.append(deepcopy(working_state))
+
+    async def _update_stage_local_working_state(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+    ) -> None:
+        await super()._update_stage_local_working_state(stage_input, working_state)
+        self.updated_states.append(deepcopy(working_state))
 
     async def _produce_or_refine_intermediate_findings(
         self,
@@ -424,7 +471,7 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         working_state: dict[str, Any],
     ) -> None:
         await super()._produce_or_refine_intermediate_findings(stage_input, working_state)
-        self.finding_states.append(dict(working_state))
+        self.finding_states.append(deepcopy(working_state))
 
 
 def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
@@ -523,11 +570,180 @@ def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None
         "freshness_requirement": "normal",
         "minimum_support_requirement": "any_relevant_signal",
         "need_summary": "补充 memory-backed retrieval 的直接事实证据。",
+        "coverage_target_key": "objective",
     }
+    coverage_entry = service.captured_states[0]["evidence_coverage_map"][
+        "objective"
+    ]
+    assert isinstance(coverage_entry, EvidenceCoverageEntry)
+    assert coverage_entry.target_type == "objective"
+    assert coverage_entry.target_text == "Assess current research coverage."
+    assert coverage_entry.coverage_status == "partially_covered"
+    assert coverage_entry.retrieved_evidence_keys == []
+    assert coverage_entry.supporting_evidence_keys == []
+    assert coverage_entry.uncovered_aspects == ["缺少直接证据。"]
+    assert coverage_entry.coverage_summary == "当前研究目标尚未获得充分直接证据。"
     assert (
         service.captured_states[0]["prioritization_summary"]
         == "该 gap 直接影响当前轮 research objective，因此优先推进。"
     )
+
+
+def test_research_executor_builds_stable_coverage_targets() -> None:
+    service = _research_executor()
+
+    targets = service._evidence_coverage_targets(
+        ResearchStageInput(
+            original_query="Compare research retrieval strategies.",
+            user_goal="Choose the most suitable retrieval strategy.",
+            sub_questions=["What does memory retrieval cover?", "When is web search needed?"],
+            comparison_candidates=["memory", "web"],
+        )
+    )
+
+    assert [target.model_dump(mode="json") for target in targets] == [
+        {
+            "target_key": "objective",
+            "target_type": "objective",
+            "target_text": "Choose the most suitable retrieval strategy.",
+        },
+        {
+            "target_key": "sub_question:1",
+            "target_type": "sub_question",
+            "target_text": "What does memory retrieval cover?",
+        },
+        {
+            "target_key": "sub_question:2",
+            "target_type": "sub_question",
+            "target_text": "When is web search needed?",
+        },
+        {
+            "target_key": "comparison_candidate:1",
+            "target_type": "comparison_candidate",
+            "target_text": "memory",
+        },
+        {
+            "target_key": "comparison_candidate:2",
+            "target_type": "comparison_candidate",
+            "target_text": "web",
+        },
+    ]
+
+
+def test_research_executor_omits_comparison_targets_when_no_candidates_exist() -> None:
+    service = _research_executor()
+
+    targets = service._evidence_coverage_targets(
+        ResearchStageInput(
+            original_query="Investigate retrieval behavior.",
+            sub_questions=["Which evidence is currently missing?"],
+        )
+    )
+
+    assert [target.target_key for target in targets] == [
+        "objective",
+        "sub_question:1",
+    ]
+
+
+def test_research_executor_step_six_records_candidate_evidence_without_claiming_support() -> None:
+    evidence_unit = _processed_evidence_unit("Candidate evidence for the objective.")
+    service = _StateCapturingResearchExecutorService(
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_FakeEvidenceProcessingService(
+            result=EvidenceProcessingResult(
+                processed_evidence_units=[evidence_unit],
+                processing_status="success",
+            )
+        ),
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Associate newly acquired evidence with its target.",
+                available_tools=["docs_search"],
+            )
+        )
+    )
+
+    entry = service.updated_states[0]["evidence_coverage_map"]["objective"]
+    assert entry.retrieved_evidence_keys == ["iteration_1:ev_001"]
+    assert entry.supporting_evidence_keys == []
+    assert entry.coverage_status == "partially_covered"
+
+
+@pytest.mark.parametrize(
+    ("payload", "stage_input", "error_message"),
+    [
+        (
+            _valid_assessment_payload(coverage_target_key="unknown_target"),
+            ResearchStageInput(original_query="Reject unknown targets."),
+            "unknown coverage target",
+        ),
+        (
+            _valid_assessment_payload(),
+            ResearchStageInput(
+                original_query="Require every configured target.",
+                sub_questions=["What remains unknown?"],
+            ),
+            "cover every configured target exactly once",
+        ),
+        (
+            _valid_assessment_payload(
+                evidence_coverage_snapshot=[
+                    {
+                        "target_key": "objective",
+                        "coverage_status": "not_covered",
+                        "supporting_evidence_keys": [],
+                        "uncovered_aspects": [],
+                        "coverage_summary": "尚未覆盖。",
+                    },
+                    {
+                        "target_key": "objective",
+                        "coverage_status": "not_covered",
+                        "supporting_evidence_keys": [],
+                        "uncovered_aspects": [],
+                        "coverage_summary": "重复 target。",
+                    },
+                ]
+            ),
+            ResearchStageInput(original_query="Reject duplicate targets."),
+            "contains duplicates",
+        ),
+        (
+            _valid_assessment_payload(
+                evidence_coverage_snapshot=[
+                    {
+                        "target_key": "objective",
+                        "coverage_status": "covered",
+                        "supporting_evidence_keys": ["iteration_1:ev_001"],
+                        "uncovered_aspects": [],
+                        "coverage_summary": "引用了不存在的 evidence。",
+                    }
+                ]
+            ),
+            ResearchStageInput(original_query="Reject unknown evidence keys."),
+            "references unknown evidence keys",
+        ),
+    ],
+)
+def test_research_executor_rejects_invalid_coverage_snapshot_contract(
+    payload: dict[str, Any],
+    stage_input: ResearchStageInput,
+    error_message: str,
+) -> None:
+    service = _research_executor(
+        llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
+    )
+
+    with pytest.raises(ValueError, match=error_message):
+        asyncio.run(service.execute(stage_input))
 
 
 def test_research_executor_refines_when_gap_is_noop() -> None:
@@ -753,9 +969,14 @@ def test_research_executor_processes_tel_result_into_working_state() -> None:
     assert len(tel_service.requests) == 1
     assert len(evidence_service.requests) == 1
     assert evidence_service.requests[0].acquisition_status == AcquisitionStatus.SUCCESS
-    assert service.processed_states[0]["processed_evidence_units"] == [evidence_unit]
+    scoped_evidence_unit = evidence_unit.model_copy(
+        update={"evidence_unit_id": "iteration_1:ev_001"}
+    )
+    assert service.processed_states[0]["processed_evidence_units"] == [
+        scoped_evidence_unit
+    ]
     assert service.processed_states[0]["current_iteration_processed_evidence_units"] == [
-        evidence_unit
+        scoped_evidence_unit
     ]
     assert "processed_evidence" not in service.processed_states[0]
 
@@ -989,14 +1210,17 @@ def test_research_executor_tracks_current_iteration_evidence_delta() -> None:
         )
     )
 
+    scoped_first_evidence_unit = first_result.processed_evidence_units[0].model_copy(
+        update={"evidence_unit_id": "iteration_1:ev_001"}
+    )
     assert service.processed_states[0]["processed_evidence_units"] == [
-        first_result.processed_evidence_units[0]
+        scoped_first_evidence_unit
     ]
     assert service.processed_states[0]["current_iteration_processed_evidence_units"] == [
-        first_result.processed_evidence_units[0]
+        scoped_first_evidence_unit
     ]
     assert service.processed_states[1]["processed_evidence_units"] == [
-        first_result.processed_evidence_units[0]
+        scoped_first_evidence_unit
     ]
     assert (
         service.processed_states[1]["current_iteration_processed_evidence_units"]
@@ -1515,7 +1739,26 @@ def test_research_assessment_prompt_contains_required_context_and_boundaries() -
     assert "Distilled decision: prefer memory-backed retrieval first." in prompt
     assert "Distilled action: implementation is blocked on freshness evidence." in prompt
     assert '"processed_evidence": []' in prompt
-    assert '"evidence_coverage_map": {}' in prompt
+    assert '"coverage_targets": [' in prompt
+    assert '"target_key": "objective"' in prompt
+    assert '"evidence_coverage_map": {' in prompt
+    prompt_input = json.loads(prompt.rsplit("输入 JSON：\n", maxsplit=1)[1])
+    coverage_map = prompt_input["evidence_state"]["evidence_coverage_map"]
+    assert set(coverage_map) == {
+        "objective",
+        "sub_question:1",
+        "comparison_candidate:1",
+        "comparison_candidate:2",
+    }
+    assert coverage_map["objective"] == {
+        "target_type": "objective",
+        "target_text": "Pick a retrieval strategy.",
+        "coverage_status": "not_covered",
+        "retrieved_evidence_keys": [],
+        "supporting_evidence_keys": [],
+        "uncovered_aspects": [],
+        "coverage_summary": "尚未完成语义覆盖判断。",
+    }
     assert '"identified_gaps": []' in prompt
     assert "top_gap" in prompt
     assert "next_evidence_need" in prompt
@@ -1614,6 +1857,79 @@ def test_research_executor_second_iteration_prompt_serializes_typed_processed_ev
         assessment_prompts[1]
     )
     assert '"source_references"' in assessment_prompts[1]
+    assert "iteration_1:ev_001" in assessment_prompts[1]
+
+
+def test_research_executor_next_assessment_confirms_prior_candidate_evidence() -> None:
+    evidence_unit = _processed_evidence_unit("Evidence that can support the objective.")
+    first_payload = _valid_assessment_payload(
+        evidence_coverage_snapshot=[
+            {
+                "target_key": "objective",
+                "coverage_status": "not_covered",
+                "supporting_evidence_keys": [],
+                "uncovered_aspects": ["尚未验证新材料与目标的关系。"],
+                "coverage_summary": "当前没有确认的支撑材料。",
+            }
+        ]
+    )
+    second_payload = _valid_assessment_payload(
+        coverage_status="covered",
+        support_strength="strong_enough",
+        finding_maturity="partially_stable",
+        evidence_coverage_snapshot=[
+            {
+                "target_key": "objective",
+                "coverage_status": "covered",
+                "supporting_evidence_keys": ["iteration_1:ev_001"],
+                "uncovered_aspects": [],
+                "coverage_summary": "第一轮获得的材料已确认直接支撑当前研究目标。",
+            }
+        ],
+    )
+    service = _StateCapturingResearchExecutorService(
+        outcomes=["continue", "stop"],
+        llm_client=_FakeLLMClient(
+            responses=[
+                json.dumps(first_payload, ensure_ascii=False),
+                json.dumps(second_payload, ensure_ascii=False),
+            ]
+        ),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ),
+        evidence_processing_service=_FakeEvidenceProcessingService(
+            result=EvidenceProcessingResult(
+                processed_evidence_units=[evidence_unit],
+                processing_status="success",
+            )
+        ),
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Confirm coverage using evidence from the prior iteration.",
+                available_tools=["docs_search"],
+                iteration_budget=2,
+            )
+        )
+    )
+
+    second_assessment_entry = service.captured_states[1]["evidence_coverage_map"][
+        "objective"
+    ]
+    assert second_assessment_entry.retrieved_evidence_keys == ["iteration_1:ev_001"]
+    assert second_assessment_entry.supporting_evidence_keys == [
+        "iteration_1:ev_001"
+    ]
+    assert second_assessment_entry.coverage_status == "covered"
+    assert service.updated_states[1]["evidence_coverage_map"][
+        "objective"
+    ].retrieved_evidence_keys == ["iteration_1:ev_001", "iteration_2:ev_001"]
 
 
 def test_research_executor_continues_until_stop_within_iteration_budget() -> None:

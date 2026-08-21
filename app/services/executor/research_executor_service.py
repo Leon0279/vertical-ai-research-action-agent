@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -26,6 +26,12 @@ from app.services.evidence.contracts.evidence_processing_service_protocol import
     EvidenceProcessingServiceProtocol,
 )
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
+from app.services.executor.models.evidence_coverage_entry import (
+    EvidenceCoverageEntry,
+    EvidenceCoverageMap,
+    EvidenceCoverageStatus,
+    EvidenceCoverageTargetType,
+)
 from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
     ToolExecutionLayerServiceProtocol,
 )
@@ -36,7 +42,7 @@ ResearchActionMode = Literal[
     "memory_backed_acquisition",
     "external_acquisition",
 ]
-ResearchCoverageStatus = Literal["covered", "partially_covered", "not_covered"]
+ResearchCoverageStatus = EvidenceCoverageStatus
 ResearchSupportStrength = Literal[
     "strong_enough",
     "weak_support",
@@ -90,6 +96,7 @@ ResearchMinimumSupportRequirement = Literal[
     "strong_support",
     "none",
 ]
+ResearchCoverageTargetType = EvidenceCoverageTargetType
 ResearchTopGapProgress = Literal[
     "resolved",
     "partially_advanced",
@@ -179,6 +186,38 @@ Service-private schema for the current iteration's next evidence need."""
     freshness_requirement: ResearchFreshnessRequirement = Field(min_length=1, description="必填字段。该证据对时效性的要求。")
     minimum_support_requirement: ResearchMinimumSupportRequirement = Field(min_length=1, description="必填字段。将缺口视为已推进所需的最低支撑要求。")
     need_summary: str = Field(min_length=1, description="必填字段。下一轮 evidence need 的简短自然语言说明。")
+    coverage_target_key: str = Field(
+        min_length=1,
+        description="必填字段。该 evidence need 对应的 coverage target key，必须来自输入 coverage_targets。",
+    )
+
+
+class _EvidenceCoverageTarget(BaseModel):
+    """表示 Research Executor 内部维护的稳定 coverage target。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    target_key: str = Field(min_length=1, description="必填字段。executor 生成的稳定 coverage target 标识。")
+    target_type: ResearchCoverageTargetType = Field(description="必填字段。coverage target 的语义类型。")
+    target_text: str = Field(min_length=1, description="必填字段。该 target 对应的研究目标、子问题或比较候选项文本。")
+
+
+class _LLMEvidenceCoverageEntryPayload(BaseModel):
+    """表示 LLM 对单个 coverage target 的语义覆盖判断。"""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    target_key: str = Field(min_length=1, description="必填字段。必须逐字匹配输入 coverage_targets 中的 target_key。")
+    coverage_status: ResearchCoverageStatus = Field(description="必填字段。该 target 当前的 evidence 覆盖状态。")
+    supporting_evidence_keys: list[str] = Field(
+        default_factory=list,
+        description="可选字段，默认空列表。经语义判断实际支撑该 target 的 evidence key；只能引用输入 processed_evidence。",
+    )
+    uncovered_aspects: list[str] = Field(
+        default_factory=list,
+        description="可选字段，默认空列表。该 target 仍未覆盖、偏弱或需要补强的方面。",
+    )
+    coverage_summary: str = Field(min_length=1, description="必填字段。该 target 覆盖状态的简短中文说明。")
 
 
 class _LLMResearchAssessmentAndGapsPayload(BaseModel):
@@ -192,6 +231,9 @@ Strict LLM output payload for the full 4.4 research decision block."""
     identified_gaps: list[_LLMResearchGapPayload] = Field(default_factory=list, description="可选字段，默认空列表。LLM 识别出的多个研究信息缺口。")
     top_gap: _LLMResearchGapPayload = Field(description="必填字段。本轮应优先处理的最高优先级 gap。")
     next_evidence_need: _LLMNextEvidenceNeedPayload = Field(description="必填字段。由 top gap 推导出的下一轮证据需求。")
+    evidence_coverage_snapshot: list[_LLMEvidenceCoverageEntryPayload] = Field(
+        description="必填字段。覆盖全部受控 target 的本轮全量语义 coverage snapshot。"
+    )
     prioritization_summary: str = Field(min_length=1, description="必填字段。说明为何选定 top gap 与当前 evidence need 的简短优先级解释。")
 
 
@@ -258,7 +300,9 @@ Research stage executor.
         working_state: dict[str, Any] = {
             "stage_input": stage_input,
             "processed_evidence_units": [],
-            "evidence_coverage_map": {},
+            "evidence_coverage_map": self._initial_evidence_coverage_map(
+                stage_input,
+            ),
             "identified_gaps": [],
             "intermediate_findings": list(stage_input.existing_intermediate_findings),
             "finding_caveats": [],
@@ -560,6 +604,11 @@ Research stage executor.
         prompt = self._build_research_assessment_prompt(stage_input, working_state)
         llm_output = await self._llm_client.generate_text(prompt)
         payload = self._parse_research_assessment_output(llm_output)
+        evidence_coverage_map = self._validated_evidence_coverage_map(
+            stage_input,
+            working_state,
+            payload,
+        )
 
         working_state["current_assessment"] = payload.assessment.model_dump(mode="json")
         working_state["identified_gaps"] = [
@@ -569,6 +618,7 @@ Research stage executor.
         working_state["next_evidence_need"] = payload.next_evidence_need.model_dump(
             mode="json"
         )
+        working_state["evidence_coverage_map"] = evidence_coverage_map
         working_state["prioritization_summary"] = payload.prioritization_summary
 
     async def _decide_whether_external_action_is_needed(
@@ -980,15 +1030,41 @@ Research stage executor.
         )
         if isinstance(evidence_processing_results, list):
             evidence_processing_results.append(result)
+        scoped_evidence_units = self._scope_evidence_units_for_iteration(
+            working_state,
+            result.processed_evidence_units,
+        )
         processed_evidence_units = working_state.setdefault(
             "processed_evidence_units",
             [],
         )
         if isinstance(processed_evidence_units, list):
-            processed_evidence_units.extend(result.processed_evidence_units)
-        working_state["current_iteration_processed_evidence_units"] = list(
-            result.processed_evidence_units
+            processed_evidence_units.extend(scoped_evidence_units)
+        working_state["current_iteration_processed_evidence_units"] = (
+            scoped_evidence_units
         )
+
+    def _scope_evidence_units_for_iteration(
+        self,
+        working_state: dict[str, Any],
+        evidence_units: list[ProcessedEvidenceUnit],
+    ) -> list[ProcessedEvidenceUnit]:
+        """Give evidence units executor-scoped IDs before retaining them across rounds."""
+
+        iteration_index = working_state.get("iteration_index")
+        if not isinstance(iteration_index, int) or iteration_index < 1:
+            raise ValueError("iteration_index is required before evidence processing.")
+
+        return [
+            unit.model_copy(
+                update={
+                    "evidence_unit_id": (
+                        f"iteration_{iteration_index}:{unit.evidence_unit_id}"
+                    )
+                }
+            )
+            for unit in evidence_units
+        ]
 
     def _tool_execution_layer_request(
         self,
@@ -1210,7 +1286,186 @@ Research stage executor.
         """Step 6. Merge current iteration outputs into stage-local working state."""
 
         _ = stage_input
-        _ = working_state
+        evidence_coverage_map = self._evidence_coverage_map(working_state)
+
+        next_evidence_need = self._working_state_dict(
+            working_state,
+            "next_evidence_need",
+        )
+        coverage_target_key = self._optional_text(
+            next_evidence_need.get("coverage_target_key"),
+        )
+        if coverage_target_key is None:
+            raise ValueError(
+                "next_evidence_need.coverage_target_key is required before Step 6."
+            )
+
+        coverage_entry = evidence_coverage_map.get(coverage_target_key)
+        if coverage_entry is None:
+            raise ValueError(
+                "next_evidence_need.coverage_target_key must reference an existing "
+                "coverage target."
+            )
+
+        new_evidence_keys = [
+            unit.evidence_unit_id
+            for unit in self._current_iteration_processed_evidence_units(working_state)
+        ]
+        if not new_evidence_keys:
+            return
+
+        evidence_coverage_map[coverage_target_key] = coverage_entry.model_copy(
+            update={
+                "retrieved_evidence_keys": self._unique_non_empty_texts(
+                    [
+                        *coverage_entry.retrieved_evidence_keys,
+                        *new_evidence_keys,
+                    ]
+                )
+            }
+        )
+
+    def _initial_evidence_coverage_map(
+        self,
+        stage_input: ResearchStageInput,
+    ) -> EvidenceCoverageMap:
+        """Create the deterministic coverage map before the first assessment call."""
+
+        return {
+            target.target_key: EvidenceCoverageEntry(
+                target_type=target.target_type,
+                target_text=target.target_text,
+                coverage_status="not_covered",
+                coverage_summary="尚未完成语义覆盖判断。",
+            )
+            for target in self._evidence_coverage_targets(stage_input)
+        }
+
+    def _evidence_coverage_targets(
+        self,
+        stage_input: ResearchStageInput,
+    ) -> list[_EvidenceCoverageTarget]:
+        """Build stable coverage targets from the current research-stage input."""
+
+        objective = self._required_text(
+            stage_input.user_goal,
+            fallback=stage_input.original_query,
+            field_name="current_research_objective",
+        )
+        targets = [
+            _EvidenceCoverageTarget(
+                target_key="objective",
+                target_type="objective",
+                target_text=objective,
+            )
+        ]
+        targets.extend(
+            _EvidenceCoverageTarget(
+                target_key=f"sub_question:{index}",
+                target_type="sub_question",
+                target_text=sub_question,
+            )
+            for index, sub_question in enumerate(stage_input.sub_questions, start=1)
+            if sub_question.strip()
+        )
+        targets.extend(
+            _EvidenceCoverageTarget(
+                target_key=f"comparison_candidate:{index}",
+                target_type="comparison_candidate",
+                target_text=candidate,
+            )
+            for index, candidate in enumerate(stage_input.comparison_candidates, start=1)
+            if candidate.strip()
+        )
+        return targets
+
+    def _validated_evidence_coverage_map(
+        self,
+        stage_input: ResearchStageInput,
+        working_state: dict[str, Any],
+        payload: _LLMResearchAssessmentAndGapsPayload,
+    ) -> EvidenceCoverageMap:
+        """Validate the full LLM coverage snapshot and merge deterministic links."""
+
+        targets_by_key = {
+            target.target_key: target
+            for target in self._evidence_coverage_targets(stage_input)
+        }
+        expected_target_keys = set(targets_by_key)
+        snapshot_keys = [entry.target_key for entry in payload.evidence_coverage_snapshot]
+        if len(snapshot_keys) != len(set(snapshot_keys)):
+            raise ValueError("Research assessment coverage snapshot contains duplicates.")
+        if set(snapshot_keys) != expected_target_keys:
+            raise ValueError(
+                "Research assessment coverage snapshot must cover every configured "
+                "target exactly once."
+            )
+        if payload.next_evidence_need.coverage_target_key not in targets_by_key:
+            raise ValueError(
+                "Research assessment next_evidence_need references an unknown coverage "
+                "target."
+            )
+
+        valid_evidence_keys = {
+            unit.evidence_unit_id
+            for unit in self._processed_evidence_units(working_state)
+        }
+        previous_coverage_map = self._evidence_coverage_map(working_state)
+
+        normalized_map: EvidenceCoverageMap = {}
+        for entry in payload.evidence_coverage_snapshot:
+            supporting_evidence_keys = self._unique_non_empty_texts(
+                entry.supporting_evidence_keys,
+            )
+            if len(supporting_evidence_keys) != len(entry.supporting_evidence_keys):
+                raise ValueError(
+                    "Research assessment coverage snapshot contains duplicate evidence "
+                    "keys."
+                )
+            invalid_evidence_keys = [
+                key
+                for key in supporting_evidence_keys
+                if key not in valid_evidence_keys
+            ]
+            if invalid_evidence_keys:
+                raise ValueError(
+                    "Research assessment coverage snapshot references unknown evidence "
+                    "keys."
+                )
+
+            target = targets_by_key[entry.target_key]
+            previous_entry = previous_coverage_map[entry.target_key]
+            normalized_map[entry.target_key] = EvidenceCoverageEntry(
+                target_type=target.target_type,
+                target_text=target.target_text,
+                coverage_status=entry.coverage_status,
+                retrieved_evidence_keys=self._unique_non_empty_texts(
+                    [
+                        key
+                        for key in previous_entry.retrieved_evidence_keys
+                        if key in valid_evidence_keys
+                    ]
+                ),
+                supporting_evidence_keys=supporting_evidence_keys,
+                uncovered_aspects=self._unique_non_empty_texts(
+                    entry.uncovered_aspects,
+                ),
+                coverage_summary=entry.coverage_summary,
+            )
+        return normalized_map
+
+    def _evidence_coverage_map(
+        self,
+        working_state: dict[str, Any],
+    ) -> EvidenceCoverageMap:
+        """Return the typed stage-local coverage map or fail on an invalid state."""
+
+        value = working_state.get("evidence_coverage_map")
+        if not isinstance(value, dict) or not all(
+            isinstance(entry, EvidenceCoverageEntry) for entry in value.values()
+        ):
+            raise ValueError("evidence_coverage_map is required and must be typed.")
+        return cast(EvidenceCoverageMap, value)
 
     async def _produce_or_refine_intermediate_findings(
         self,
@@ -1494,7 +1749,9 @@ Research stage executor.
             "你可以把它们作为判断背景，但不要把它们当作已经充分验证的事实来源。\n\n"
             "4. evidence_state\n"
             "- processed_evidence：当前已经处理成可用 evidence 的材料。\n"
-            "- evidence_coverage_map：当前 evidence 对研究目标、子问题、候选对象或比较维度的覆盖情况。\n"
+            "- coverage_targets：系统提供的受控覆盖对象列表。每个对象都有 target_key、target_type 和 target_text。\n"
+            "- evidence_coverage_map：上一轮覆盖判断；其中 retrieved_evidence_keys 表示为该对象取得的候选材料，"
+            "supporting_evidence_keys 表示已确认实际支撑该对象的材料。\n"
             "- intermediate_findings：当前已经形成的中间发现。\n"
             "这些字段是判断 coverage、support strength 和 finding maturity 的主要依据。\n\n"
             "5. gap_state\n"
@@ -1515,7 +1772,11 @@ Research stage executor.
             "3. 判断 intermediate_findings 的成熟度：tentative、partially_stable、stable，还是 blocked。\n"
             "4. 识别多个 unresolved gaps。gap 表示当前研究目标与已有材料支撑状态之间的差距。\n"
             "5. 从 identified_gaps 中选择当前轮唯一 top_gap。\n"
-            "6. 将 top_gap 转换成 next_evidence_need，说明下一步最需要补充哪类 evidence。\n\n"
+            "6. 将 top_gap 转换成 next_evidence_need，说明下一步最需要补充哪类 evidence。\n"
+            "7. 为 coverage_targets 中每个 target_key 输出一条 evidence_coverage_snapshot。\n"
+            "只有 processed_evidence 中存在的 evidence_unit_id 才能写入 supporting_evidence_keys。\n"
+            "被请求用于某个对象但尚未验证相关性的材料，系统会单独保存在 retrieved_evidence_keys；"
+            "不要仅因材料被取得就将它写入 supporting_evidence_keys 或提高 coverage_status。\n\n"
             "选择 top_gap 时请优先考虑：\n\n"
             "1. gap_severity 的通常优先级是 blocking > important > optional > none。\n"
             "2. 更直接影响 current_research_objective 的 gap 优先。\n"
@@ -1533,6 +1794,7 @@ Research stage executor.
             "- top_gap.gap_severity 必须为 \"none\"。\n"
             "- next_evidence_need.need_purpose 必须为 \"none\"。\n"
             "- next_evidence_need.desired_evidence_kind 必须为 \"none\"。\n"
+            "- next_evidence_need.coverage_target_key 仍必须选择 coverage_targets 中的一个 key，通常为 objective。\n"
             "- 不要为了填字段而虚构新研究方向、新子问题或新证据需求。\n\n"
             "输出边界：\n"
             "- 只输出一个 JSON object。\n"
@@ -1548,6 +1810,7 @@ Research stage executor.
             "- identified_gaps\n"
             "- top_gap\n"
             "- next_evidence_need\n"
+            "- evidence_coverage_snapshot\n"
             "- prioritization_summary\n\n"
             "assessment 必须且只能包含：\n"
             "- coverage_status\n"
@@ -1575,7 +1838,15 @@ Research stage executor.
             "- desired_evidence_kind\n"
             "- freshness_requirement\n"
             "- minimum_support_requirement\n"
-            "- need_summary\n\n"
+            "- need_summary\n"
+            "- coverage_target_key\n\n"
+            "evidence_coverage_snapshot 必须为数组，并且每个 coverage_targets.target_key 必须恰好出现一次。\n"
+            "数组中的每一项必须且只能包含：\n"
+            "- target_key\n"
+            "- coverage_status\n"
+            "- supporting_evidence_keys\n"
+            "- uncovered_aspects\n"
+            "- coverage_summary\n\n"
             "允许取值：\n"
             "- coverage_status: covered | partially_covered | not_covered\n"
             "- support_strength: strong_enough | weak_support | conflicting_support | insufficient_support\n"
@@ -1625,8 +1896,18 @@ Research stage executor.
             '    "desired_evidence_kind": "direct_fact",\n'
             '    "freshness_requirement": "normal",\n'
             '    "minimum_support_requirement": "any_relevant_signal",\n'
-            '    "need_summary": "当前轮最值得补充什么 evidence，以及为什么。"\n'
+            '    "need_summary": "当前轮最值得补充什么 evidence，以及为什么。",\n'
+            '    "coverage_target_key": "objective"\n'
             "  },\n"
+            '  "evidence_coverage_snapshot": [\n'
+            "    {\n"
+            '      "target_key": "objective",\n'
+            '      "coverage_status": "partially_covered",\n'
+            '      "supporting_evidence_keys": [],\n'
+            '      "uncovered_aspects": ["缺少直接证据。"],\n'
+            '      "coverage_summary": "当前只获得了间接或有限支撑。"\n'
+            "    }\n"
+            "  ],\n"
             '  "prioritization_summary": "说明为什么选择这个 top_gap，以及为什么这个 next_evidence_need 最值得优先推进。"\n'
             "}\n\n"
             "输入 JSON：\n"
@@ -1670,7 +1951,13 @@ Research stage executor.
                 "processed_evidence": self._processed_evidence_for_prompt(
                     working_state,
                 ),
-                "evidence_coverage_map": working_state.get("evidence_coverage_map", {}),
+                "coverage_targets": [
+                    target.model_dump(mode="json")
+                    for target in self._evidence_coverage_targets(stage_input)
+                ],
+                "evidence_coverage_map": self._evidence_coverage_map_for_prompt(
+                    working_state,
+                ),
                 "intermediate_findings": working_state.get("intermediate_findings", []),
             },
             "gap_state": {
@@ -1706,6 +1993,17 @@ Research stage executor.
             for unit in processed_evidence_units
             if isinstance(unit, ProcessedEvidenceUnit)
         ]
+
+    def _evidence_coverage_map_for_prompt(
+        self,
+        working_state: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        """Serialize typed coverage entries at the assessment LLM prompt boundary."""
+
+        return {
+            target_key: entry.model_dump(mode="json")
+            for target_key, entry in self._evidence_coverage_map(working_state).items()
+        }
 
     def _context_items_for_prompt(self, items: list[ContextItem]) -> list[dict[str, Any]]:
         """Convert distilled context items to the small prompt-facing shape."""
