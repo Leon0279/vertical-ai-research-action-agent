@@ -8,6 +8,8 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.utils.json_utils import strip_json_code_fence
+from app.common.utils.text import unique_non_empty_strings
 from app.domain.models import (
     RetrievalQueryGenerationRequest,
     RetrievalQueryGenerationResult,
@@ -68,7 +70,7 @@ Generate a retrieval query without selecting tools or executing retrieval."""
             selected_family=normalized_request.selected_family,
             generated_query=payload.generated_query,
             query_focus=payload.query_focus,
-            preserved_terms=self._normalize_string_list(payload.preserved_terms),
+            preserved_terms=unique_non_empty_strings(payload.preserved_terms),
             generation_status="succeeded",
             generation_summary=self._generation_summary(
                 normalized_request=normalized_request,
@@ -89,21 +91,10 @@ Generate a retrieval query without selecting tools or executing retrieval."""
             evidence_shape=request.evidence_shape,
             success_hint=(request.success_hint or "").strip() or None,
             task_framing=(request.task_framing or "").strip() or None,
-            recent_low_value_queries=self._normalize_string_list(
+            recent_low_value_queries=unique_non_empty_strings(
                 request.recent_low_value_queries
             )[: self._MAX_RECENT_LOW_VALUE_QUERIES],
         )
-
-    def _normalize_string_list(self, values: list[str]) -> list[str]:
-        normalized: list[str] = []
-        seen: set[str] = set()
-        for value in values:
-            stripped = value.strip()
-            if not stripped or stripped in seen:
-                continue
-            normalized.append(stripped)
-            seen.add(stripped)
-        return normalized
 
     def _build_prompt(self, request: RetrievalQueryGenerationRequest) -> str:
         prompt_input: dict[str, Any] = {
@@ -158,7 +149,7 @@ Generate a retrieval query without selecting tools or executing retrieval."""
         )
 
     def _parse_llm_output(self, llm_output: str) -> _LLMQueryGenerationPayload:
-        json_text = self._strip_json_code_fence(llm_output)
+        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
         try:
             raw_payload = json.loads(json_text)
         except json.JSONDecodeError as exc:
@@ -171,7 +162,7 @@ Generate a retrieval query without selecting tools or executing retrieval."""
 
         generated_query = payload.generated_query.strip()
         query_focus = payload.query_focus.strip()
-        preserved_terms = self._normalize_string_list(payload.preserved_terms)
+        preserved_terms = unique_non_empty_strings(payload.preserved_terms)
         if not generated_query:
             raise ValueError("LLM response generated_query must not be empty.")
         if not query_focus:
@@ -182,18 +173,6 @@ Generate a retrieval query without selecting tools or executing retrieval."""
             query_focus=query_focus,
             preserved_terms=preserved_terms,
         )
-
-    def _strip_json_code_fence(self, value: str) -> str:
-        stripped = value.strip()
-        if not stripped.startswith("```"):
-            return stripped
-
-        lines = stripped.splitlines()
-        if lines and lines[0].strip().startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        return "\n".join(lines).strip()
 
     def _failed_result(
         self,

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-from datetime import datetime
 from typing import Any
 
 import httpx
@@ -17,6 +15,9 @@ from app.adapters.web_search.tavily_web_search_client_config import (
 from app.adapters.web_search.tavily_web_search_client_error import (
     TavilyWebSearchClientError,
 )
+from app.common.utils.hashing import sha1_hex
+from app.common.utils.parsing import parse_optional_iso_datetime
+from app.common.utils.text import normalize_whitespace_or_none
 from app.domain.models import WebSearchQuery, WebSearchResponse, WebSearchResult
 
 
@@ -169,9 +170,9 @@ HTTP client for provider-backed web search through Tavily."""
         if not isinstance(item, dict):
             return None
 
-        title = self._normalize_text(item.get("title"))
-        url = self._normalize_text(item.get("url"))
-        snippet = self._normalize_text(item.get("content")) or self._normalize_text(
+        title = normalize_whitespace_or_none(item.get("title"))
+        url = normalize_whitespace_or_none(item.get("url"))
+        snippet = normalize_whitespace_or_none(item.get("content")) or normalize_whitespace_or_none(
             item.get("snippet")
         )
         if not title or not url or not snippet:
@@ -180,40 +181,20 @@ HTTP client for provider-backed web search through Tavily."""
         metadata = {
             "rank": index + 1,
         }
-        favicon = self._normalize_text(item.get("favicon"))
+        favicon = normalize_whitespace_or_none(item.get("favicon"))
         if favicon:
             metadata["favicon"] = favicon
 
         return WebSearchResult(
-            item_id=self._item_id(url),
+            item_id=sha1_hex(url),
             title=title,
             snippet=snippet,
             url=url,
             source_name="tavily",
-            published_at=self._parse_datetime(item.get("published_date")),
+            published_at=parse_optional_iso_datetime(item.get("published_date")),
             score=self._parse_score(item.get("score")),
             metadata=metadata,
         )
-
-    def _item_id(self, url: str) -> str:
-        return hashlib.sha1(url.encode("utf-8")).hexdigest()
-
-    def _normalize_text(self, value: Any) -> str | None:
-        if not isinstance(value, str):
-            return None
-        normalized = " ".join(value.split()).strip()
-        return normalized or None
-
-    def _parse_datetime(self, value: Any) -> datetime | None:
-        if not isinstance(value, str):
-            return None
-        normalized = value.strip()
-        if not normalized:
-            return None
-        try:
-            return datetime.fromisoformat(normalized.replace("Z", "+00:00"))
-        except ValueError:
-            return None
 
     def _parse_score(self, value: Any) -> float:
         if isinstance(value, bool):

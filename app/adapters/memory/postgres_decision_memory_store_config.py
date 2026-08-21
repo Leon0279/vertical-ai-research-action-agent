@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.memory.postgres_decision_memory_store_error import (
     PostgresDecisionMemoryStoreError,
 )
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 
 class PostgresDecisionMemoryStoreConfig(BaseModel):
@@ -33,11 +33,11 @@ Typed runtime settings for the decision_memory adapter."""
         """
 
         load_env_file()
-        dsn = os.getenv("POSTGRES_DECISION_MEMORY_DSN", "").strip()
-        if not dsn:
-            raise PostgresDecisionMemoryStoreError(
-                "POSTGRES_DECISION_MEMORY_DSN is required for decision memory."
-            )
+        dsn = require_env(
+            "POSTGRES_DECISION_MEMORY_DSN",
+            PostgresDecisionMemoryStoreError,
+            "POSTGRES_DECISION_MEMORY_DSN is required for decision memory.",
+        )
 
         return cls(
             dsn=dsn,

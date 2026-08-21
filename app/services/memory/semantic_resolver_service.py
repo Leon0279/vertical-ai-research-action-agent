@@ -14,6 +14,7 @@ from app.domain.models import (
     ResearchKnowledgeUnitRecord,
     SemanticResolutionResult,
 )
+from app.services.memory._keys import memory_candidate_dedupe_key
 from app.services.memory.contracts.semantic_resolver_protocol import (
     SemanticResolverProtocol,
     StructuredMemoryRecord,
@@ -242,7 +243,7 @@ class SemanticResolverService(SemanticResolverProtocol):
     ) -> SemanticResolutionResult:
         knowledge_records = [item for item in records if isinstance(item, ResearchKnowledgeUnitRecord)]
         knowledge_id = self._payload_text(candidate, "knowledge_id")
-        dedupe_key = self._payload_text(candidate, "dedupe_key") or self._candidate_dedupe_key(candidate)
+        dedupe_key = self._payload_text(candidate, "dedupe_key") or memory_candidate_dedupe_key(candidate)
         matched = next(
             (
                 record
@@ -336,8 +337,3 @@ class SemanticResolverService(SemanticResolverProtocol):
     def _payload_text(candidate: MemoryCandidate, key: str) -> str | None:
         value = candidate.payload.get(key)
         return value if isinstance(value, str) and value.strip() else None
-
-    @staticmethod
-    def _candidate_dedupe_key(candidate: MemoryCandidate) -> str:
-        normalized = " ".join(candidate.summary.casefold().split())
-        return f"{candidate.memory_type.value}:{normalized}"

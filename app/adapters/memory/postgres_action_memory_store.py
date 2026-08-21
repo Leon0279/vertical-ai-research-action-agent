@@ -6,6 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from app.adapters.memory._postgres import ensure_asyncpg_pool, postgres_table_ref
 from app.adapters.memory.contracts.action_memory_store_protocol import (
     ActionMemoryStoreProtocol,
 )
@@ -15,6 +16,7 @@ from app.adapters.memory.postgres_action_memory_store_config import (
 from app.adapters.memory.postgres_action_memory_store_error import (
     PostgresActionMemoryStoreError,
 )
+from app.common.utils.json_utils import load_json_string_list
 from app.domain.models import ActionMemoryRecord
 
 
@@ -85,22 +87,18 @@ Persist action memory records in PostgreSQL."""
 
     @property
     def _table_ref(self) -> str:
-        return f"{self._config.schema_name}.{self._config.table_name}"
+        return postgres_table_ref(self._config.schema_name, self._config.table_name)
 
     async def _ensure_pool(self) -> Any:
-        if self._pool is None:
-            self._pool = await self._build_pool()
-        return self._pool
-
-    async def _build_pool(self) -> Any:
-        try:
-            import asyncpg
-        except ImportError as exc:
-            raise PostgresActionMemoryStoreError(
+        self._pool = await ensure_asyncpg_pool(
+            self._pool,
+            dsn=self._config.dsn,
+            error_factory=PostgresActionMemoryStoreError,
+            missing_dependency_message=(
                 "The asyncpg package is required for PostgresActionMemoryStore."
-            ) from exc
-
-        return await asyncpg.create_pool(dsn=self._config.dsn)
+            ),
+        )
+        return self._pool
 
     def _build_list_active_actions_query(self) -> str:
         return f"""
@@ -287,21 +285,9 @@ SET
                 updated_at=row["updated_at"],
                 derived_from_session_id=row["derived_from_session_id"],
                 derived_from_run_id=row["derived_from_run_id"],
-                source_refs=self._load_json_list(row["source_refs"]),
+                source_refs=load_json_string_list(row["source_refs"]),
             )
         except Exception as exc:
             raise PostgresActionMemoryStoreError(
                 "Failed to map action memory row."
             ) from exc
-
-    def _load_json_list(self, value: Any) -> list[str]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return [str(item) for item in value]
-        if isinstance(value, str):
-            parsed = json.loads(value)
-            if not isinstance(parsed, list):
-                raise TypeError("Expected a JSON array.")
-            return [str(item) for item in parsed]
-        raise TypeError("Expected a list-like JSON field.")

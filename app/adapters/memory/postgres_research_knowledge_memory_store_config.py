@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.memory.postgres_research_knowledge_memory_store_error import (
     PostgresResearchKnowledgeMemoryStoreError,
 )
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 
 class PostgresResearchKnowledgeMemoryStoreConfig(BaseModel):
@@ -34,11 +34,11 @@ Typed runtime settings for the research_knowledge_units adapter."""
         """
 
         load_env_file()
-        dsn = os.getenv("POSTGRES_RESEARCH_KNOWLEDGE_MEMORY_DSN", "").strip()
-        if not dsn:
-            raise PostgresResearchKnowledgeMemoryStoreError(
-                "POSTGRES_RESEARCH_KNOWLEDGE_MEMORY_DSN is required for research knowledge memory."
-            )
+        dsn = require_env(
+            "POSTGRES_RESEARCH_KNOWLEDGE_MEMORY_DSN",
+            PostgresResearchKnowledgeMemoryStoreError,
+            "POSTGRES_RESEARCH_KNOWLEDGE_MEMORY_DSN is required for research knowledge memory.",
+        )
 
         max_recall_limit = os.getenv(
             "POSTGRES_RESEARCH_KNOWLEDGE_MEMORY_MAX_RECALL_LIMIT",

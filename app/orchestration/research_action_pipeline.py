@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import TypeVar
 
@@ -173,32 +172,13 @@ Fixed outer workflow with stage-by-stage execution."""
         """Append SourceReference values using stable source identity keys."""
 
         merged = list(existing)
-        seen = {cls._source_reference_key(item) for item in merged}
+        seen = {item.deduplication_key() for item in merged}
         for item in additions:
-            key = cls._source_reference_key(item)
+            key = item.deduplication_key()
             if key not in seen:
                 merged.append(item)
                 seen.add(key)
         return merged
-
-    @staticmethod
-    def _source_reference_key(source_reference: SourceReference) -> str:
-        """Return a stable deduplication key for a SourceReference."""
-
-        if source_reference.source_url:
-            return f"url:{source_reference.source_url}"
-        if source_reference.source_id:
-            return (
-                f"id:{source_reference.source_id_type or ''}:"
-                f"{source_reference.source_id}"
-            )
-        if source_reference.citation_text:
-            return f"citation:{source_reference.citation_text}"
-        return "json:" + json.dumps(
-            source_reference.model_dump(mode="json"),
-            ensure_ascii=False,
-            sort_keys=True,
-        )
 
     async def _conclusion(self, context: ExecutionContext) -> None:
         """Generate structured conclusion."""

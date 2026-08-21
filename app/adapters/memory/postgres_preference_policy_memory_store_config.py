@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.memory.postgres_preference_policy_memory_store_error import (
     PostgresPreferencePolicyMemoryStoreError,
 )
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 
 class PostgresPreferencePolicyMemoryStoreConfig(BaseModel):
@@ -34,11 +34,11 @@ Typed runtime settings for the preference_policy_memory adapter."""
         """
 
         load_env_file()
-        dsn = os.getenv("POSTGRES_PREFERENCE_POLICY_MEMORY_DSN", "").strip()
-        if not dsn:
-            raise PostgresPreferencePolicyMemoryStoreError(
-                "POSTGRES_PREFERENCE_POLICY_MEMORY_DSN is required for preference/policy memory."
-            )
+        dsn = require_env(
+            "POSTGRES_PREFERENCE_POLICY_MEMORY_DSN",
+            PostgresPreferencePolicyMemoryStoreError,
+            "POSTGRES_PREFERENCE_POLICY_MEMORY_DSN is required for preference/policy memory.",
+        )
 
         return cls(
             dsn=dsn,

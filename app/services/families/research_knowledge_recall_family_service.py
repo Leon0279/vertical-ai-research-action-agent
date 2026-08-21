@@ -15,6 +15,7 @@ from app.domain.models import (
 from app.services.families.contracts.research_knowledge_recall_family_service_protocol import (
     ResearchKnowledgeRecallFamilyServiceProtocol,
 )
+from app.services.families._selection import select_preferred_or_default_tool
 from app.services.tools.contracts.research_knowledge_memory_tool_protocol import (
     ResearchKnowledgeMemoryToolProtocol,
 )
@@ -53,7 +54,11 @@ Resolve a research_knowledge_recall family request to a concrete recall tool."""
                 error_info="No available tools registered for research_knowledge_recall family.",
             )
 
-        selected_tool = self._select_tool(normalized_request, candidate_tools)
+        selected_tool = select_preferred_or_default_tool(
+            normalized_request.preferred_tool,
+            self._DEFAULT_TOOL_ID,
+            candidate_tools,
+        )
         if selected_tool is None:
             return self._failed_result(
                 normalized_request=normalized_request,
@@ -104,17 +109,6 @@ Resolve a research_knowledge_recall family request to a concrete recall tool."""
             limit=request.limit,
             preferred_tool=(request.preferred_tool or "").strip() or None,
         )
-
-    def _select_tool(
-        self,
-        request: ResearchKnowledgeRecallFamilyRequest,
-        candidate_tools: list[str],
-    ) -> str | None:
-        if request.preferred_tool is None:
-            return self._DEFAULT_TOOL_ID if self._DEFAULT_TOOL_ID in candidate_tools else None
-        if request.preferred_tool in candidate_tools:
-            return request.preferred_tool
-        return None
 
     def _wrap_tool_result(
         self,

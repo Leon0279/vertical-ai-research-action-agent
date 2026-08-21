@@ -9,6 +9,8 @@ from typing import Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.utils.json_utils import strip_json_code_fence
+from app.common.utils.text import strip_or_none, unique_non_empty_strings
 from app.domain.enums import AcquisitionStatus, ActionMode, FamilyName
 from app.domain.models import (
     EvidenceProcessingResult,
@@ -410,30 +412,12 @@ Research stage executor.
         seen: set[str] = set()
         for unit in processed_evidence_units:
             for source_reference in unit.source_references:
-                key = self._source_reference_key(source_reference)
+                key = source_reference.deduplication_key()
                 if key in seen:
                     continue
                 source_references.append(source_reference)
                 seen.add(key)
         return source_references
-
-    def _source_reference_key(self, source_reference: SourceReference) -> str:
-        """Return a stable identity key for SourceReference deduplication."""
-
-        if source_reference.source_url:
-            return f"url:{source_reference.source_url}"
-        if source_reference.source_id:
-            return (
-                f"id:{source_reference.source_id_type or ''}:"
-                f"{source_reference.source_id}"
-            )
-        if source_reference.citation_text:
-            return f"citation:{source_reference.citation_text}"
-        return "json:" + json.dumps(
-            source_reference.model_dump(mode="json"),
-            ensure_ascii=False,
-            sort_keys=True,
-        )
 
     def _evidence_summary_from_working_state(
         self,
@@ -515,7 +499,7 @@ Research stage executor.
                 open_questions.append(f"Evidence Processing 未形成可用 evidence：{reason}")
 
         if final_outcome == "degrade":
-            rationale = self._optional_text(working_state.get("outcome_rationale"))
+            rationale = strip_or_none(working_state.get("outcome_rationale"))
             open_questions.append(rationale or "Research iteration 进入 degrade 收束。")
 
         if (
@@ -530,7 +514,7 @@ Research stage executor.
             f"Finding caveat: {caveat}"
             for caveat in self._prompt_text_list(working_state.get("finding_caveats"))
         )
-        return self._unique_non_empty_texts(open_questions)
+        return unique_non_empty_strings(open_questions)
 
     def _research_status_from_working_state(
         self,
@@ -589,7 +573,7 @@ Research stage executor.
                 return result.error_info or "Evidence Processing failed."
 
         if final_outcome == "degrade":
-            return self._optional_text(working_state.get("outcome_rationale")) or (
+            return strip_or_none(working_state.get("outcome_rationale")) or (
                 "Research iteration degraded without producing usable research output."
             )
         return None
@@ -1103,7 +1087,7 @@ Research stage executor.
                 field_name="target_problem",
             ),
             action_mode=action_mode,
-            evidence_goal=self._optional_text(next_evidence_need.get("need_purpose")),
+            evidence_goal=strip_or_none(next_evidence_need.get("need_purpose")),
             evidence_shape=self._tel_evidence_shape_from_next_evidence_need(
                 next_evidence_need,
                 intent.get("evidence_shape"),
@@ -1114,7 +1098,7 @@ Research stage executor.
             blocked_source_families=blocked_source_families,
             available_families=allowed_source_families,
             success_hint=self._success_hint(intent, next_evidence_need, top_gap),
-            preferred_tool=self._optional_text(action_request.get("preferred_tool")),
+            preferred_tool=strip_or_none(action_request.get("preferred_tool")),
             max_search_results=max_results,
             max_content_fetches=3,
             owner_user_id=stage_input.owner_user_id,
@@ -1123,7 +1107,7 @@ Research stage executor.
             memory_recall_limit=max_results,
             retry_budget=1,
             fallback_policy=(
-                self._optional_text(action_request.get("fallback_policy"))
+                strip_or_none(action_request.get("fallback_policy"))
                 or "fallback_within_same_family"
             ),
             timeout_limit_ms=self._positive_optional_int(
@@ -1163,12 +1147,12 @@ Research stage executor.
     ) -> EvidenceShape:
         """Map Research Executor evidence need semantics into TEL EvidenceShape."""
 
-        desired_kind = self._optional_text(
+        desired_kind = strip_or_none(
             next_evidence_need.get("desired_evidence_kind")
         )
         tel_desired_kind = self._tel_desired_evidence_kind(desired_kind)
 
-        freshness_requirement = self._optional_text(
+        freshness_requirement = strip_or_none(
             next_evidence_need.get("freshness_requirement")
         )
         if freshness_requirement == "none":
@@ -1176,7 +1160,7 @@ Research stage executor.
 
         breadth = "normal"
         if isinstance(action_evidence_shape, dict):
-            breadth = self._optional_text(action_evidence_shape.get("breadth")) or "normal"
+            breadth = strip_or_none(action_evidence_shape.get("breadth")) or "normal"
 
         return EvidenceShape(
             desired_evidence_kind=tel_desired_kind,
@@ -1231,9 +1215,9 @@ Research stage executor.
         """Return a compact success hint for TEL query generation."""
 
         return (
-            self._optional_text(intent.get("success_hint"))
-            or self._optional_text(next_evidence_need.get("need_summary"))
-            or self._optional_text(top_gap.get("gap_summary"))
+            strip_or_none(intent.get("success_hint"))
+            or strip_or_none(next_evidence_need.get("need_summary"))
+            or strip_or_none(top_gap.get("gap_summary"))
         )
 
     def _allowed_visibility_scopes(self, stage_input: ResearchStageInput) -> list[str]:
@@ -1266,17 +1250,10 @@ Research stage executor.
     ) -> str:
         """Return stripped text, falling back to a required non-empty value."""
 
-        text = self._optional_text(value) or self._optional_text(fallback)
+        text = strip_or_none(value) or strip_or_none(fallback)
         if text is None:
             raise ValueError(f"{field_name} is required for material acquisition.")
         return text
-
-    def _optional_text(self, value: Any) -> str | None:
-        """Return a stripped non-empty string or None."""
-
-        if not isinstance(value, str):
-            return None
-        return value.strip() or None
 
     async def _update_stage_local_working_state(
         self,
@@ -1292,7 +1269,7 @@ Research stage executor.
             working_state,
             "next_evidence_need",
         )
-        coverage_target_key = self._optional_text(
+        coverage_target_key = strip_or_none(
             next_evidence_need.get("coverage_target_key"),
         )
         if coverage_target_key is None:
@@ -1316,7 +1293,7 @@ Research stage executor.
 
         evidence_coverage_map[coverage_target_key] = coverage_entry.model_copy(
             update={
-                "retrieved_evidence_keys": self._unique_non_empty_texts(
+                "retrieved_evidence_keys": unique_non_empty_strings(
                     [
                         *coverage_entry.retrieved_evidence_keys,
                         *new_evidence_keys,
@@ -1414,7 +1391,7 @@ Research stage executor.
 
         normalized_map: EvidenceCoverageMap = {}
         for entry in payload.evidence_coverage_snapshot:
-            supporting_evidence_keys = self._unique_non_empty_texts(
+            supporting_evidence_keys = unique_non_empty_strings(
                 entry.supporting_evidence_keys,
             )
             if len(supporting_evidence_keys) != len(entry.supporting_evidence_keys):
@@ -1439,7 +1416,7 @@ Research stage executor.
                 target_type=target.target_type,
                 target_text=target.target_text,
                 coverage_status=entry.coverage_status,
-                retrieved_evidence_keys=self._unique_non_empty_texts(
+                retrieved_evidence_keys=unique_non_empty_strings(
                     [
                         key
                         for key in previous_entry.retrieved_evidence_keys
@@ -1447,7 +1424,7 @@ Research stage executor.
                     ]
                 ),
                 supporting_evidence_keys=supporting_evidence_keys,
-                uncovered_aspects=self._unique_non_empty_texts(
+                uncovered_aspects=unique_non_empty_strings(
                     entry.uncovered_aspects,
                 ),
                 coverage_summary=entry.coverage_summary,
@@ -1478,10 +1455,10 @@ Research stage executor.
         llm_output = await self._llm_client.generate_text(prompt)
         payload = self._parse_intermediate_findings_output(llm_output)
 
-        working_state["intermediate_findings"] = self._unique_non_empty_texts(
+        working_state["intermediate_findings"] = unique_non_empty_strings(
             payload.intermediate_findings,
         )
-        working_state["finding_caveats"] = self._unique_non_empty_texts(
+        working_state["finding_caveats"] = unique_non_empty_strings(
             payload.finding_caveats,
         )
 
@@ -2568,7 +2545,7 @@ Research stage executor.
         if not isinstance(value, list):
             return []
         strings = [item for item in value if isinstance(item, str)]
-        return self._unique_non_empty_texts(strings)
+        return unique_non_empty_strings(strings)
 
     def _parse_intermediate_findings_output(
         self,
@@ -2576,7 +2553,7 @@ Research stage executor.
     ) -> _LLMIntermediateFindingsPayload:
         """Parse and validate the LLM intermediate-findings JSON."""
 
-        json_text = self._strip_json_code_fence(llm_output)
+        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
         try:
             raw_payload = json.loads(json_text)
         except json.JSONDecodeError as exc:
@@ -2597,7 +2574,7 @@ Research stage executor.
     ) -> _LLMIterationOutcomePayload:
         """Parse and validate the LLM iteration-outcome JSON."""
 
-        json_text = self._strip_json_code_fence(llm_output)
+        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
         try:
             raw_payload = json.loads(json_text)
         except json.JSONDecodeError as exc:
@@ -2612,26 +2589,13 @@ Research stage executor.
                 "Iteration outcome LLM response did not match the required schema."
             ) from exc
 
-    def _unique_non_empty_texts(self, values: list[str]) -> list[str]:
-        """Return non-empty strings with stable order and duplicate removal."""
-
-        unique_texts: list[str] = []
-        seen: set[str] = set()
-        for value in values:
-            text = value.strip()
-            if not text or text in seen:
-                continue
-            unique_texts.append(text)
-            seen.add(text)
-        return unique_texts
-
     def _parse_research_assessment_output(
         self,
         llm_output: str,
     ) -> _LLMResearchAssessmentAndGapsPayload:
         """Parse and validate the LLM assessment JSON."""
 
-        json_text = self._strip_json_code_fence(llm_output)
+        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
         try:
             raw_payload = json.loads(json_text)
         except json.JSONDecodeError as exc:
@@ -2643,19 +2607,3 @@ Research stage executor.
             raise ValueError(
                 "Research assessment LLM response did not match the required schema."
             ) from exc
-
-    def _strip_json_code_fence(self, value: str) -> str:
-        """Return raw JSON text, accepting common markdown fenced JSON."""
-
-        stripped = value.strip()
-        if not stripped.startswith("```"):
-            return stripped
-
-        lines = stripped.splitlines()
-        if lines and lines[0].strip().lower().startswith("```json"):
-            lines = lines[1:]
-        elif lines and lines[0].strip().startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        return "\n".join(lines).strip()

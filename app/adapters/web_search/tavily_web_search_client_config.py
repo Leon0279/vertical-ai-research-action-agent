@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.web_search.tavily_web_search_client_error import (
     TavilyWebSearchClientError,
 )
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 
 class TavilyWebSearchClientConfig(BaseModel):
@@ -38,9 +38,11 @@ Typed runtime settings for Tavily-backed web search."""
         """
 
         load_env_file()
-        api_key = os.getenv("TAVILY_API_KEY", "").strip()
-        if not api_key:
-            raise TavilyWebSearchClientError("TAVILY_API_KEY is required for web search.")
+        api_key = require_env(
+            "TAVILY_API_KEY",
+            TavilyWebSearchClientError,
+            "TAVILY_API_KEY is required for web search.",
+        )
 
         return cls(
             api_key=api_key,

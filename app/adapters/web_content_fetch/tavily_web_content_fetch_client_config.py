@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from app.adapters.web_content_fetch.tavily_web_content_fetch_client_error import (
     TavilyWebContentFetchClientError,
 )
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 ExtractDepth = Literal["basic", "advanced"]
 ContentFormat = Literal["markdown", "text"]
@@ -43,11 +43,11 @@ Typed runtime settings for Tavily Extract-backed content fetch."""
         """
 
         load_env_file()
-        api_key = os.getenv("TAVILY_API_KEY", "").strip()
-        if not api_key:
-            raise TavilyWebContentFetchClientError(
-                "TAVILY_API_KEY is required for web content fetch."
-            )
+        api_key = require_env(
+            "TAVILY_API_KEY",
+            TavilyWebContentFetchClientError,
+            "TAVILY_API_KEY is required for web content fetch.",
+        )
 
         extract_depth = (
             os.getenv(

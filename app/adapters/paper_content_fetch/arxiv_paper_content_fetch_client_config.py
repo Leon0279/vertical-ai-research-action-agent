@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.paper_content_fetch.arxiv_paper_content_fetch_client_error import (
     ArxivPaperContentFetchClientError,
 )
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 
 class ArxivPaperContentFetchClientConfig(BaseModel):
@@ -36,11 +36,11 @@ Typed runtime settings for arXiv PDF content fetch."""
         """
 
         load_env_file()
-        user_agent = os.getenv("ARXIV_PAPER_CONTENT_FETCH_USER_AGENT", "").strip()
-        if not user_agent:
-            raise ArxivPaperContentFetchClientError(
-                "ARXIV_PAPER_CONTENT_FETCH_USER_AGENT is required for arXiv PDF content fetch."
-            )
+        user_agent = require_env(
+            "ARXIV_PAPER_CONTENT_FETCH_USER_AGENT",
+            ArxivPaperContentFetchClientError,
+            "ARXIV_PAPER_CONTENT_FETCH_USER_AGENT is required for arXiv PDF content fetch.",
+        )
 
         client_identity = (
             os.getenv("ARXIV_PAPER_CONTENT_FETCH_CLIENT_IDENTITY", "").strip() or None

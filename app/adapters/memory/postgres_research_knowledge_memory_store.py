@@ -6,6 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from app.adapters.memory._postgres import ensure_asyncpg_pool, postgres_table_ref
 from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
     ResearchKnowledgeMemoryStoreProtocol,
 )
@@ -15,6 +16,7 @@ from app.adapters.memory.postgres_research_knowledge_memory_store_config import 
 from app.adapters.memory.postgres_research_knowledge_memory_store_error import (
     PostgresResearchKnowledgeMemoryStoreError,
 )
+from app.common.utils.json_utils import load_json_string_list
 from app.domain.models import (
     ResearchKnowledgeRecallQuery,
     ResearchKnowledgeRecallResult,
@@ -109,22 +111,18 @@ Persist and recall research knowledge units in PostgreSQL + pgvector."""
 
     @property
     def _table_ref(self) -> str:
-        return f"{self._config.schema_name}.{self._config.table_name}"
+        return postgres_table_ref(self._config.schema_name, self._config.table_name)
 
     async def _ensure_pool(self) -> Any:
-        if self._pool is None:
-            self._pool = await self._build_pool()
-        return self._pool
-
-    async def _build_pool(self) -> Any:
-        try:
-            import asyncpg
-        except ImportError as exc:
-            raise PostgresResearchKnowledgeMemoryStoreError(
+        self._pool = await ensure_asyncpg_pool(
+            self._pool,
+            dsn=self._config.dsn,
+            error_factory=PostgresResearchKnowledgeMemoryStoreError,
+            missing_dependency_message=(
                 "The asyncpg package is required for PostgresResearchKnowledgeMemoryStore."
-            ) from exc
-
-        return await asyncpg.create_pool(dsn=self._config.dsn)
+            ),
+        )
+        return self._pool
 
     def _build_get_knowledge_unit_query(self) -> str:
         return f"""
@@ -394,7 +392,7 @@ SET
                 title=row["title"],
                 summary=row["summary"],
                 knowledge_type=row["knowledge_type"],
-                topic_tags=self._load_json_string_list(row["topic_tags"]),
+                topic_tags=load_json_string_list(row["topic_tags"]),
                 confidence=row["confidence"],
                 source_refs=self._load_source_refs(row["source_refs"]),
                 source_type=row["source_type"],
@@ -424,18 +422,6 @@ SET
             raise PostgresResearchKnowledgeMemoryStoreError(
                 "Failed to map research knowledge memory row."
             ) from exc
-
-    def _load_json_string_list(self, value: Any) -> list[str]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return [str(item) for item in value]
-        if isinstance(value, str):
-            parsed = json.loads(value)
-            if not isinstance(parsed, list):
-                raise TypeError("Expected a JSON array.")
-            return [str(item) for item in parsed]
-        raise TypeError("Expected a list-like JSON field.")
 
     def _dump_source_refs(self, source_refs: list[SourceReference]) -> list[dict[str, Any]]:
         return [source_ref.model_dump(mode="json") for source_ref in source_refs]

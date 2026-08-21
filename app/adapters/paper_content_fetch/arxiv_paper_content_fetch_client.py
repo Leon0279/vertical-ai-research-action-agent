@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from io import BytesIO
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 
@@ -17,6 +16,8 @@ from app.adapters.paper_content_fetch.arxiv_paper_content_fetch_client_error imp
 from app.adapters.paper_content_fetch.contracts.paper_content_fetch_client_protocol import (
     PaperContentFetchClientProtocol,
 )
+from app.common.utils.text import normalize_whitespace_or_none
+from app.common.utils.urls import is_absolute_http_url
 from app.domain.models import PaperContentFetchRequest, PaperContentFetchResult
 
 
@@ -89,7 +90,10 @@ HTTP client for fetching and extracting arXiv PDF text."""
             )
 
         source_url = self._build_pdf_url(paper_id)
-        self._validate_pdf_url(source_url)
+        if not is_absolute_http_url(source_url):
+            raise ArxivPaperContentFetchClientError(
+                "pdf_url must be an absolute HTTP(S) URL."
+            )
         return {
             "paper_id": paper_id,
             "paper_id_type": paper_id_type,
@@ -101,11 +105,6 @@ HTTP client for fetching and extracting arXiv PDF text."""
         if not normalized_id:
             raise ArxivPaperContentFetchClientError("arxiv_id must not be empty.")
         return f"{self._config.pdf_base_url.rstrip('/')}/{normalized_id}.pdf"
-
-    def _validate_pdf_url(self, pdf_url: str) -> None:
-        parsed = urlparse(pdf_url)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ArxivPaperContentFetchClientError("pdf_url must be an absolute HTTP(S) URL.")
 
     async def _download_pdf(self, pdf_url: str) -> tuple[bytes | None, str | None]:
         headers = {
@@ -156,7 +155,7 @@ HTTP client for fetching and extracting arXiv PDF text."""
         except Exception as exc:  # pypdf raises several parser-specific exception types.
             return None, f"PDF text extraction failed: {exc}"
 
-        normalized = self._normalize_text("\n".join(page_texts))
+        normalized = normalize_whitespace_or_none("\n".join(page_texts))
         if normalized and len(normalized) > self._config.max_extracted_chars:
             normalized = normalized[: self._config.max_extracted_chars].rstrip()
         return normalized, None
@@ -197,9 +196,3 @@ HTTP client for fetching and extracting arXiv PDF text."""
             return int(value.strip())
         except ValueError:
             return None
-
-    def _normalize_text(self, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = " ".join(value.split())
-        return normalized or None

@@ -3,9 +3,19 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 _LOADED = False
+
+
+def require_env(name: str, error_factory: Callable[[str], Exception], message: str) -> str:
+    """读取必填环境变量；空白值缺失时保留调用方的异常类型和文案。"""
+
+    value = os.getenv(name, "").strip()
+    if value:
+        return value
+    raise error_factory(message)
 
 
 def load_env_file() -> None:

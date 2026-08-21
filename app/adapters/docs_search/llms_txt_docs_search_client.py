@@ -19,6 +19,7 @@ from app.adapters.docs_search.llms_txt_docs_search_client_config import (
 from app.adapters.docs_search.llms_txt_docs_search_client_error import (
     LlmsTxtDocsSearchClientError,
 )
+from app.common.utils.text import normalize_whitespace_or_none
 from app.domain.models import (
     DocsSearchQuery,
     DocsSearchResponse,
@@ -219,9 +220,9 @@ Search configured official documentation sources exposed through llms.txt."""
                     dropped_item_count += 1
                 continue
 
-            title = self._normalize_text(match.group(1))
+            title = normalize_whitespace_or_none(match.group(1))
             raw_url = match.group(2).strip()
-            summary = self._normalize_text(match.group(3))
+            summary = normalize_whitespace_or_none(match.group(3))
             url = urljoin(sub_source_config.llms_txt_url, raw_url)
             if not title or not url or not self._url_allowed(sub_source_config, url):
                 dropped_item_count += 1
@@ -340,7 +341,7 @@ Search configured official documentation sources exposed through llms.txt."""
 
     def _extract_page_snippet(self, page_text: str, query_tokens: set[str]) -> str | None:
         paragraphs = [
-            self._normalize_text(paragraph)
+            normalize_whitespace_or_none(paragraph)
             for paragraph in re.split(r"\n\s*\n", page_text)
         ]
         candidates = [paragraph for paragraph in paragraphs if paragraph]
@@ -368,9 +369,3 @@ Search configured official documentation sources exposed through llms.txt."""
             for token in TOKEN_PATTERN.findall(value)
             if len(token) > 1
         }
-
-    def _normalize_text(self, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = " ".join(value.split())
-        return normalized or None

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.common.utils.text import strip_optional_string
 from app.domain.models.source.source_evidence_span import SourceEvidenceSpan
 
 
@@ -130,6 +132,21 @@ class SourceReference(BaseModel):
         ),
     )
 
+    def deduplication_key(self) -> str:
+        """返回供跨阶段 SourceReference 去重使用的稳定身份键。"""
+
+        if self.source_url:
+            return f"url:{self.source_url}"
+        if self.source_id:
+            return f"id:{self.source_id_type or ''}:{self.source_id}"
+        if self.citation_text:
+            return f"citation:{self.citation_text}"
+        return "json:" + json.dumps(
+            self.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
     @model_validator(mode="before")
     @classmethod
     def _map_legacy_source_uri(cls, value: Any) -> Any:
@@ -159,10 +176,7 @@ class SourceReference(BaseModel):
     )
     @classmethod
     def _strip_optional_text(cls, value: Any) -> Any:
-        if isinstance(value, str):
-            stripped = value.strip()
-            return stripped or None
-        return value
+        return strip_optional_string(value)
 
     @field_validator("authors", mode="before")
     @classmethod

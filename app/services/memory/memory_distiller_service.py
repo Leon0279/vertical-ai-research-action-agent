@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
-import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.utils.json_utils import is_json_serializable, strip_json_code_fence
 from app.domain.enums.memory_type import MemoryType
 from app.domain.models import ExecutionContext, MemoryCandidate, SourceReference
+from app.services._confidence import confidence_to_score
 from app.services.memory.contracts.memory_distiller_protocol import MemoryDistillerProtocol
 
 
@@ -62,8 +63,6 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         "stable_preference": {MemoryType.PREFERENCE, MemoryType.RESEARCH_POLICY},
         "tracking_update": {MemoryType.TRACKING_WATCHLIST},
     }
-    _CONFIDENCE_SCORES = {"low": 0.2, "medium": 0.5, "high": 0.8}
-
     def __init__(self, llm_client: LLMClientProtocol) -> None:
         self._llm_client = llm_client
 
@@ -149,7 +148,7 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         prompt = self._build_distillation_prompt(inputs)
         response = await self._llm_client.generate_text(prompt)
         payload = _LLMMemoryDistillationPayload.model_validate(
-            json.loads(self._strip_json_code_fence(response))
+            json.loads(strip_json_code_fence(response, json_only=True))
         )
         return payload.candidates
 
@@ -169,7 +168,7 @@ class MemoryDistillerService(MemoryDistillerProtocol):
                 continue
             if self._is_obviously_transient(draft.summary):
                 continue
-            if not self._is_json_safe(draft.payload):
+            if not is_json_serializable(draft.payload):
                 continue
             screened.append(draft.model_copy(update={"summary": draft.summary.strip()}))
         return screened
@@ -212,7 +211,7 @@ class MemoryDistillerService(MemoryDistillerProtocol):
                     memory_type=MemoryType(draft.memory_type),
                     summary=draft.summary.strip(),
                     payload=draft.payload,
-                    confidence=self._CONFIDENCE_SCORES[draft.confidence],
+                    confidence=confidence_to_score(draft.confidence) or 0.0,
                     stability=draft.stability,
                     project_scope_id=inputs.task_context["project_scope_id"],
                     candidate_source="run_output",
@@ -288,20 +287,6 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         ]
 
     @staticmethod
-    def _strip_json_code_fence(value: str) -> str:
-        stripped = value.strip()
-        match = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", stripped, re.DOTALL | re.IGNORECASE)
-        return match.group(1).strip() if match else stripped
-
-    @staticmethod
-    def _is_json_safe(value: dict[str, Any]) -> bool:
-        try:
-            json.dumps(value, ensure_ascii=False)
-        except (TypeError, ValueError):
-            return False
-        return True
-
-    @staticmethod
     def _is_obviously_transient(summary: str) -> bool:
         lowered = summary.casefold()
         markers = ("raw tool output", "raw payload", "debug trace", "stack trace", "llm prompt")
@@ -358,12 +343,6 @@ class MemoryDistillerService(MemoryDistillerProtocol):
                 result.append(reference)
                 seen.add(key)
         return result
-
-    @staticmethod
-    def _confidence_to_score(confidence: str | None) -> float | None:
-        if confidence is None:
-            return None
-        return {"low": 0.2, "medium": 0.5, "high": 0.8}.get(confidence.lower())
 
     def _stability_from_state(self, context: ExecutionContext) -> str:
         """Return the conservative persistence stability for the current recommendation."""

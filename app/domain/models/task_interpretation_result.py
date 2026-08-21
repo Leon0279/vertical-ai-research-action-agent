@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.common.utils.text import strip_optional_string
 from app.domain.enums.task_type import TaskType
 
 
@@ -50,10 +51,7 @@ Initial semantic interpretation of a normalized user request."""
     )
     @classmethod
     def _strip_optional_text(cls, value: object) -> object:
-        if isinstance(value, str):
-            stripped = value.strip()
-            return stripped or None
-        return value
+        return strip_optional_string(value)
 
     @field_validator("constraints", mode="before")
     @classmethod

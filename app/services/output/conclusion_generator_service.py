@@ -8,6 +8,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.utils.json_utils import strip_json_code_fence
+from app.common.utils.text import strip_or_none, unique_non_empty_strings
 from app.domain.models import Citation, ContextItem, ExecutionContext, SourceReference
 from app.services.output.contracts.conclusion_generator_protocol import (
     ConclusionGeneratorProtocol,
@@ -73,7 +75,7 @@ Generate user-facing conclusions from the accumulated execution context."""
         state.action_items = []
         state.citations = []
         state.confidence = "low"
-        state.caveats = self._unique_non_empty_texts(
+        state.caveats = unique_non_empty_strings(
             [
                 "研究阶段未能形成可靠证据材料；本次回答不应被视为事实性结论。",
                 *state.open_questions,
@@ -90,14 +92,14 @@ Generate user-facing conclusions from the accumulated execution context."""
         state = context.running_state
         state.final_answer = payload.final_answer.strip()
         state.final_summary = payload.final_summary.strip()
-        state.final_recommendation = self._optional_text(payload.final_recommendation)
-        state.action_items = self._unique_non_empty_texts(payload.action_items)
+        state.final_recommendation = strip_or_none(payload.final_recommendation)
+        state.action_items = unique_non_empty_strings(payload.action_items)
         state.citations = self._filtered_citations(
             payload.citations,
             state.retrieved_evidence_refs,
         )
         state.confidence = payload.confidence
-        state.caveats = self._unique_non_empty_texts(payload.caveats)
+        state.caveats = unique_non_empty_strings(payload.caveats)
 
     def _build_conclusion_prompt(self, context: ExecutionContext) -> str:
         """Build a Chinese, stateless prompt for final conclusion generation."""
@@ -277,7 +279,7 @@ Generate user-facing conclusions from the accumulated execution context."""
             filtered.append(
                 Citation(
                     source=source,
-                    note=self._optional_text(citation.note),
+                    note=strip_or_none(citation.note),
                 )
             )
             seen_sources.add(source)
@@ -299,7 +301,7 @@ Generate user-facing conclusions from the accumulated execution context."""
     def _parse_conclusion_output(self, llm_output: str) -> _LLMConclusionPayload:
         """Parse and validate the LLM conclusion JSON."""
 
-        json_text = self._strip_json_code_fence(llm_output)
+        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
         try:
             raw_payload = json.loads(json_text)
         except json.JSONDecodeError as exc:
@@ -311,42 +313,3 @@ Generate user-facing conclusions from the accumulated execution context."""
             raise ValueError(
                 "Conclusion LLM response did not match the required schema."
             ) from exc
-
-    def _strip_json_code_fence(self, value: str) -> str:
-        """Return raw JSON text, accepting common markdown fenced JSON."""
-
-        stripped = value.strip()
-        if not stripped.startswith("```"):
-            return stripped
-
-        lines = stripped.splitlines()
-        if lines and lines[0].strip().lower().startswith("```json"):
-            lines = lines[1:]
-        elif lines and lines[0].strip().startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        return "\n".join(lines).strip()
-
-    def _unique_non_empty_texts(self, values: list[str]) -> list[str]:
-        """Return non-empty strings with stable order and duplicate removal."""
-
-        unique_texts: list[str] = []
-        seen: set[str] = set()
-        for value in values:
-            if not isinstance(value, str):
-                continue
-            text = value.strip()
-            if not text or text in seen:
-                continue
-            unique_texts.append(text)
-            seen.add(text)
-        return unique_texts
-
-    def _optional_text(self, value: str | None) -> str | None:
-        """Return a stripped optional string."""
-
-        if value is None:
-            return None
-        stripped = value.strip()
-        return stripped or None

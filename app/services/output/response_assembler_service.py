@@ -3,6 +3,7 @@
 from app.domain.enums.task_type import TaskType
 from app.domain.enums.workflow_pattern import WorkflowPattern
 from app.domain.models import ActionItem, ExecutionContext, RunningState, StructuredOutput
+from app.services._confidence import confidence_to_score
 from app.services.output.contracts.response_assembler_protocol import ResponseAssemblerProtocol
 
 
@@ -24,7 +25,7 @@ Assemble final structured output from execution context."""
             recommendation=state.final_recommendation,
             action_items=[ActionItem(title=item) for item in state.action_items],
             citations=state.citations,
-            confidence=self._confidence_to_score(state.confidence),
+            confidence=confidence_to_score(state.confidence),
             caveats=state.caveats,
             stage_history=runtime_context.stage_history,
             metadata={
@@ -49,15 +50,6 @@ Assemble final structured output from execution context."""
             TaskType.ACTION_PLANNING: WorkflowPattern.ACTION_PLANNING,
             TaskType.TRACKING: WorkflowPattern.TRACKING,
         }[task_type]
-
-    def _confidence_to_score(self, confidence: str | None) -> float | None:
-        if confidence is None:
-            return None
-        return {
-            "low": 0.2,
-            "medium": 0.5,
-            "high": 0.8,
-        }.get(confidence.lower())
 
     def _fallback_answer(self, state: RunningState) -> str:
         if state.final_recommendation and state.final_recommendation.strip():

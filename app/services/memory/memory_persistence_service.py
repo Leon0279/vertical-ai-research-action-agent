@@ -18,6 +18,7 @@ from app.adapters.memory.contracts.project_profile_memory_store_protocol import 
 from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
     ResearchKnowledgeMemoryStoreProtocol,
 )
+from app.common.utils.json_utils import is_json_serializable
 from app.domain.enums import MemoryType, TaskType
 from app.domain.models import (
     ActionMemoryRecord,
@@ -36,6 +37,7 @@ from app.services.memory.contracts.memory_persistence_protocol import MemoryPers
 from app.services.memory.contracts.semantic_resolver_protocol import (
     SemanticResolverProtocol,
 )
+from app.services.memory._keys import memory_candidate_dedupe_key
 
 
 _StructuredRecord = (
@@ -166,7 +168,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 errors[index] = "candidate project scope 与当前 ExecutionContext 不一致。"
             elif candidate.memory_type == MemoryType.RESEARCH_KNOWLEDGE and not candidate.source_references:
                 errors[index] = "research knowledge candidate 至少需要一个 SourceReference。"
-            elif not self._is_json_safe(candidate.payload):
+            elif not is_json_serializable(candidate.payload):
                 errors[index] = "candidate payload 不是 JSON-safe。"
             elif self._is_obviously_raw(candidate):
                 errors[index] = "candidate 看起来是 raw/debug output，不允许直接持久化。"
@@ -226,7 +228,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 )
                 if record and record.status == "active" and record.is_canonical:
                     return [record]
-            dedupe_key = self._candidate_dedupe_key(candidate)
+            dedupe_key = memory_candidate_dedupe_key(candidate)
             record = await self._research_knowledge_store.find_active_by_dedupe_key(
                 owner_user_id=user_id,
                 dedupe_key=dedupe_key,
@@ -435,7 +437,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 freshness_sensitivity=self._payload_text(candidate, "freshness_sensitivity"),
                 freshness_status=self._payload_text(candidate, "freshness_status"),
                 staleness_reason=self._payload_text(candidate, "staleness_reason"),
-                dedupe_key=self._candidate_dedupe_key(candidate),
+                dedupe_key=memory_candidate_dedupe_key(candidate),
                 canonical_knowledge_id=knowledge_id,
                 is_canonical=True,
                 merged_into_id=None,
@@ -536,14 +538,6 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         return resolution.rationale
 
     @staticmethod
-    def _is_json_safe(value: object) -> bool:
-        try:
-            json.dumps(value, ensure_ascii=False)
-        except (TypeError, ValueError):
-            return False
-        return True
-
-    @staticmethod
     def _is_obviously_raw(candidate: MemoryCandidate) -> bool:
         text = candidate.summary.lower()
         markers = ("raw transcript", "raw tool output", "debug payload", "llm prompt")
@@ -626,11 +620,6 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
             if handle not in handles:
                 handles.append(handle)
         return handles
-
-    @staticmethod
-    def _candidate_dedupe_key(candidate: MemoryCandidate) -> str:
-        normalized = " ".join(candidate.summary.casefold().split())
-        return f"{candidate.memory_type.value}:{normalized}"
 
     def _same_summary(self, candidate: MemoryCandidate, record: _StructuredRecord) -> bool:
         candidate_summary = " ".join(candidate.summary.casefold().split())

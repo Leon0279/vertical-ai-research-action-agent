@@ -7,7 +7,7 @@ import os
 from pydantic import BaseModel, Field
 
 from app.adapters.memory.redis_session_memory_store_error import RedisSessionMemoryStoreError
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 
 class RedisSessionMemoryStoreConfig(BaseModel):
@@ -31,11 +31,11 @@ Typed settings for Redis session memory storage."""
         """
 
         load_env_file()
-        redis_url = os.getenv("REDIS_SESSION_MEMORY_URL", "").strip()
-        if not redis_url:
-            raise RedisSessionMemoryStoreError(
-                "REDIS_SESSION_MEMORY_URL is required for Redis session memory."
-            )
+        redis_url = require_env(
+            "REDIS_SESSION_MEMORY_URL",
+            RedisSessionMemoryStoreError,
+            "REDIS_SESSION_MEMORY_URL is required for Redis session memory.",
+        )
 
         return cls(
             redis_url=redis_url,

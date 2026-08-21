@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from app.config import env_loader
 
 
@@ -49,3 +51,15 @@ def test_env_loader_can_be_skipped(monkeypatch, tmp_path) -> None:
     env_loader.load_env_file()
 
     assert "REDIS_SESSION_MEMORY_URL" not in os.environ
+
+
+def test_require_env_strips_value_and_raises_supplied_error(monkeypatch) -> None:
+    monkeypatch.setenv("VAA_TEST_REQUIRED_ENV", "  configured  ")
+    assert (
+        env_loader.require_env("VAA_TEST_REQUIRED_ENV", RuntimeError, "missing")
+        == "configured"
+    )
+
+    monkeypatch.delenv("VAA_TEST_REQUIRED_ENV")
+    with pytest.raises(RuntimeError, match="missing"):
+        env_loader.require_env("VAA_TEST_REQUIRED_ENV", RuntimeError, "missing")

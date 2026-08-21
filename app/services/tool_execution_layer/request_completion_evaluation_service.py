@@ -9,6 +9,7 @@ from app.domain.models import (
     RequestCompletionEvaluationRequest,
     RequestCompletionEvaluationResult,
 )
+from app.services.tool_execution_layer._normalization import normalize_family_list
 from app.services.tool_execution_layer.contracts.request_completion_evaluation_service_protocol import (
     RequestCompletionEvaluationServiceProtocol,
 )
@@ -170,25 +171,14 @@ Evaluate whether one family execution result is complete or needs recovery."""
             max_results=request.max_results,
             timeout_limit_ms=request.timeout_limit_ms,
             request_elapsed_ms=request.request_elapsed_ms,
-            available_families=self._normalize_family_list(request.available_families),
-            allowed_source_families=self._normalize_family_list(
+            available_families=normalize_family_list(request.available_families),
+            allowed_source_families=normalize_family_list(
                 request.allowed_source_families
             ),
-            blocked_source_families=self._normalize_family_list(
+            blocked_source_families=normalize_family_list(
                 request.blocked_source_families
             ),
         )
-
-    def _normalize_family_list(self, families: list[FamilyName]) -> list[FamilyName]:
-        normalized: list[FamilyName] = []
-        seen: set[FamilyName] = set()
-        for family in families:
-            normalized_family = FamilyName(str(family).strip())
-            if normalized_family in seen:
-                continue
-            normalized.append(normalized_family)
-            seen.add(normalized_family)
-        return normalized
 
     def _validate_request(
         self,

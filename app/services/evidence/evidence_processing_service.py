@@ -9,6 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.utils.json_utils import strip_json_code_fence
 from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     EvidenceProcessingSummary,
@@ -481,7 +482,7 @@ Convert candidate materials into current-round processed evidence units."""
         return value
 
     def _parse_llm_output(self, llm_output: str) -> _LLMStructuringPayload:
-        json_text = self._strip_json_code_fence(llm_output)
+        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
         try:
             raw_payload = json.loads(json_text)
         except json.JSONDecodeError as exc:
@@ -495,17 +496,6 @@ Convert candidate materials into current-round processed evidence units."""
         if payload.decision == "drop" and payload.evidence_units:
             raise ValueError("Drop decisions must return an empty evidence_units list.")
         return payload
-
-    def _strip_json_code_fence(self, value: str) -> str:
-        stripped = value.strip()
-        if not stripped.startswith("```"):
-            return stripped
-        lines = stripped.splitlines()
-        if lines and lines[0].strip().startswith("```"):
-            lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        return "\n".join(lines).strip()
 
     def _consolidate_evidence(
         self,

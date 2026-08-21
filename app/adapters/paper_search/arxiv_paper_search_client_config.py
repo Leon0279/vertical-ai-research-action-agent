@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.paper_search.arxiv_paper_search_client_error import (
     ArxivPaperSearchClientError,
 )
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 
 class ArxivPaperSearchClientConfig(BaseModel):
@@ -37,11 +37,11 @@ Typed runtime settings for arXiv paper search."""
         """
 
         load_env_file()
-        user_agent = os.getenv("ARXIV_PAPER_SEARCH_USER_AGENT", "").strip()
-        if not user_agent:
-            raise ArxivPaperSearchClientError(
-                "ARXIV_PAPER_SEARCH_USER_AGENT is required for arXiv paper search."
-            )
+        user_agent = require_env(
+            "ARXIV_PAPER_SEARCH_USER_AGENT",
+            ArxivPaperSearchClientError,
+            "ARXIV_PAPER_SEARCH_USER_AGENT is required for arXiv paper search.",
+        )
 
         client_identity = os.getenv("ARXIV_PAPER_SEARCH_CLIENT_IDENTITY", "").strip() or None
         return cls(

@@ -36,6 +36,23 @@ def test_id_only_source_reference_is_valid() -> None:
     assert reference.authors == ["Ada Lovelace", "Grace Hopper"]
 
 
+def test_source_reference_deduplication_key_prefers_url_then_id() -> None:
+    url_reference = SourceReference(
+        source_type="web_page",
+        source_url="https://example.test/article",
+        source_id="fallback-id",
+        source_id_type="example",
+    )
+    id_reference = SourceReference(
+        source_type="paper",
+        source_id="2401.00001",
+        source_id_type="arxiv_id",
+    )
+
+    assert url_reference.deduplication_key() == "url:https://example.test/article"
+    assert id_reference.deduplication_key() == "id:arxiv_id:2401.00001"
+
+
 def test_source_type_must_not_be_empty() -> None:
     with pytest.raises(ValidationError):
         SourceReference(source_type="  ", source_url="https://example.test")

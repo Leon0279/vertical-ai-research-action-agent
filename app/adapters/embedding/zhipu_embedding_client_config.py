@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.adapters.embedding.zhipu_embedding_client_error import (
     ZhipuEmbeddingClientError,
 )
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 
 class ZhipuEmbeddingClientConfig(BaseModel):
@@ -59,11 +59,11 @@ Typed runtime settings for Zhipu embeddings."""
         """
 
         load_env_file()
-        api_key = os.getenv("ZHIPU_API_KEY", "").strip()
-        if not api_key:
-            raise ZhipuEmbeddingClientError(
-                "ZHIPU_API_KEY is required for Zhipu embedding calls."
-            )
+        api_key = require_env(
+            "ZHIPU_API_KEY",
+            ZhipuEmbeddingClientError,
+            "ZHIPU_API_KEY is required for Zhipu embedding calls.",
+        )
 
         return cls(
             api_key=api_key,

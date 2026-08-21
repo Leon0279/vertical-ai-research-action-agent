@@ -15,6 +15,7 @@ from app.domain.models import (
 from app.services.families.contracts.docs_search_family_service_protocol import (
     DocsSearchFamilyServiceProtocol,
 )
+from app.services.families._selection import select_preferred_or_default_tool
 from app.services.tools.contracts.llms_txt_docs_search_tool_protocol import (
     LlmsTxtDocsSearchToolProtocol,
 )
@@ -47,7 +48,11 @@ Resolve a docs_search family request to a concrete docs tool."""
                 error_info="No available tools registered for docs_search family.",
             )
 
-        selected_tool = self._select_tool(normalized_request, candidate_tools)
+        selected_tool = select_preferred_or_default_tool(
+            normalized_request.preferred_tool,
+            self._DEFAULT_TOOL_ID,
+            candidate_tools,
+        )
         if selected_tool is None:
             return self._failed_result(
                 normalized_request=normalized_request,
@@ -87,17 +92,6 @@ Resolve a docs_search family request to a concrete docs tool."""
             max_search_results=request.max_search_results,
             preferred_tool=(request.preferred_tool or "").strip() or None,
         )
-
-    def _select_tool(
-        self,
-        request: DocsSearchFamilyRequest,
-        candidate_tools: list[str],
-    ) -> str | None:
-        if request.preferred_tool is None:
-            return self._DEFAULT_TOOL_ID if self._DEFAULT_TOOL_ID in candidate_tools else None
-        if request.preferred_tool in candidate_tools:
-            return request.preferred_tool
-        return None
 
     def _wrap_tool_result(
         self,

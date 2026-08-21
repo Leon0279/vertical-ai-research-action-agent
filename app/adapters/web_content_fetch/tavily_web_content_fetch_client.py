@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
 from typing import Any
-from urllib.parse import urlparse
 
 import httpx
 
@@ -17,6 +15,9 @@ from app.adapters.web_content_fetch.tavily_web_content_fetch_client_config impor
 from app.adapters.web_content_fetch.tavily_web_content_fetch_client_error import (
     TavilyWebContentFetchClientError,
 )
+from app.common.utils.hashing import sha1_hex
+from app.common.utils.text import normalize_whitespace_or_none
+from app.common.utils.urls import is_absolute_http_url
 from app.domain.models import (
     WebContentFetchFailedResult,
     WebContentFetchRequest,
@@ -56,7 +57,10 @@ HTTP client for provider-backed web content fetch through Tavily Extract."""
                 "Web content fetch urls must not be empty."
             )
         for url in urls:
-            self._validate_url(url)
+            if not is_absolute_http_url(url):
+                raise TavilyWebContentFetchClientError(
+                    "All web content fetch urls must be absolute HTTP(S) URLs."
+                )
 
         query = (request.query or "").strip() or None
         chunks_per_source = request.chunks_per_source
@@ -105,13 +109,6 @@ HTTP client for provider-backed web content fetch through Tavily Extract."""
             timeout_seconds=timeout_seconds or self._config.default_extract_timeout_seconds,
             include_usage=include_usage,
         )
-
-    def _validate_url(self, url: str) -> None:
-        parsed = urlparse(url)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise TavilyWebContentFetchClientError(
-                "All web content fetch urls must be absolute HTTP(S) URLs."
-            )
 
     def _build_payload(self, request: WebContentFetchRequest) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -195,7 +192,7 @@ HTTP client for provider-backed web content fetch through Tavily Extract."""
             results=results,
             failed_results=failed_results,
             response_time=self._parse_float(payload.get("response_time")),
-            request_id=self._normalize_text(payload.get("request_id")),
+            request_id=normalize_whitespace_or_none(payload.get("request_id")),
             usage=self._normalize_usage(payload.get("usage")),
             source_summary={
                 "provider": "tavily_extract",
@@ -207,21 +204,21 @@ HTTP client for provider-backed web content fetch through Tavily Extract."""
     def _normalize_result(self, item: Any) -> WebContentFetchResult | None:
         if not isinstance(item, dict):
             return None
-        url = self._normalize_text(item.get("url"))
+        url = normalize_whitespace_or_none(item.get("url"))
         if not url:
             return None
 
-        extracted_content = self._normalize_text(item.get("raw_content"))
+        extracted_content = normalize_whitespace_or_none(item.get("raw_content"))
         fetch_status = "succeeded" if extracted_content else "empty_content"
         error_info = None if extracted_content else "Content extraction produced no content."
 
         return WebContentFetchResult(
-            item_id=self._item_id(url),
+            item_id=sha1_hex(url),
             url=url,
             extracted_content=extracted_content,
             fetch_status=fetch_status,
             images=self._normalize_string_list(item.get("images")),
-            favicon=self._normalize_text(item.get("favicon")),
+            favicon=normalize_whitespace_or_none(item.get("favicon")),
             error_info=error_info,
             metadata=self._collect_result_metadata(item),
             source="tavily_extract",
@@ -230,11 +227,11 @@ HTTP client for provider-backed web content fetch through Tavily Extract."""
     def _normalize_failed_result(self, item: Any) -> WebContentFetchFailedResult | None:
         if not isinstance(item, dict):
             return None
-        url = self._normalize_text(item.get("url")) or "unknown"
+        url = normalize_whitespace_or_none(item.get("url")) or "unknown"
         error_info = (
-            self._normalize_text(item.get("error"))
-            or self._normalize_text(item.get("reason"))
-            or self._normalize_text(item.get("message"))
+            normalize_whitespace_or_none(item.get("error"))
+            or normalize_whitespace_or_none(item.get("reason"))
+            or normalize_whitespace_or_none(item.get("message"))
             or "Content extraction failed."
         )
         metadata = {
@@ -266,16 +263,10 @@ HTTP client for provider-backed web content fetch through Tavily Extract."""
             return []
         normalized: list[str] = []
         for item in value:
-            text = self._normalize_text(item)
+            text = normalize_whitespace_or_none(item)
             if text:
                 normalized.append(text)
         return normalized
-
-    def _normalize_text(self, value: Any) -> str | None:
-        if not isinstance(value, str):
-            return None
-        normalized = " ".join(value.split()).strip()
-        return normalized or None
 
     def _parse_float(self, value: Any) -> float | None:
         if isinstance(value, bool):
@@ -288,6 +279,3 @@ HTTP client for provider-backed web content fetch through Tavily Extract."""
             except ValueError:
                 return None
         return None
-
-    def _item_id(self, url: str) -> str:
-        return hashlib.sha1(url.encode("utf-8")).hexdigest()

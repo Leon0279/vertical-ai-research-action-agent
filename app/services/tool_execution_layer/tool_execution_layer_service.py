@@ -25,6 +25,7 @@ from app.domain.models.retrieval import (
     RetrievalSourceSummary,
     RetrievalTrace,
 )
+from app.common.utils.text import unique_non_empty_strings
 from app.services.families.contracts.docs_search_family_service_protocol import (
     DocsSearchFamilyServiceProtocol,
 )
@@ -37,6 +38,7 @@ from app.services.families.contracts.research_knowledge_recall_family_service_pr
 from app.services.families.contracts.web_search_family_service_protocol import (
     WebSearchFamilyServiceProtocol,
 )
+from app.services.tool_execution_layer._normalization import normalize_family_list
 from app.services.tool_execution_layer.contracts.family_selection_service_protocol import (
     FamilySelectionServiceProtocol,
 )
@@ -413,63 +415,41 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             evidence_goal=(request.evidence_goal or "").strip() or None,
             evidence_shape=request.evidence_shape,
             task_framing=(request.task_framing or "").strip() or None,
-            allowed_source_families=self._normalize_family_list(
+            allowed_source_families=normalize_family_list(
                 request.allowed_source_families
             ),
-            preferred_source_families=self._normalize_family_list(
+            preferred_source_families=normalize_family_list(
                 request.preferred_source_families
             ),
-            blocked_source_families=self._normalize_family_list(
+            blocked_source_families=normalize_family_list(
                 request.blocked_source_families
             ),
-            available_families=self._normalize_family_list(request.available_families),
+            available_families=normalize_family_list(request.available_families),
             success_hint=(request.success_hint or "").strip() or None,
-            recent_low_value_queries=self._normalize_string_list(
+            recent_low_value_queries=unique_non_empty_strings(
                 request.recent_low_value_queries
             ),
             preferred_tool=(request.preferred_tool or "").strip() or None,
-            source_names=self._normalize_string_list(request.source_names),
-            include_domains=self._normalize_string_list(request.include_domains),
-            exclude_domains=self._normalize_string_list(request.exclude_domains),
+            source_names=unique_non_empty_strings(request.source_names),
+            include_domains=unique_non_empty_strings(request.include_domains),
+            exclude_domains=unique_non_empty_strings(request.exclude_domains),
             max_search_results=request.max_search_results,
             max_content_fetches=request.max_content_fetches,
             min_score_threshold=request.min_score_threshold,
             owner_user_id=(request.owner_user_id or "").strip() or None,
             query_embedding=request.query_embedding,
             project_scope_id=(request.project_scope_id or "").strip() or None,
-            allowed_visibility_scopes=self._normalize_string_list(
+            allowed_visibility_scopes=unique_non_empty_strings(
                 request.allowed_visibility_scopes
             ),
-            knowledge_types=self._normalize_string_list(request.knowledge_types),
-            topic_tags=self._normalize_string_list(request.topic_tags),
-            source_types=self._normalize_string_list(request.source_types),
+            knowledge_types=unique_non_empty_strings(request.knowledge_types),
+            topic_tags=unique_non_empty_strings(request.topic_tags),
+            source_types=unique_non_empty_strings(request.source_types),
             memory_recall_limit=request.memory_recall_limit,
             retry_budget=request.retry_budget,
             fallback_policy=request.fallback_policy,
             timeout_limit_ms=request.timeout_limit_ms,
         )
-
-    def _normalize_string_list(self, values: list[str]) -> list[str]:
-        normalized: list[str] = []
-        seen: set[str] = set()
-        for value in values:
-            stripped = value.strip()
-            if not stripped or stripped in seen:
-                continue
-            normalized.append(stripped)
-            seen.add(stripped)
-        return normalized
-
-    def _normalize_family_list(self, values: list[FamilyName]) -> list[FamilyName]:
-        normalized: list[FamilyName] = []
-        seen: set[FamilyName] = set()
-        for value in values:
-            family = FamilyName(str(value).strip())
-            if family in seen:
-                continue
-            normalized.append(family)
-            seen.add(family)
-        return normalized
 
     def _injected_families(self) -> list[FamilyName]:
         return [
@@ -495,7 +475,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
         available_families: list[FamilyName],
         blocked_families: list[FamilyName],
     ) -> FamilySelectionResult:
-        merged_blocked = self._normalize_family_list(
+        merged_blocked = normalize_family_list(
             [*request.blocked_source_families, *blocked_families]
         )
         return await self._family_selection_service.select_family(
@@ -676,7 +656,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
                 request_elapsed_ms=None,
                 available_families=available_families,
                 allowed_source_families=request.allowed_source_families,
-                blocked_source_families=self._normalize_family_list(
+                blocked_source_families=normalize_family_list(
                     [*request.blocked_source_families, *blocked_families]
                 ),
             )

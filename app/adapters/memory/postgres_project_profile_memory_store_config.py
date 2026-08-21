@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.adapters.memory.postgres_project_profile_memory_store_error import (
     PostgresProjectProfileMemoryStoreError,
 )
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 
 class PostgresProjectProfileMemoryStoreConfig(BaseModel):
@@ -33,11 +33,11 @@ Typed runtime settings for the project_profile_memory adapter."""
         """
 
         load_env_file()
-        dsn = os.getenv("POSTGRES_PROJECT_PROFILE_MEMORY_DSN", "").strip()
-        if not dsn:
-            raise PostgresProjectProfileMemoryStoreError(
-                "POSTGRES_PROJECT_PROFILE_MEMORY_DSN is required for project profile memory."
-            )
+        dsn = require_env(
+            "POSTGRES_PROJECT_PROFILE_MEMORY_DSN",
+            PostgresProjectProfileMemoryStoreError,
+            "POSTGRES_PROJECT_PROFILE_MEMORY_DSN is required for project profile memory.",
+        )
 
         return cls(
             dsn=dsn,

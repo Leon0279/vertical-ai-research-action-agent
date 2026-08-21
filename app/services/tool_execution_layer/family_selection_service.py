@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.domain.enums import ActionMode, FamilyName
 from app.domain.models import EvidenceShape, FamilySelectionRequest, FamilySelectionResult
+from app.services.tool_execution_layer._normalization import normalize_family_list
 from app.services.tool_execution_layer.contracts.family_selection_service_protocol import (
     FamilySelectionServiceProtocol,
 )
@@ -117,22 +118,11 @@ Select a retrieval family without resolving a concrete tool."""
             task_type=(request.task_type or "").strip() or None,
             task_framing=(request.task_framing or "").strip() or None,
             evidence_strategy=(request.evidence_strategy or "").strip() or None,
-            allowed_source_families=self._normalize_family_list(request.allowed_source_families),
-            preferred_source_families=self._normalize_family_list(request.preferred_source_families),
-            blocked_source_families=self._normalize_family_list(request.blocked_source_families),
-            available_families=self._normalize_family_list(request.available_families),
+            allowed_source_families=normalize_family_list(request.allowed_source_families),
+            preferred_source_families=normalize_family_list(request.preferred_source_families),
+            blocked_source_families=normalize_family_list(request.blocked_source_families),
+            available_families=normalize_family_list(request.available_families),
         )
-
-    def _normalize_family_list(self, values: list[FamilyName]) -> list[FamilyName]:
-        normalized: list[FamilyName] = []
-        seen: set[FamilyName] = set()
-        for value in values:
-            family = FamilyName(str(value).strip())
-            if family in seen:
-                continue
-            normalized.append(family)
-            seen.add(family)
-        return normalized
 
     def _initial_scope(self, action_mode: ActionMode) -> list[FamilyName]:
         if action_mode == ActionMode.MEMORY_BACKED_ACQUISITION:

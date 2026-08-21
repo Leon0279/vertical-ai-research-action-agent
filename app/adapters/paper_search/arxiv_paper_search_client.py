@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import time
 import xml.etree.ElementTree as ET
-from datetime import datetime
 from typing import Any
 
 import httpx
@@ -19,6 +18,8 @@ from app.adapters.paper_search.arxiv_paper_search_client_error import (
 from app.adapters.paper_search.contracts.paper_search_client_protocol import (
     PaperSearchClientProtocol,
 )
+from app.common.utils.parsing import parse_optional_iso_datetime
+from app.common.utils.text import normalize_whitespace_or_none
 from app.domain.models import (
     PaperSearchQuery,
     PaperSearchResponse,
@@ -174,7 +175,7 @@ HTTP client for arXiv paper search."""
 
     def _parse_entry(self, entry: ET.Element) -> PaperSearchResult | None:
         entry_id = self._find_text(entry, "atom:id")
-        title = self._normalize_text(self._find_text(entry, "atom:title"))
+        title = normalize_whitespace_or_none(self._find_text(entry, "atom:title"))
         if not entry_id or not title:
             return None
 
@@ -183,9 +184,9 @@ HTTP client for arXiv paper search."""
         if not arxiv_id:
             return None
 
-        published_at = self._parse_datetime(self._find_text(entry, "atom:published"))
-        updated_at = self._parse_datetime(self._find_text(entry, "atom:updated"))
-        summary = self._normalize_text(self._find_text(entry, "atom:summary"))
+        published_at = parse_optional_iso_datetime(self._find_text(entry, "atom:published"))
+        updated_at = parse_optional_iso_datetime(self._find_text(entry, "atom:updated"))
+        summary = normalize_whitespace_or_none(self._find_text(entry, "atom:summary"))
         authors = self._extract_authors(entry)
         categories = self._extract_categories(entry)
         primary_category = self._extract_primary_category(entry)
@@ -211,7 +212,7 @@ HTTP client for arXiv paper search."""
     def _extract_authors(self, entry: ET.Element) -> list[str]:
         authors: list[str] = []
         for author in entry.findall("atom:author", NAMESPACES):
-            name = self._normalize_text(self._find_text(author, "atom:name"))
+            name = normalize_whitespace_or_none(self._find_text(author, "atom:name"))
             if name:
                 authors.append(name)
         return authors
@@ -249,7 +250,7 @@ HTTP client for arXiv paper search."""
         return None
 
     def _extract_doi_url(self, entry: ET.Element) -> str | None:
-        doi = self._normalize_text(self._find_text(entry, "arxiv:doi"))
+        doi = normalize_whitespace_or_none(self._find_text(entry, "arxiv:doi"))
         if not doi:
             return None
         if doi.startswith("http://") or doi.startswith("https://"):
@@ -268,20 +269,6 @@ HTTP client for arXiv paper search."""
         if child is None or child.text is None:
             return None
         return child.text
-
-    def _normalize_text(self, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = " ".join(value.split())
-        return normalized or None
-
-    def _parse_datetime(self, value: str | None) -> datetime | None:
-        if not value:
-            return None
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return None
 
     def _optional_int(self, value: str | None) -> int | None:
         if value is None:

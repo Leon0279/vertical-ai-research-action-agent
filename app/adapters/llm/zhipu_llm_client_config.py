@@ -7,7 +7,7 @@ import os
 from pydantic import BaseModel, Field
 
 from app.adapters.llm.zhipu_llm_client_error import ZhipuLLMClientError
-from app.config.env_loader import load_env_file
+from app.config.env_loader import load_env_file, require_env
 
 
 class ZhipuLLMClientConfig(BaseModel):
@@ -34,9 +34,11 @@ Typed runtime settings for Zhipu chat completions."""
         """
 
         load_env_file()
-        api_key = os.getenv("ZHIPU_API_KEY", "").strip()
-        if not api_key:
-            raise ZhipuLLMClientError("ZHIPU_API_KEY is required for Zhipu LLM calls.")
+        api_key = require_env(
+            "ZHIPU_API_KEY",
+            ZhipuLLMClientError,
+            "ZHIPU_API_KEY is required for Zhipu LLM calls.",
+        )
 
         return cls(
             api_key=api_key,
