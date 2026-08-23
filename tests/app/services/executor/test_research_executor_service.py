@@ -25,6 +25,9 @@ from app.services.executor.research_executor_service import (
 from app.services.executor.models.evidence_coverage_entry import (
     EvidenceCoverageEntry,
 )
+from app.services.executor.models.research_executor_run_state import (
+    ResearchExecutorRunState,
+)
 
 
 def _valid_assessment_payload(
@@ -318,69 +321,69 @@ class _SpyResearchExecutorService(ResearchExecutorService):
     async def _assess_research_state_and_select_next_evidence_need(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
         self.calls.append("assess_research_state_and_select_next_evidence_need")
         await super()._assess_research_state_and_select_next_evidence_need(
             stage_input,
-            working_state,
+            run_state,
         )
 
     async def _decide_whether_external_action_is_needed(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> bool:
         self.calls.append("decide_whether_external_action_is_needed")
         return await super()._decide_whether_external_action_is_needed(
             stage_input,
-            working_state,
+            run_state,
         )
 
     async def _acquire_candidate_material(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
         self.calls.append("acquire_candidate_material")
-        await super()._acquire_candidate_material(stage_input, working_state)
+        await super()._acquire_candidate_material(stage_input, run_state)
 
     async def _process_candidate_material_into_usable_evidence(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
         self.calls.append("process_candidate_material_into_usable_evidence")
         await super()._process_candidate_material_into_usable_evidence(
             stage_input,
-            working_state,
+            run_state,
         )
 
     async def _update_stage_local_working_state(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
         self.calls.append("update_stage_local_working_state")
-        await super()._update_stage_local_working_state(stage_input, working_state)
+        await super()._update_stage_local_working_state(stage_input, run_state)
 
     async def _produce_or_refine_intermediate_findings(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
         self.calls.append("produce_or_refine_intermediate_findings")
-        await super()._produce_or_refine_intermediate_findings(stage_input, working_state)
+        await super()._produce_or_refine_intermediate_findings(stage_input, run_state)
 
     async def _evaluate_iteration_outcome(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> ResearchIterationOutcome:
         self.calls.append("evaluate_iteration_outcome")
         if self._outcomes:
             return self._outcomes.pop(0)
-        return await super()._evaluate_iteration_outcome(stage_input, working_state)
+        return await super()._evaluate_iteration_outcome(stage_input, run_state)
 
 
 class _StateCapturingResearchExecutorService(ResearchExecutorService):
@@ -404,74 +407,74 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
             tool_execution_layer_service=self.tool_execution_layer_service,
             evidence_processing_service=self.evidence_processing_service,
         )
-        self.captured_states: list[dict[str, Any]] = []
-        self.action_states: list[dict[str, Any]] = []
-        self.processed_states: list[dict[str, Any]] = []
-        self.updated_states: list[dict[str, Any]] = []
-        self.finding_states: list[dict[str, Any]] = []
-        self.outcome_states: list[dict[str, Any]] = []
+        self.captured_states: list[ResearchExecutorRunState] = []
+        self.action_states: list[ResearchExecutorRunState] = []
+        self.processed_states: list[ResearchExecutorRunState] = []
+        self.updated_states: list[ResearchExecutorRunState] = []
+        self.finding_states: list[ResearchExecutorRunState] = []
+        self.outcome_states: list[ResearchExecutorRunState] = []
         self._outcomes = outcomes or []
 
     async def _assess_research_state_and_select_next_evidence_need(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
         await super()._assess_research_state_and_select_next_evidence_need(
             stage_input,
-            working_state,
+            run_state,
         )
-        self.captured_states.append(deepcopy(working_state))
+        self.captured_states.append(deepcopy(run_state))
 
     async def _decide_whether_external_action_is_needed(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> bool:
         result = await super()._decide_whether_external_action_is_needed(
             stage_input,
-            working_state,
+            run_state,
         )
-        self.action_states.append(deepcopy(working_state))
+        self.action_states.append(deepcopy(run_state))
         return result
 
     async def _evaluate_iteration_outcome(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> ResearchIterationOutcome:
         if self._outcomes:
             return self._outcomes.pop(0)
-        outcome = await super()._evaluate_iteration_outcome(stage_input, working_state)
-        self.outcome_states.append(deepcopy(working_state))
+        outcome = await super()._evaluate_iteration_outcome(stage_input, run_state)
+        self.outcome_states.append(deepcopy(run_state))
         return outcome
 
     async def _process_candidate_material_into_usable_evidence(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
         await super()._process_candidate_material_into_usable_evidence(
             stage_input,
-            working_state,
+            run_state,
         )
-        self.processed_states.append(deepcopy(working_state))
+        self.processed_states.append(deepcopy(run_state))
 
     async def _update_stage_local_working_state(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
-        await super()._update_stage_local_working_state(stage_input, working_state)
-        self.updated_states.append(deepcopy(working_state))
+        await super()._update_stage_local_working_state(stage_input, run_state)
+        self.updated_states.append(deepcopy(run_state))
 
     async def _produce_or_refine_intermediate_findings(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
-        await super()._produce_or_refine_intermediate_findings(stage_input, working_state)
-        self.finding_states.append(deepcopy(working_state))
+        await super()._produce_or_refine_intermediate_findings(stage_input, run_state)
+        self.finding_states.append(deepcopy(run_state))
 
 
 def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
@@ -554,15 +557,19 @@ def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None
         )
     )
 
-    assert service.captured_states[0]["current_assessment"] == {
+    captured_state = service.captured_states[0]
+    assert captured_state.current_assessment is not None
+    assert captured_state.current_assessment.model_dump(mode="json") == {
         "coverage_status": "partially_covered",
         "support_strength": "weak_support",
         "finding_maturity": "tentative",
         "assessment_summary": "当前研究状态只有部分覆盖，还需要补充证据。",
     }
-    assert service.captured_states[0]["identified_gaps"][0]["gap_summary"] == "缺少直接证据。"
-    assert service.captured_states[0]["top_gap"]["gap_summary"] == "缺少直接证据。"
-    assert service.captured_states[0]["next_evidence_need"] == {
+    assert captured_state.identified_gaps[0].gap_summary == "缺少直接证据。"
+    assert captured_state.top_gap is not None
+    assert captured_state.top_gap.gap_summary == "缺少直接证据。"
+    assert captured_state.next_evidence_need is not None
+    assert captured_state.next_evidence_need.model_dump(mode="json") == {
         "need_scope": "sub_question_level",
         "need_target": "When should memory be preferred?",
         "need_purpose": "establish_coverage",
@@ -572,9 +579,7 @@ def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None
         "need_summary": "补充 memory-backed retrieval 的直接事实证据。",
         "coverage_target_key": "objective",
     }
-    coverage_entry = service.captured_states[0]["evidence_coverage_map"][
-        "objective"
-    ]
+    coverage_entry = captured_state.evidence_coverage_map["objective"]
     assert isinstance(coverage_entry, EvidenceCoverageEntry)
     assert coverage_entry.target_type == "objective"
     assert coverage_entry.target_text == "Assess current research coverage."
@@ -584,7 +589,7 @@ def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None
     assert coverage_entry.uncovered_aspects == ["缺少直接证据。"]
     assert coverage_entry.coverage_summary == "当前研究目标尚未获得充分直接证据。"
     assert (
-        service.captured_states[0]["prioritization_summary"]
+        captured_state.prioritization_summary
         == "该 gap 直接影响当前轮 research objective，因此优先推进。"
     )
 
@@ -672,7 +677,7 @@ def test_research_executor_step_six_records_candidate_evidence_without_claiming_
         )
     )
 
-    entry = service.updated_states[0]["evidence_coverage_map"]["objective"]
+    entry = service.updated_states[0].evidence_coverage_map["objective"]
     assert entry.retrieved_evidence_keys == ["iteration_1:ev_001"]
     assert entry.supporting_evidence_keys == []
     assert entry.coverage_status == "partially_covered"
@@ -773,13 +778,15 @@ def test_research_executor_refines_when_gap_is_noop() -> None:
         )
     )
 
-    assert service.action_states[0]["candidate_action_modes"] == [
+    action_iteration = service.action_states[0].require_current_iteration()
+    outcome_iteration = service.outcome_states[0].require_current_iteration()
+    assert action_iteration.candidate_action_modes == [
         "refine_from_existing_state"
     ]
-    assert service.action_states[0]["action_mode"] == "refine_from_existing_state"
-    assert service.action_states[0]["action_request"] is None
-    assert service.outcome_states[0]["iteration_outcome"] == "stop"
-    assert service.outcome_states[0]["outcome_decision_source"] == "rule_short_circuit"
+    assert action_iteration.action_mode == "refine_from_existing_state"
+    assert action_iteration.action_request is None
+    assert outcome_iteration.iteration_outcome == "stop"
+    assert outcome_iteration.outcome_decision_source == "rule_short_circuit"
     assert _outcome_prompts(service.llm_client) == []
 
 
@@ -802,8 +809,9 @@ def test_research_executor_refines_when_findings_are_stable_and_strong() -> None
         )
     )
 
-    assert service.action_states[0]["action_mode"] == "refine_from_existing_state"
-    assert service.action_states[0]["action_request"] is None
+    iteration = service.action_states[0].require_current_iteration()
+    assert iteration.action_mode == "refine_from_existing_state"
+    assert iteration.action_request is None
 
 
 def test_research_executor_refines_when_no_acquisition_capability_is_declared() -> None:
@@ -815,11 +823,12 @@ def test_research_executor_refines_when_no_acquisition_capability_is_declared() 
         )
     )
 
-    assert service.action_states[0]["candidate_action_modes"] == [
+    iteration = service.action_states[0].require_current_iteration()
+    assert iteration.candidate_action_modes == [
         "refine_from_existing_state"
     ]
-    assert service.action_states[0]["action_mode"] == "refine_from_existing_state"
-    assert service.action_states[0]["action_request"] is None
+    assert iteration.action_mode == "refine_from_existing_state"
+    assert iteration.action_request is None
 
 
 def test_research_executor_selects_memory_backed_acquisition_when_available() -> None:
@@ -836,22 +845,23 @@ def test_research_executor_selects_memory_backed_acquisition_when_available() ->
         )
     )
 
-    action_state = service.action_states[0]
-    action_request = action_state["action_request"]
-    assert action_state["candidate_action_modes"] == [
+    action_iteration = service.action_states[0].require_current_iteration()
+    action_request = action_iteration.action_request
+    assert action_request is not None
+    assert action_iteration.candidate_action_modes == [
         "refine_from_existing_state",
         "memory_backed_acquisition",
     ]
-    assert action_state["action_mode"] == "memory_backed_acquisition"
-    assert action_request["action_mode"] == "memory_backed_acquisition"
-    assert action_request["fallback_policy"] == "fallback_within_same_family"
-    assert action_request["preferred_tool"] is None
-    assert action_request["evidence_acquisition_intent"]["constraints"][
-        "allowed_source_families"
-    ] == ["research_knowledge_recall"]
-    assert action_request["evidence_acquisition_intent"]["constraints"][
-        "preferred_source_families"
-    ] == ["research_knowledge_recall"]
+    assert action_iteration.action_mode == "memory_backed_acquisition"
+    assert action_request.action_mode == "memory_backed_acquisition"
+    assert action_request.fallback_policy == "fallback_within_same_family"
+    assert action_request.preferred_tool is None
+    assert action_request.allowed_source_families == [
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL
+    ]
+    assert action_request.preferred_source_families == [
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL
+    ]
     tel_request = service.tool_execution_layer_service.requests[0]
     assert tel_request.action_mode == "memory_backed_acquisition"
     assert tel_request.owner_user_id == "user-1"
@@ -882,23 +892,16 @@ def test_research_executor_selects_external_acquisition_for_fresh_required_need(
         )
     )
 
-    action_state = service.action_states[0]
-    action_request = action_state["action_request"]
-    assert action_state["action_mode"] == "external_acquisition"
-    assert action_request["action_mode"] == "external_acquisition"
-    assert action_request["fallback_policy"] == "fallback_to_broader_search"
-    assert action_request["evidence_acquisition_intent"]["constraints"][
-        "allowed_source_families"
-    ] == ["docs_search"]
-    assert action_request["evidence_acquisition_intent"]["evidence_shape"] == {
-        "desired_evidence_kind": "fresh_status_evidence",
-        "freshness_requirement": "fresh_required",
-        "breadth": "normal",
-    }
-    assert (
-        action_request["evidence_acquisition_intent"]["success_hint"]
-        == "补充最新状态 evidence。"
-    )
+    action_iteration = service.action_states[0].require_current_iteration()
+    action_request = action_iteration.action_request
+    assert action_request is not None
+    assert action_iteration.action_mode == "external_acquisition"
+    assert action_request.action_mode == "external_acquisition"
+    assert action_request.fallback_policy == "fallback_to_broader_search"
+    assert action_request.allowed_source_families == [FamilyName.DOCS_SEARCH]
+    assert action_request.desired_evidence_kind == "fresh_status_evidence"
+    assert action_request.freshness_requirement == "fresh_required"
+    assert action_request.success_hint == "补充最新状态 evidence。"
     tel_request = service.tool_execution_layer_service.requests[0]
     assert tel_request.action_mode == "external_acquisition"
     assert tel_request.allowed_source_families == [FamilyName.DOCS_SEARCH]
@@ -972,13 +975,15 @@ def test_research_executor_processes_tel_result_into_working_state() -> None:
     scoped_evidence_unit = evidence_unit.model_copy(
         update={"evidence_unit_id": "iteration_1:ev_001"}
     )
-    assert service.processed_states[0]["processed_evidence_units"] == [
+    processed_state = service.processed_states[0]
+    processed_iteration = processed_state.require_current_iteration()
+    assert processed_state.processed_evidence_units == [
         scoped_evidence_unit
     ]
-    assert service.processed_states[0]["current_iteration_processed_evidence_units"] == [
+    assert processed_iteration.processed_evidence_units == [
         scoped_evidence_unit
     ]
-    assert "processed_evidence" not in service.processed_states[0]
+    assert not hasattr(processed_state, "processed_evidence")
 
 
 def test_research_executor_returns_processed_evidence_refs_findings_and_summary() -> None:
@@ -1062,10 +1067,10 @@ def test_research_executor_degrades_when_evidence_processing_fails() -> None:
         )
     )
 
-    outcome_state = service.outcome_states[0]
-    assert outcome_state["iteration_outcome"] == "degrade"
-    assert outcome_state["outcome_decision_source"] == "rule_short_circuit"
-    assert "Evidence Processing 阶段失败" in outcome_state["outcome_rationale"]
+    outcome_iteration = service.outcome_states[0].require_current_iteration()
+    assert outcome_iteration.iteration_outcome == "degrade"
+    assert outcome_iteration.outcome_decision_source == "rule_short_circuit"
+    assert "Evidence Processing 阶段失败" in (outcome_iteration.outcome_rationale or "")
     assert _outcome_prompts(service.llm_client) == []
 
 
@@ -1167,10 +1172,12 @@ def test_research_executor_continues_when_llm_outcome_allows_more_iterations() -
     )
 
     assert result.executed_iteration_count == 2
-    assert service.outcome_states[0]["iteration_outcome"] == "continue"
-    assert service.outcome_states[0]["outcome_decision_source"] == "llm_with_guardrails"
-    assert service.outcome_states[1]["iteration_outcome"] == "stop"
-    assert service.outcome_states[1]["outcome_guardrail_applied"] is True
+    first_outcome = service.outcome_states[0].require_current_iteration()
+    second_outcome = service.outcome_states[1].require_current_iteration()
+    assert first_outcome.iteration_outcome == "continue"
+    assert first_outcome.outcome_decision_source == "llm_with_guardrails"
+    assert second_outcome.iteration_outcome == "stop"
+    assert second_outcome.outcome_guardrail_applied is True
     assert len(_outcome_prompts(service.llm_client)) == 2
 
 
@@ -1213,22 +1220,24 @@ def test_research_executor_tracks_current_iteration_evidence_delta() -> None:
     scoped_first_evidence_unit = first_result.processed_evidence_units[0].model_copy(
         update={"evidence_unit_id": "iteration_1:ev_001"}
     )
-    assert service.processed_states[0]["processed_evidence_units"] == [
+    first_processed_state = service.processed_states[0]
+    second_processed_state = service.processed_states[1]
+    assert first_processed_state.processed_evidence_units == [
         scoped_first_evidence_unit
     ]
-    assert service.processed_states[0]["current_iteration_processed_evidence_units"] == [
+    assert first_processed_state.require_current_iteration().processed_evidence_units == [
         scoped_first_evidence_unit
     ]
-    assert service.processed_states[1]["processed_evidence_units"] == [
+    assert second_processed_state.processed_evidence_units == [
         scoped_first_evidence_unit
     ]
     assert (
-        service.processed_states[1]["current_iteration_processed_evidence_units"]
+        second_processed_state.require_current_iteration().processed_evidence_units
         == []
     )
     assert (
         service._outcome_evaluator._did_new_evidence_arrive(
-            service.processed_states[1]
+            second_processed_state.require_current_iteration()
         )
         is False
     )
@@ -1267,11 +1276,11 @@ def test_research_executor_degrades_when_last_iteration_has_no_meaningful_gain()
         )
     )
 
-    outcome_state = service.outcome_states[0]
-    assert outcome_state["proposed_iteration_outcome"] == "continue"
-    assert outcome_state["iteration_outcome"] == "degrade"
-    assert outcome_state["outcome_guardrail_applied"] is True
-    assert "没有剩余 iteration budget" in outcome_state["outcome_rationale"]
+    outcome_iteration = service.outcome_states[0].require_current_iteration()
+    assert outcome_iteration.proposed_iteration_outcome == "continue"
+    assert outcome_iteration.iteration_outcome == "degrade"
+    assert outcome_iteration.outcome_guardrail_applied is True
+    assert "没有剩余 iteration budget" in (outcome_iteration.outcome_rationale or "")
 
 
 def test_research_executor_reports_budget_exhaustion_when_loop_wants_to_continue() -> None:
@@ -1321,8 +1330,9 @@ def test_research_executor_accepts_fenced_json_iteration_outcome_output() -> Non
         )
     )
 
-    assert service.outcome_states[0]["iteration_outcome"] == "stop"
-    assert service.outcome_states[0]["outcome_rationale"] == "fenced outcome rationale"
+    outcome_iteration = service.outcome_states[0].require_current_iteration()
+    assert outcome_iteration.iteration_outcome == "stop"
+    assert outcome_iteration.outcome_rationale == "fenced outcome rationale"
 
 
 def test_research_executor_raises_when_iteration_outcome_output_is_not_json() -> None:
@@ -1459,11 +1469,11 @@ def test_research_executor_produces_full_intermediate_findings() -> None:
     )
 
     finding_state = service.finding_states[0]
-    assert finding_state["intermediate_findings"] == [
+    assert finding_state.intermediate_findings == [
         "现有研究记忆支持优先使用 memory-backed retrieval。",
         "Docs evidence suggests external retrieval is useful for fresh facts.",
     ]
-    assert finding_state["finding_caveats"] == [
+    assert finding_state.finding_caveats == [
         "fresh facts 仍缺少直接证据。",
     ]
 
@@ -1564,8 +1574,8 @@ def test_research_executor_accepts_fenced_json_intermediate_findings_output() ->
         )
     )
 
-    assert service.finding_states[0]["intermediate_findings"] == ["fenced finding"]
-    assert service.finding_states[0]["finding_caveats"] == ["fenced caveat"]
+    assert service.finding_states[0].intermediate_findings == ["fenced finding"]
+    assert service.finding_states[0].finding_caveats == ["fenced caveat"]
 
 
 def test_research_executor_raises_when_intermediate_findings_output_is_not_json() -> None:
@@ -1616,8 +1626,9 @@ def test_research_executor_refines_when_latency_constrained_and_gap_not_blocking
         )
     )
 
-    assert service.action_states[0]["action_mode"] == "refine_from_existing_state"
-    assert service.action_states[0]["action_request"] is None
+    action_iteration = service.action_states[0].require_current_iteration()
+    assert action_iteration.action_mode == "refine_from_existing_state"
+    assert action_iteration.action_request is None
 
 
 def test_research_executor_allows_blocking_external_acquisition_under_latency_pressure() -> None:
@@ -1636,8 +1647,9 @@ def test_research_executor_allows_blocking_external_acquisition_under_latency_pr
         )
     )
 
-    assert service.action_states[0]["action_mode"] == "external_acquisition"
-    assert service.action_states[0]["action_request"] is not None
+    action_iteration = service.action_states[0].require_current_iteration()
+    assert action_iteration.action_mode == "external_acquisition"
+    assert action_iteration.action_request is not None
 
 
 def test_research_executor_accepts_fenced_json_assessment_output() -> None:
@@ -1652,7 +1664,7 @@ def test_research_executor_accepts_fenced_json_assessment_output() -> None:
         )
     )
 
-    assert service.captured_states[0]["identified_gaps"][0]["gap_summary"] == "fenced gap"
+    assert service.captured_states[0].identified_gaps[0].gap_summary == "fenced gap"
 
 
 def test_research_executor_raises_when_llm_output_is_not_json() -> None:
@@ -1924,7 +1936,7 @@ def test_research_executor_next_assessment_confirms_prior_candidate_evidence() -
         )
     )
 
-    second_assessment_entry = service.captured_states[1]["evidence_coverage_map"][
+    second_assessment_entry = service.captured_states[1].evidence_coverage_map[
         "objective"
     ]
     assert second_assessment_entry.retrieved_evidence_keys == ["iteration_1:ev_001"]
@@ -1932,7 +1944,7 @@ def test_research_executor_next_assessment_confirms_prior_candidate_evidence() -
         "iteration_1:ev_001"
     ]
     assert second_assessment_entry.coverage_status == "covered"
-    assert service.updated_states[1]["evidence_coverage_map"][
+    assert service.updated_states[1].evidence_coverage_map[
         "objective"
     ].retrieved_evidence_keys == ["iteration_1:ev_001", "iteration_2:ev_001"]
 

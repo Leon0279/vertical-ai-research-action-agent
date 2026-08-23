@@ -1,61 +1,51 @@
-"""Research Executor 私有协作者共用的 working-state 辅助行为。"""
+"""Research Executor 私有协作者共用的强类型辅助行为。"""
 
 from __future__ import annotations
 
-from typing import Any
-
 from app.common.utils.text import strip_or_none, unique_non_empty_strings
 from app.domain.enums import AcquisitionStatus
-from app.domain.models import (
-    EvidenceProcessingResult,
-    ProcessedEvidenceUnit,
-    ResearchStageInput,
-    ToolExecutionLayerResult,
-)
+from app.domain.models import EvidenceProcessingResult, ResearchStageInput
 from app.domain.models.context.context_item import ContextItem
+from app.services.executor.models.research_executor_iteration_state import (
+    ResearchExecutorIterationState,
+)
+from app.services.executor.models.research_executor_llm_payloads import (
+    _LLMNextEvidenceNeedPayload,
+    _LLMResearchGapPayload,
+)
+from app.services.executor.models.research_executor_run_state import (
+    ResearchExecutorRunState,
+)
 
 
 class ResearchExecutorCollaboratorSupport:
-    """封装各协作者共享的 working-state 读取和轻量转换逻辑。"""
+    """封装各协作者共享的预算、文本与强类型 run-state 读取逻辑。"""
 
     def _max_iterations(self, stage_input: ResearchStageInput) -> int:
-        """Resolve the bounded loop budget from stage input only."""
+        """根据 stage input 返回有界循环预算。"""
 
         if stage_input.iteration_budget is None or stage_input.iteration_budget < 1:
             return 1
         return stage_input.iteration_budget
 
-
-    def _working_state_dict(
-        self,
-        working_state: dict[str, Any],
-        key: str,
-    ) -> dict[str, Any]:
-        """Return a dict value from working state, defaulting to an empty dict."""
-
-        value = working_state.get(key)
-        if isinstance(value, dict):
-            return value
-        return {}
-
-
     def _has_no_actionable_evidence_need(
         self,
-        top_gap: dict[str, Any],
-        next_evidence_need: dict[str, Any],
+        top_gap: _LLMResearchGapPayload | None,
+        next_evidence_need: _LLMNextEvidenceNeedPayload | None,
     ) -> bool:
-        """Detect the no-op style payload defined by the 4.4 LLM output contract."""
+        """判断 assessment 是否给出了无需 acquisition 的 no-op evidence need。"""
 
+        if top_gap is None or next_evidence_need is None:
+            return True
         return (
-            top_gap.get("gap_nature") == "none"
-            or top_gap.get("gap_severity") == "none"
-            or next_evidence_need.get("need_purpose") == "none"
-            or next_evidence_need.get("desired_evidence_kind") == "none"
+            top_gap.gap_nature == "none"
+            or top_gap.gap_severity == "none"
+            or next_evidence_need.need_purpose == "none"
+            or next_evidence_need.desired_evidence_kind == "none"
         )
 
-
     def _available_tool_names(self, stage_input: ResearchStageInput) -> set[str]:
-        """Normalize runtime capability names for deterministic matching."""
+        """规范化 runtime capability 名称，供确定性规则匹配。"""
 
         return {
             tool_name.strip().lower()
@@ -63,40 +53,36 @@ class ResearchExecutorCollaboratorSupport:
             if tool_name.strip()
         }
 
-
-    def _positive_int(self, value: Any, *, default: int) -> int:
-        """Return value when it is a positive int, otherwise the provided default."""
+    def _positive_int(self, value: object, *, default: int) -> int:
+        """返回正整数值；无效值时使用指定默认值。"""
 
         if isinstance(value, int) and value > 0:
             return value
         return default
 
-
-    def _positive_optional_int(self, value: Any) -> int | None:
-        """Return a positive integer value or None."""
+    def _positive_optional_int(self, value: object) -> int | None:
+        """将输入收敛为正整数或 None。"""
 
         if isinstance(value, int) and value > 0:
             return value
         return None
 
-
     def _required_text(
         self,
-        value: Any,
+        value: object,
         *,
         fallback: str,
         field_name: str,
     ) -> str:
-        """Return stripped text, falling back to a required non-empty value."""
+        """返回非空文本；主值缺失时使用 fallback，否则抛出状态错误。"""
 
         text = strip_or_none(value) or strip_or_none(fallback)
         if text is None:
             raise ValueError(f"{field_name} is required for material acquisition.")
         return text
 
-
-    def _context_items_for_prompt(self, items: list[ContextItem]) -> list[dict[str, Any]]:
-        """Convert distilled context items to the small prompt-facing shape."""
+    def _context_items_for_prompt(self, items: list[ContextItem]) -> list[dict[str, object]]:
+        """将 distilled context item 投影为无状态 LLM 所需的轻量 JSON。"""
 
         return [
             {
@@ -110,30 +96,27 @@ class ResearchExecutorCollaboratorSupport:
             for item in items
         ]
 
-
     def _input_budget_pressure(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        iteration: ResearchExecutorIterationState,
     ) -> str:
-        """Return a coarse budget pressure hint for assessment only."""
+        """为 assessment 提供粗粒度预算压力提示。"""
 
-        remaining_iterations = working_state.get("remaining_iteration_budget")
-        if remaining_iterations == 1:
+        if iteration.remaining_iteration_budget == 1:
             return "last_iteration"
         if stage_input.latency_budget_ms is not None and stage_input.latency_budget_ms <= 1000:
             return "latency_constrained"
         return "normal"
 
-
     def _iteration_input_budget_pressure(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        iteration: ResearchExecutorIterationState,
     ) -> str:
-        """Return the 4.7 low/medium/high budget pressure signal."""
+        """为 outcome evaluation 提供 low/medium/high 预算压力信号。"""
 
-        if self._remaining_iteration_budget_after_current(stage_input, working_state) <= 0:
+        if self._remaining_iteration_budget_after_current(stage_input, iteration) <= 0:
             return "high"
         if (
             stage_input.latency_budget_ms is not None
@@ -147,186 +130,61 @@ class ResearchExecutorCollaboratorSupport:
             return "medium"
         return "low"
 
-
     def _remaining_iteration_budget_after_current(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        iteration: ResearchExecutorIterationState,
     ) -> int:
-        """Return remaining loop budget after the current iteration finishes."""
+        """计算当前 iteration 完成后仍可执行的轮次数。"""
 
-        iteration_index = working_state.get("iteration_index")
-        if not isinstance(iteration_index, int) or iteration_index < 1:
-            iteration_index = 1
-        return max(0, self._max_iterations(stage_input) - iteration_index)
+        return max(0, self._max_iterations(stage_input) - iteration.iteration_index)
 
-
-    def _did_new_evidence_arrive(self, working_state: dict[str, Any]) -> bool:
-        """Return whether Step 5 has produced at least one processed evidence unit."""
-
-        return bool(self._current_iteration_processed_evidence_units(working_state))
-
-
-    def _current_iteration_processed_evidence_units(
+    def _did_new_evidence_arrive(
         self,
-        working_state: dict[str, Any],
-    ) -> list[ProcessedEvidenceUnit]:
-        """Return evidence units produced by the current iteration only."""
+        iteration: ResearchExecutorIterationState,
+    ) -> bool:
+        """判断当前 iteration 是否产生了新的 processed evidence。"""
 
-        processed_evidence_units = working_state.get(
-            "current_iteration_processed_evidence_units",
-            [],
-        )
-        if not isinstance(processed_evidence_units, list):
-            return []
-        return [
-            unit
-            for unit in processed_evidence_units
-            if isinstance(unit, ProcessedEvidenceUnit)
-        ]
-
-
-    def _processed_evidence_units(
-        self,
-        working_state: dict[str, Any],
-    ) -> list[ProcessedEvidenceUnit]:
-        """Return typed processed evidence units from stage-local working state."""
-
-        processed_evidence_units = working_state.get("processed_evidence_units", [])
-        if not isinstance(processed_evidence_units, list):
-            return []
-        return [
-            unit
-            for unit in processed_evidence_units
-            if isinstance(unit, ProcessedEvidenceUnit)
-        ]
-
+        return bool(iteration.processed_evidence_units)
 
     def _did_tel_fail_or_return_no_result(
         self,
-        working_state: dict[str, Any],
+        iteration: ResearchExecutorIterationState,
     ) -> bool:
-        """Return whether TEL ended with failed/no_result acquisition state."""
+        """判断当前 iteration 的 TEL 是否以 failed/no_result 结束。"""
 
-        tool_execution_result = self._current_tool_execution_result(working_state)
-        if tool_execution_result is None:
+        result = iteration.tool_execution_result
+        if result is None:
             return False
         return (
-            tool_execution_result.execution_status == "failed"
-            or tool_execution_result.acquisition_status
+            result.execution_status == "failed"
+            or result.acquisition_status
             in {AcquisitionStatus.FAILED, AcquisitionStatus.NO_RESULT}
         )
 
-
-    def _tool_execution_result(
-        self,
-        working_state: dict[str, Any],
-    ) -> ToolExecutionLayerResult | None:
-        """Return the latest typed TEL result from working state, if present."""
-
-        value = working_state.get("tool_execution_result")
-        if isinstance(value, ToolExecutionLayerResult):
-            return value
-        return None
-
-
-    def _current_tool_execution_result(
-        self,
-        working_state: dict[str, Any],
-    ) -> ToolExecutionLayerResult | None:
-        """Return the current iteration TEL result from working state, if present."""
-
-        value = working_state.get("current_iteration_tool_execution_result")
-        if isinstance(value, ToolExecutionLayerResult):
-            return value
-        return None
-
-
-    def _tool_execution_results(
-        self,
-        working_state: dict[str, Any],
-    ) -> list[ToolExecutionLayerResult]:
-        """Return all TEL results accumulated during this research stage."""
-
-        values = working_state.get("tool_execution_results", [])
-        if not isinstance(values, list):
-            return []
-        return [
-            value for value in values if isinstance(value, ToolExecutionLayerResult)
-        ]
-
-
-    def _evidence_processing_result(
-        self,
-        working_state: dict[str, Any],
-    ) -> EvidenceProcessingResult | None:
-        """Return the latest evidence processing result from working state, if present."""
-
-        value = working_state.get("evidence_processing_result")
-        if isinstance(value, EvidenceProcessingResult):
-            return value
-        return None
-
-
-    def _current_evidence_processing_result(
-        self,
-        working_state: dict[str, Any],
-    ) -> EvidenceProcessingResult | None:
-        """Return the current iteration evidence processing result, if present."""
-
-        value = working_state.get("current_iteration_evidence_processing_result")
-        if isinstance(value, EvidenceProcessingResult):
-            return value
-        return None
-
-
     def _latest_evidence_processing_result(
         self,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> EvidenceProcessingResult | None:
-        """Return the latest evidence processing result from accumulated results."""
+        """返回本 stage 最近一次 Evidence Processing 结果。"""
 
-        results = self._evidence_processing_results(working_state)
-        if results:
-            return results[-1]
-        return self._evidence_processing_result(working_state)
-
-
-    def _evidence_processing_results(
-        self,
-        working_state: dict[str, Any],
-    ) -> list[EvidenceProcessingResult]:
-        """Return all evidence processing results accumulated during this stage."""
-
-        values = working_state.get("evidence_processing_results", [])
-        if not isinstance(values, list):
-            return []
-        return [
-            value for value in values if isinstance(value, EvidenceProcessingResult)
-        ]
-
+        if run_state.evidence_processing_results:
+            return run_state.evidence_processing_results[-1]
+        iteration = run_state.current_iteration
+        return iteration.evidence_processing_result if iteration is not None else None
 
     def _processed_evidence_for_prompt(
         self,
-        working_state: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        """Convert typed processed evidence units into the prompt-facing JSON shape."""
-
-        processed_evidence_units = working_state.get("processed_evidence_units", [])
-        if not isinstance(processed_evidence_units, list):
-            return []
+        run_state: ResearchExecutorRunState,
+    ) -> list[dict[str, object]]:
+        """在 prompt 序列化边界将 typed processed evidence 转为 JSON-safe dict。"""
 
         return [
             unit.model_dump(mode="json")
-            for unit in processed_evidence_units
-            if isinstance(unit, ProcessedEvidenceUnit)
+            for unit in run_state.processed_evidence_units
         ]
 
+    def _prompt_text_list(self, values: list[str]) -> list[str]:
+        """返回去空、去重且保序的 prompt-facing 文本列表。"""
 
-    def _prompt_text_list(self, value: Any) -> list[str]:
-        """Return a clean prompt-facing list of strings."""
-
-        if not isinstance(value, list):
-            return []
-        strings = [item for item in value if isinstance(item, str)]
-        return unique_non_empty_strings(strings)
+        return unique_non_empty_strings(values)

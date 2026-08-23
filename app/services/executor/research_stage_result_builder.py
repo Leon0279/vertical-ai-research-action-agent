@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import Counter
-from typing import Any
 
 from app.common.utils.text import strip_or_none, unique_non_empty_strings
 from app.domain.enums import AcquisitionStatus
@@ -14,6 +13,9 @@ from app.domain.models import (
     SourceReference,
 )
 from app.services.executor.models.research_executor_types import ResearchIterationOutcome
+from app.services.executor.models.research_executor_run_state import (
+    ResearchExecutorRunState,
+)
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
 )
@@ -25,25 +27,25 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
     def build(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
         *,
         executed_iteration_count: int,
         final_outcome: ResearchIterationOutcome,
     ) -> ResearchStageResult:
-        """Project stage-local working state into the public research result."""
+        """Project typed stage-local state into the public research result."""
 
-        processed_evidence_units = self._processed_evidence_units(working_state)
+        processed_evidence_units = run_state.processed_evidence_units
         intermediate_findings = self._prompt_text_list(
-            working_state.get("intermediate_findings")
+            run_state.intermediate_findings
         )
-        open_questions = self._open_questions_from_working_state(
+        open_questions = self._open_questions_from_run_state(
             stage_input,
-            working_state,
+            run_state,
             executed_iteration_count=executed_iteration_count,
             final_outcome=final_outcome,
         )
-        research_status = self._research_status_from_working_state(
-            working_state,
+        research_status = self._research_status_from_run_state(
+            run_state,
             processed_evidence_units=processed_evidence_units,
             intermediate_findings=intermediate_findings,
             open_questions=open_questions,
@@ -54,15 +56,15 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
             retrieved_evidence_refs=self._source_references_from_processed_evidence(
                 processed_evidence_units
             ),
-            evidence_summary=self._evidence_summary_from_working_state(
-                working_state,
+            evidence_summary=self._evidence_summary_from_run_state(
+                run_state,
                 processed_evidence_units,
             ),
             intermediate_findings=intermediate_findings,
             open_questions=open_questions,
             executed_iteration_count=executed_iteration_count,
-            error_info=self._error_info_from_working_state(
-                working_state,
+            error_info=self._error_info_from_run_state(
+                run_state,
                 research_status,
                 final_outcome,
             ),
@@ -87,9 +89,9 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
         return source_references
 
 
-    def _evidence_summary_from_working_state(
+    def _evidence_summary_from_run_state(
         self,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
         processed_evidence_units: list[ProcessedEvidenceUnit],
     ) -> str | None:
         """Return a compact human-readable summary for pipeline write-back."""
@@ -116,7 +118,7 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
             }
         )
         latest_processing_result = self._latest_evidence_processing_result(
-            working_state
+            run_state
         )
         latest_processing_status = (
             latest_processing_result.processing_status
@@ -136,10 +138,10 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
         )
 
 
-    def _open_questions_from_working_state(
+    def _open_questions_from_run_state(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
         *,
         executed_iteration_count: int,
         final_outcome: ResearchIterationOutcome,
@@ -147,7 +149,7 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
         """Derive unresolved questions and degradation reasons from working state."""
 
         open_questions: list[str] = []
-        for result in self._tool_execution_results(working_state):
+        for result in run_state.tool_execution_results:
             if (
                 result.execution_status == "failed"
                 or result.acquisition_status
@@ -159,7 +161,7 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
                 )
                 open_questions.append(f"Tool Execution Layer 未形成可用材料：{reason}")
 
-        for result in self._evidence_processing_results(working_state):
+        for result in run_state.evidence_processing_results:
             if result.processing_status in {"failed", "no_result"}:
                 reason = (
                     result.error_info
@@ -168,7 +170,9 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
                 open_questions.append(f"Evidence Processing 未形成可用 evidence：{reason}")
 
         if final_outcome == "degrade":
-            rationale = strip_or_none(working_state.get("outcome_rationale"))
+            rationale = strip_or_none(
+                run_state.require_current_iteration().outcome_rationale
+            )
             open_questions.append(rationale or "Research iteration 进入 degrade 收束。")
 
         if (
@@ -181,14 +185,14 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
 
         open_questions.extend(
             f"Finding caveat: {caveat}"
-            for caveat in self._prompt_text_list(working_state.get("finding_caveats"))
+            for caveat in self._prompt_text_list(run_state.finding_caveats)
         )
         return unique_non_empty_strings(open_questions)
 
 
-    def _research_status_from_working_state(
+    def _research_status_from_run_state(
         self,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
         *,
         processed_evidence_units: list[ProcessedEvidenceUnit],
         intermediate_findings: list[str],
@@ -204,28 +208,28 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
         if has_research_output:
             return "partial_success" if open_questions else "completed"
 
-        if self._has_hard_failure(working_state):
+        if self._has_hard_failure(run_state):
             return "failed"
 
         return "no_result"
 
 
-    def _has_hard_failure(self, working_state: dict[str, Any]) -> bool:
+    def _has_hard_failure(self, run_state: ResearchExecutorRunState) -> bool:
         """Return whether TEL or EvidenceProcessing hit a hard failure."""
 
         return any(
             result.execution_status == "failed"
             or result.acquisition_status == AcquisitionStatus.FAILED
-            for result in self._tool_execution_results(working_state)
+            for result in run_state.tool_execution_results
         ) or any(
             result.processing_status == "failed"
-            for result in self._evidence_processing_results(working_state)
+            for result in run_state.evidence_processing_results
         )
 
 
-    def _error_info_from_working_state(
+    def _error_info_from_run_state(
         self,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
         research_status: str,
         final_outcome: ResearchIterationOutcome,
     ) -> str | None:
@@ -234,18 +238,20 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
         if research_status != "failed":
             return None
 
-        for result in self._tool_execution_results(working_state):
+        for result in run_state.tool_execution_results:
             if result.execution_status == "failed" or (
                 result.acquisition_status == AcquisitionStatus.FAILED
             ):
                 return result.error_info or "Tool Execution Layer failed."
 
-        for result in self._evidence_processing_results(working_state):
+        for result in run_state.evidence_processing_results:
             if result.processing_status == "failed":
                 return result.error_info or "Evidence Processing failed."
 
         if final_outcome == "degrade":
-            return strip_or_none(working_state.get("outcome_rationale")) or (
+            return strip_or_none(
+                run_state.require_current_iteration().outcome_rationale
+            ) or (
                 "Research iteration degraded without producing usable research output."
             )
         return None

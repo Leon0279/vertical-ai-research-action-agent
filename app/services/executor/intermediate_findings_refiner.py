@@ -14,6 +14,9 @@ from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_executor_llm_payloads import (
     _LLMIntermediateFindingsPayload,
 )
+from app.services.executor.models.research_executor_run_state import (
+    ResearchExecutorRunState,
+)
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
 )
@@ -28,18 +31,18 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
     async def refine(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
         """Step 7. Produce or refine intermediate findings from the working state."""
 
-        prompt = self._build_intermediate_findings_prompt(stage_input, working_state)
+        prompt = self._build_intermediate_findings_prompt(stage_input, run_state)
         llm_output = await self._llm_client.generate_text(prompt)
         payload = self._parse_intermediate_findings_output(llm_output)
 
-        working_state["intermediate_findings"] = unique_non_empty_strings(
+        run_state.intermediate_findings = unique_non_empty_strings(
             payload.intermediate_findings,
         )
-        working_state["finding_caveats"] = unique_non_empty_strings(
+        run_state.finding_caveats = unique_non_empty_strings(
             payload.finding_caveats,
         )
 
@@ -47,13 +50,13 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
     def _build_intermediate_findings_prompt(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> str:
         """Build the mandatory LLM prompt for intermediate finding refinement."""
 
         prompt_input = self._intermediate_findings_prompt_input(
             stage_input,
-            working_state,
+            run_state,
         )
         return (
             "你正在执行一次“中间研究发现更新”任务。\n\n"
@@ -144,7 +147,7 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
     def _intermediate_findings_prompt_input(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> dict[str, Any]:
         """Create the JSON input shown to the intermediate-findings LLM."""
 
@@ -164,14 +167,14 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
             },
             "current_findings": {
                 "intermediate_findings": self._prompt_text_list(
-                    working_state.get("intermediate_findings"),
+                    run_state.intermediate_findings,
                 ),
                 "finding_caveats": self._prompt_text_list(
-                    working_state.get("finding_caveats"),
+                    run_state.finding_caveats,
                 ),
             },
             "evidence_materials": self._processed_evidence_for_prompt(
-                working_state,
+                run_state,
             ),
             "background_support_materials": {
                 "research_memory_summaries": self._context_items_for_prompt(
@@ -185,17 +188,33 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
                 ),
             },
             "latest_research_decision": {
-                "current_assessment": working_state.get("current_assessment"),
-                "identified_gaps": working_state.get("identified_gaps", []),
-                "top_gap": working_state.get("top_gap"),
-                "next_evidence_need": working_state.get("next_evidence_need"),
-                "action_mode": working_state.get("action_mode"),
-                "action_rationale": working_state.get("action_rationale"),
+                "current_assessment": (
+                    run_state.current_assessment.model_dump(mode="json")
+                    if run_state.current_assessment is not None
+                    else None
+                ),
+                "identified_gaps": [
+                    gap.model_dump(mode="json") for gap in run_state.identified_gaps
+                ],
+                "top_gap": (
+                    run_state.top_gap.model_dump(mode="json")
+                    if run_state.top_gap is not None
+                    else None
+                ),
+                "next_evidence_need": (
+                    run_state.next_evidence_need.model_dump(mode="json")
+                    if run_state.next_evidence_need is not None
+                    else None
+                ),
+                "action_mode": run_state.require_current_iteration().action_mode,
+                "action_rationale": (
+                    run_state.require_current_iteration().action_rationale
+                ),
             },
             "runtime_limits": {
-                "iteration_index": working_state.get("iteration_index"),
-                "remaining_iteration_budget": working_state.get(
-                    "remaining_iteration_budget"
+                "iteration_index": run_state.require_current_iteration().iteration_index,
+                "remaining_iteration_budget": (
+                    run_state.require_current_iteration().remaining_iteration_budget
                 ),
                 "available_capabilities": stage_input.available_tools,
             },

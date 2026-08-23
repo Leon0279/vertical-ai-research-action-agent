@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
-
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.common.utils.text import strip_or_none, unique_non_empty_strings
+from app.common.utils.text import unique_non_empty_strings
 from app.domain.models import ResearchStageInput
 from app.services.executor.models.evidence_coverage_entry import (
     EvidenceCoverageEntry,
@@ -14,6 +12,9 @@ from app.services.executor.models.evidence_coverage_entry import (
 )
 from app.services.executor.models.research_executor_llm_payloads import (
     _LLMResearchAssessmentAndGapsPayload,
+)
+from app.services.executor.models.research_executor_run_state import (
+    ResearchExecutorRunState,
 )
 from app.services.executor.models.research_executor_types import ResearchCoverageTargetType
 from app.services.executor.research_executor_collaborator_support import (
@@ -37,24 +38,18 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
     async def record_candidate_evidence(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
         """Step 6. Merge current iteration outputs into stage-local working state."""
 
         _ = stage_input
-        evidence_coverage_map = self.coverage_map(working_state)
-
-        next_evidence_need = self._working_state_dict(
-            working_state,
-            "next_evidence_need",
-        )
-        coverage_target_key = strip_or_none(
-            next_evidence_need.get("coverage_target_key"),
-        )
-        if coverage_target_key is None:
+        evidence_coverage_map = run_state.evidence_coverage_map
+        next_evidence_need = run_state.next_evidence_need
+        if next_evidence_need is None:
             raise ValueError(
-                "next_evidence_need.coverage_target_key is required before Step 6."
+                "next_evidence_need is required before Step 6."
             )
+        coverage_target_key = next_evidence_need.coverage_target_key
 
         coverage_entry = evidence_coverage_map.get(coverage_target_key)
         if coverage_entry is None:
@@ -65,7 +60,7 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
 
         new_evidence_keys = [
             unit.evidence_unit_id
-            for unit in self._current_iteration_processed_evidence_units(working_state)
+            for unit in run_state.require_current_iteration().processed_evidence_units
         ]
         if not new_evidence_keys:
             return
@@ -141,7 +136,7 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
     def validated_map(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
         payload: _LLMResearchAssessmentAndGapsPayload,
     ) -> EvidenceCoverageMap:
         """Validate the full LLM coverage snapshot and merge deterministic links."""
@@ -167,9 +162,9 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
 
         valid_evidence_keys = {
             unit.evidence_unit_id
-            for unit in self._processed_evidence_units(working_state)
+            for unit in run_state.processed_evidence_units
         }
-        previous_coverage_map = self.coverage_map(working_state)
+        previous_coverage_map = run_state.evidence_coverage_map
 
         normalized_map: EvidenceCoverageMap = {}
         for entry in payload.evidence_coverage_snapshot:
@@ -214,24 +209,13 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
         return normalized_map
 
 
-    def coverage_map(
+    def to_prompt_value(
         self,
-        working_state: dict[str, Any],
-    ) -> EvidenceCoverageMap:
-        """Return the typed stage-local coverage map or fail on an invalid state."""
-
-        value = working_state.get("evidence_coverage_map")
-        if not isinstance(value, dict) or not all(
-            isinstance(entry, EvidenceCoverageEntry) for entry in value.values()
-        ):
-            raise ValueError("evidence_coverage_map is required and must be typed.")
-        return cast(EvidenceCoverageMap, value)
-
-
-    def to_prompt_value(self, working_state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        run_state: ResearchExecutorRunState,
+    ) -> dict[str, dict[str, object]]:
         """将内部强类型 coverage map 投影为 LLM prompt 所需 JSON 结构。"""
 
         return {
             target_key: entry.model_dump(mode="json")
-            for target_key, entry in self.coverage_map(working_state).items()
+            for target_key, entry in run_state.evidence_coverage_map.items()
         }

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -14,9 +13,18 @@ from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_executor_llm_payloads import (
     _LLMIterationOutcomePayload,
 )
+from app.services.executor.models.research_executor_run_state import (
+    ResearchExecutorRunState,
+)
+from app.services.executor.models.research_executor_iteration_state import (
+    ResearchExecutorIterationState,
+)
 from app.services.executor.models.research_executor_types import (
     REFINE_ACTION_MODE as _REFINE_ACTION_MODE,
     ResearchIterationOutcome,
+)
+from app.services.executor.models.research_iteration_evaluation_state import (
+    ResearchIterationEvaluationState,
 )
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
@@ -32,39 +40,39 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
     async def evaluate(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> ResearchIterationOutcome:
         """Step 8. Evaluate whether the research stage should continue, stop, or degrade."""
 
         short_circuit_outcome = self._short_circuit_iteration_outcome(
             stage_input,
-            working_state,
+            run_state,
         )
         if short_circuit_outcome is not None:
             outcome, rationale = short_circuit_outcome
             self._write_iteration_outcome(
-                working_state,
+                run_state,
                 iteration_outcome=outcome,
                 outcome_rationale=rationale,
                 outcome_decision_source="rule_short_circuit",
-                iteration_evaluation_state={
-                    "short_circuit_reason": rationale,
-                },
+                iteration_evaluation_state=ResearchIterationEvaluationState(
+                    short_circuit_reason=rationale,
+                ),
             )
             return outcome
 
-        prompt = self._build_iteration_outcome_prompt(stage_input, working_state)
+        prompt = self._build_iteration_outcome_prompt(stage_input, run_state)
         llm_output = await self._llm_client.generate_text(prompt)
         payload = self._parse_iteration_outcome_output(llm_output)
         final_outcome, final_rationale, guardrail_applied = (
             self._apply_iteration_outcome_guardrails(
                 stage_input,
-                working_state,
+                run_state,
                 payload,
             )
         )
         self._write_iteration_outcome(
-            working_state,
+            run_state,
             iteration_outcome=final_outcome,
             outcome_rationale=final_rationale,
             outcome_decision_source="llm_with_guardrails",
@@ -78,16 +86,14 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
     def _short_circuit_iteration_outcome(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> tuple[ResearchIterationOutcome, str] | None:
         """Return a stable rule-based outcome when LLM judgment is unnecessary."""
 
-        top_gap = self._working_state_dict(working_state, "top_gap")
-        next_evidence_need = self._working_state_dict(
-            working_state,
-            "next_evidence_need",
-        )
-        assessment = self._working_state_dict(working_state, "current_assessment")
+        top_gap = run_state.top_gap
+        next_evidence_need = run_state.next_evidence_need
+        assessment = run_state.current_assessment
+        iteration = run_state.require_current_iteration()
         if self._has_no_actionable_evidence_need(top_gap, next_evidence_need):
             return (
                 "stop",
@@ -95,18 +101,17 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             )
 
         if (
-            working_state.get("action_mode") == _REFINE_ACTION_MODE
-            and assessment.get("finding_maturity") == "stable"
-            and assessment.get("support_strength") == "strong_enough"
+            iteration.action_mode == _REFINE_ACTION_MODE
+            and assessment is not None
+            and assessment.finding_maturity == "stable"
+            and assessment.support_strength == "strong_enough"
         ):
             return (
                 "stop",
                 "当前 findings 已稳定且支撑强度足够，本轮无需继续发起新的 iteration。",
             )
 
-        evidence_processing_result = self._current_evidence_processing_result(
-            working_state
-        )
+        evidence_processing_result = iteration.evidence_processing_result
         if (
             evidence_processing_result is not None
             and evidence_processing_result.processing_status == "failed"
@@ -117,17 +122,17 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             )
 
         if (
-            self._did_tel_fail_or_return_no_result(working_state)
-            and not self._did_new_evidence_arrive(working_state)
+            self._did_tel_fail_or_return_no_result(iteration)
+            and not self._did_new_evidence_arrive(iteration)
             and (
                 self._remaining_iteration_budget_after_current(
                     stage_input,
-                    working_state,
+                    iteration,
                 )
                 <= 0
                 or self._iteration_input_budget_pressure(
                     stage_input,
-                    working_state,
+                    iteration,
                 )
                 == "high"
             )
@@ -140,7 +145,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         if (
             not self._available_tool_names(stage_input)
             and not self._has_no_actionable_evidence_need(top_gap, next_evidence_need)
-            and not self._did_new_evidence_arrive(working_state)
+            and not self._did_new_evidence_arrive(iteration)
         ):
             return (
                 "degrade",
@@ -153,7 +158,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
     def _apply_iteration_outcome_guardrails(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
         payload: _LLMIterationOutcomePayload,
     ) -> tuple[ResearchIterationOutcome, str, bool]:
         """Constrain the LLM-proposed outcome to hard runtime boundaries."""
@@ -171,7 +176,10 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         if (
             payload.evidence_gain == "failed_acquisition"
             and payload.top_gap_progress == "not_advanced"
-            and self._iteration_input_budget_pressure(stage_input, working_state)
+            and self._iteration_input_budget_pressure(
+                stage_input,
+                run_state.require_current_iteration(),
+            )
             == "high"
         ):
             return (
@@ -184,7 +192,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             payload.proposed_iteration_outcome == "continue"
             and self._remaining_iteration_budget_after_current(
                 stage_input,
-                working_state,
+                run_state.require_current_iteration(),
             )
             <= 0
         ):
@@ -213,53 +221,48 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
 
     def _write_iteration_outcome(
         self,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
         *,
         iteration_outcome: ResearchIterationOutcome,
         outcome_rationale: str,
         outcome_decision_source: str,
-        iteration_evaluation_state: dict[str, Any],
+        iteration_evaluation_state: ResearchIterationEvaluationState,
         proposed_iteration_outcome: ResearchIterationOutcome | None = None,
         outcome_guardrail_applied: bool = False,
     ) -> None:
-        """Write the final iteration outcome and trace fields into working state."""
+        """写入当前 iteration 的最终 outcome 与可解释 trace。"""
 
-        working_state["iteration_evaluation_state"] = iteration_evaluation_state
-        working_state["iteration_outcome"] = iteration_outcome
-        working_state["outcome_rationale"] = outcome_rationale
-        working_state["outcome_decision_source"] = outcome_decision_source
-        if proposed_iteration_outcome is not None:
-            working_state["proposed_iteration_outcome"] = proposed_iteration_outcome
-        else:
-            working_state.pop("proposed_iteration_outcome", None)
-        if outcome_guardrail_applied:
-            working_state["outcome_guardrail_applied"] = True
-        else:
-            working_state.pop("outcome_guardrail_applied", None)
+        iteration = run_state.require_current_iteration()
+        iteration.evaluation_state = iteration_evaluation_state
+        iteration.iteration_outcome = iteration_outcome
+        iteration.outcome_rationale = outcome_rationale
+        iteration.outcome_decision_source = outcome_decision_source
+        iteration.proposed_iteration_outcome = proposed_iteration_outcome
+        iteration.outcome_guardrail_applied = outcome_guardrail_applied
 
 
     def _iteration_evaluation_state(
         self,
         payload: _LLMIterationOutcomePayload,
-    ) -> dict[str, Any]:
+    ) -> ResearchIterationEvaluationState:
         """Return the LLM evaluation dimensions without the proposed outcome."""
 
-        return {
-            "top_gap_progress": payload.top_gap_progress,
-            "evidence_gain": payload.evidence_gain,
-            "finding_progress": payload.finding_progress,
-            "residual_uncertainty": payload.residual_uncertainty,
-        }
+        return ResearchIterationEvaluationState(
+            top_gap_progress=payload.top_gap_progress,
+            evidence_gain=payload.evidence_gain,
+            finding_progress=payload.finding_progress,
+            residual_uncertainty=payload.residual_uncertainty,
+        )
 
 
     def _build_iteration_outcome_prompt(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> str:
         """Build the LLM prompt for iteration-end outcome evaluation."""
 
-        prompt_input = self._iteration_outcome_prompt_input(stage_input, working_state)
+        prompt_input = self._iteration_outcome_prompt_input(stage_input, run_state)
         return (
             "你正在执行一次“研究迭代结果评估”任务。\n\n"
             "这是一次无状态调用。\n"
@@ -338,54 +341,63 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
     def _iteration_outcome_prompt_input(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
-    ) -> dict[str, Any]:
+        run_state: ResearchExecutorRunState,
+    ) -> dict[str, object]:
         """Create the JSON input shown to the iteration outcome LLM."""
 
+        iteration = run_state.require_current_iteration()
         return {
             "iteration_start_reference": {
-                "top_gap": working_state.get("top_gap"),
-                "next_evidence_need": working_state.get("next_evidence_need"),
+                "top_gap": (
+                    run_state.top_gap.model_dump(mode="json")
+                    if run_state.top_gap is not None
+                    else None
+                ),
+                "next_evidence_need": (
+                    run_state.next_evidence_need.model_dump(mode="json")
+                    if run_state.next_evidence_need is not None
+                    else None
+                ),
             },
             "current_iteration_result": {
-                "action_mode": working_state.get("action_mode"),
-                "action_rationale": working_state.get("action_rationale"),
+                "action_mode": iteration.action_mode,
+                "action_rationale": iteration.action_rationale,
                 "acquisition_result_summary": self._acquisition_result_summary(
-                    working_state,
+                    iteration,
                 ),
                 "processed_evidence_summary": (
                     self._evidence_processing_result_summary_for_prompt(
-                        working_state,
+                        iteration,
                     )
                 ),
             },
             "updated_findings": {
                 "intermediate_findings": self._prompt_text_list(
-                    working_state.get("intermediate_findings"),
+                    run_state.intermediate_findings,
                 ),
                 "finding_caveats": self._prompt_text_list(
-                    working_state.get("finding_caveats"),
+                    run_state.finding_caveats,
                 ),
             },
             "available_evidence": {
                 "processed_evidence": self._processed_evidence_for_prompt(
-                    working_state,
+                    run_state,
                 ),
                 "evidence_summary": self._evidence_summary_for_prompt(
-                    working_state,
+                    run_state,
                 ),
             },
             "runtime_constraints": {
-                "iteration_index": working_state.get("iteration_index"),
+                "iteration_index": iteration.iteration_index,
                 "remaining_iteration_budget_after_current": (
                     self._remaining_iteration_budget_after_current(
                         stage_input,
-                        working_state,
+                        iteration,
                     )
                 ),
                 "input_budget_pressure": self._iteration_input_budget_pressure(
                     stage_input,
-                    working_state,
+                    iteration,
                 ),
                 "available_capabilities": stage_input.available_tools,
                 "latency_budget_ms": stage_input.latency_budget_ms,
@@ -395,11 +407,11 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
 
     def _acquisition_result_summary(
         self,
-        working_state: dict[str, Any],
-    ) -> dict[str, Any]:
+        iteration: ResearchExecutorIterationState,
+    ) -> dict[str, object]:
         """Return a compact acquisition/execution summary for 4.7."""
 
-        tool_execution_result = self._current_tool_execution_result(working_state)
+        tool_execution_result = iteration.tool_execution_result
         if tool_execution_result is None:
             return {
                 "acquisition_requested": False,
@@ -427,11 +439,11 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
 
     def _evidence_processing_result_summary_for_prompt(
         self,
-        working_state: dict[str, Any],
-    ) -> dict[str, Any]:
+        iteration: ResearchExecutorIterationState,
+    ) -> dict[str, object]:
         """Return a compact evidence processing summary for 4.7."""
 
-        result = self._current_evidence_processing_result(working_state)
+        result = iteration.evidence_processing_result
         if result is None:
             return {
                 "processing_requested": False,
@@ -452,11 +464,11 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
 
     def _evidence_summary_for_prompt(
         self,
-        working_state: dict[str, Any],
-    ) -> dict[str, Any]:
+        run_state: ResearchExecutorRunState,
+    ) -> dict[str, object]:
         """Return the latest typed evidence summary in JSON-safe form."""
 
-        result = self._latest_evidence_processing_result(working_state)
+        result = self._latest_evidence_processing_result(run_state)
         if result is None:
             return {}
         return result.evidence_summary.model_dump(mode="json")

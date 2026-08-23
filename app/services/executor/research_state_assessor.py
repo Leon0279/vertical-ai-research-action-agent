@@ -13,6 +13,9 @@ from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_executor_llm_payloads import (
     _LLMResearchAssessmentAndGapsPayload,
 )
+from app.services.executor.models.research_executor_run_state import (
+    ResearchExecutorRunState,
+)
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
@@ -34,39 +37,35 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
     async def assess(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> None:
         """Run LLD 4.4: assess state, identify gaps, and select the next evidence need."""
 
-        prompt = self._build_research_assessment_prompt(stage_input, working_state)
+        prompt = self._build_research_assessment_prompt(stage_input, run_state)
         llm_output = await self._llm_client.generate_text(prompt)
         payload = self._parse_research_assessment_output(llm_output)
         evidence_coverage_map = self._coverage_tracker.validated_map(
             stage_input,
-            working_state,
+            run_state,
             payload,
         )
 
-        working_state["current_assessment"] = payload.assessment.model_dump(mode="json")
-        working_state["identified_gaps"] = [
-            gap.model_dump(mode="json") for gap in payload.identified_gaps
-        ]
-        working_state["top_gap"] = payload.top_gap.model_dump(mode="json")
-        working_state["next_evidence_need"] = payload.next_evidence_need.model_dump(
-            mode="json"
-        )
-        working_state["evidence_coverage_map"] = evidence_coverage_map
-        working_state["prioritization_summary"] = payload.prioritization_summary
+        run_state.current_assessment = payload.assessment
+        run_state.identified_gaps = list(payload.identified_gaps)
+        run_state.top_gap = payload.top_gap
+        run_state.next_evidence_need = payload.next_evidence_need
+        run_state.evidence_coverage_map = evidence_coverage_map
+        run_state.prioritization_summary = payload.prioritization_summary
 
 
     def _build_research_assessment_prompt(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> str:
         """Build the mandatory LLM prompt for research state assessment."""
 
-        prompt_input = self._research_assessment_prompt_input(stage_input, working_state)
+        prompt_input = self._research_assessment_prompt_input(stage_input, run_state)
         return (
             "你正在执行一次“研究状态判断”任务。\n\n"
             "这是一次无状态调用。\n"
@@ -274,7 +273,7 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
     def _research_assessment_prompt_input(
         self,
         stage_input: ResearchStageInput,
-        working_state: dict[str, Any],
+        run_state: ResearchExecutorRunState,
     ) -> dict[str, Any]:
         """Create the JSON input shown to the assessment LLM."""
 
@@ -306,30 +305,40 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             "supporting_context": supporting_context,
             "evidence_state": {
                 "processed_evidence": self._processed_evidence_for_prompt(
-                    working_state,
+                    run_state,
                 ),
                 "coverage_targets": [
                     target.model_dump(mode="json")
                     for target in self._coverage_tracker.coverage_targets(stage_input)
                 ],
                 "evidence_coverage_map": self._coverage_tracker.to_prompt_value(
-                    working_state,
+                    run_state,
                 ),
-                "intermediate_findings": working_state.get("intermediate_findings", []),
+                "intermediate_findings": run_state.intermediate_findings,
             },
             "gap_state": {
-                "identified_gaps": working_state.get("identified_gaps", []),
-                "top_gap": working_state.get("top_gap"),
-                "next_evidence_need": working_state.get("next_evidence_need"),
+                "identified_gaps": [
+                    gap.model_dump(mode="json") for gap in run_state.identified_gaps
+                ],
+                "top_gap": (
+                    run_state.top_gap.model_dump(mode="json")
+                    if run_state.top_gap is not None
+                    else None
+                ),
+                "next_evidence_need": (
+                    run_state.next_evidence_need.model_dump(mode="json")
+                    if run_state.next_evidence_need is not None
+                    else None
+                ),
             },
             "runtime_control": {
-                "iteration_index": working_state.get("iteration_index"),
-                "remaining_iteration_budget": working_state.get(
-                    "remaining_iteration_budget"
+                "iteration_index": run_state.require_current_iteration().iteration_index,
+                "remaining_iteration_budget": (
+                    run_state.require_current_iteration().remaining_iteration_budget
                 ),
                 "input_budget_pressure": self._input_budget_pressure(
                     stage_input,
-                    working_state,
+                    run_state.require_current_iteration(),
                 ),
                 "available_capabilities": stage_input.available_tools,
             },
