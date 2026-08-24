@@ -27,6 +27,9 @@ from app.services.executor.models.research_executor_types import (
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
 )
+from app.services.executor.research_retrieval_history_tracker import (
+    ResearchRetrievalHistoryTracker,
+)
 from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
     ToolExecutionLayerServiceProtocol,
 )
@@ -40,9 +43,11 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
         *,
         tool_execution_layer_service: ToolExecutionLayerServiceProtocol,
         evidence_processing_service: EvidenceProcessingServiceProtocol,
+        retrieval_history_tracker: ResearchRetrievalHistoryTracker,
     ) -> None:
         self._tool_execution_layer_service = tool_execution_layer_service
         self._evidence_processing_service = evidence_processing_service
+        self._retrieval_history_tracker = retrieval_history_tracker
 
     async def acquire(
         self,
@@ -132,6 +137,12 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
             blocked_source_families=list(action_request.blocked_source_families),
             available_families=list(action_request.allowed_source_families),
             success_hint=action_request.success_hint,
+            recent_retrieval_attempts=(
+                self._retrieval_history_tracker.attempts_for_target(
+                    run_state,
+                    run_state.next_evidence_need.coverage_target_key,
+                )
+            ),
             preferred_tool=action_request.preferred_tool,
             max_search_results=max_results,
             max_content_fetches=3,

@@ -5,7 +5,12 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from app.domain.enums import AcquisitionStatus, ActionMode
+from app.domain.enums import (
+    AcquisitionStatus,
+    ActionMode,
+    FamilyName,
+    RetrievalResultUtility,
+)
 
 from app.domain.models import (
     BaseFamilyExecutionResult,
@@ -19,6 +24,7 @@ from app.domain.models import (
     RetrievalQueryGenerationResult,
     RetrievalSourceSummary,
     RetrievalTrace,
+    RecentRetrievalAttempt,
     ToolExecutionLayerRequest,
 )
 from app.services.tool_execution_layer.tool_execution_layer_service import (
@@ -240,6 +246,7 @@ def test_happy_path_executes_docs_and_stops() -> None:
     assert result.retrieval_trace["selected_family"] == "docs_search"
     assert result.retrieval_trace["generated_query"] == "docs_search query"
     assert result.retrieval_trace["query_focus"] == "focus"
+    assert result.retrieval_trace.attempts[0].selected_tool == "tool_v1"
     assert "selected_tool" not in result.model_dump().keys()
     assert "selected_family" not in result.model_dump().keys()
     assert "generated_query" not in result.model_dump().keys()
@@ -249,6 +256,64 @@ def test_happy_path_executes_docs_and_stops() -> None:
     assert "family_execution_result" not in result.model_dump().keys()
     assert "completion_evaluation_result" not in result.model_dump().keys()
     assert len(docs.requests) == 1
+
+
+def test_history_low_value_queries_are_scoped_to_selected_family_and_target() -> None:
+    selector = FakeFamilySelectionService([_selection_result("docs_search")])
+    query = FakeQueryGenerationService()
+    docs = FakeFamilyService(selected_family="docs_search")
+    service = _service(selector=selector, query=query, docs=docs)
+
+    _execute(
+        service,
+        ToolExecutionLayerRequest(
+            target_problem="补齐官方文档证据。",
+            recent_low_value_queries=["explicit low value query"],
+            recent_retrieval_attempts=[
+                RecentRetrievalAttempt(
+                    coverage_target_key="objective",
+                    selected_family=FamilyName.DOCS_SEARCH,
+                    target_problem="补齐官方文档证据。",
+                    generated_query="failed docs query",
+                    query_fingerprint="failed docs query",
+                    result_status=AcquisitionStatus.FAILED,
+                    result_utility=RetrievalResultUtility.NOT_USEFUL,
+                ),
+                RecentRetrievalAttempt(
+                    coverage_target_key="objective",
+                    selected_family=FamilyName.DOCS_SEARCH,
+                    target_problem="补齐官方文档证据。",
+                    generated_query="partial docs query",
+                    query_fingerprint="partial docs query",
+                    result_status=AcquisitionStatus.PARTIAL_SUCCESS,
+                    result_utility=RetrievalResultUtility.NOT_USEFUL,
+                ),
+                RecentRetrievalAttempt(
+                    coverage_target_key="objective",
+                    selected_family=FamilyName.WEB_SEARCH,
+                    target_problem="补齐官方文档证据。",
+                    generated_query="web query",
+                    query_fingerprint="web query",
+                    result_status=AcquisitionStatus.NO_RESULT,
+                    result_utility=RetrievalResultUtility.NOT_USEFUL,
+                ),
+                RecentRetrievalAttempt(
+                    coverage_target_key="objective",
+                    selected_family=FamilyName.DOCS_SEARCH,
+                    target_problem="另一个研究目标。",
+                    generated_query="other target query",
+                    query_fingerprint="other target query",
+                    result_status=AcquisitionStatus.NO_RESULT,
+                    result_utility=RetrievalResultUtility.NOT_USEFUL,
+                ),
+            ],
+        ),
+    )
+
+    assert query.requests[0].recent_low_value_queries == [
+        "explicit low value query",
+        "failed docs query",
+    ]
 
 
 def test_preferred_tool_is_passed_through_but_not_synthesized() -> None:

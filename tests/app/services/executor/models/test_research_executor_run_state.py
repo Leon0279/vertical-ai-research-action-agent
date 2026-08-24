@@ -1,6 +1,8 @@
 """Research Executor service-private run-state model tests."""
 
 from app.domain.enums import FamilyName
+from app.domain.enums import AcquisitionStatus, RetrievalResultUtility
+from app.domain.models import RecentRetrievalAttempt
 from app.services.executor.models.evidence_coverage_entry import EvidenceCoverageEntry
 from app.services.executor.models.research_action_request import ResearchActionRequest
 from app.services.executor.models.research_executor_iteration_state import (
@@ -32,6 +34,7 @@ def test_research_executor_run_state_uses_typed_defaults() -> None:
     assert state.identified_gaps == []
     assert state.intermediate_findings == []
     assert state.finding_caveats == []
+    assert state.recent_retrieval_attempts == []
     assert state.tool_execution_results == []
     assert state.evidence_processing_results == []
     assert state.current_iteration is None
@@ -83,3 +86,20 @@ def test_iteration_state_keeps_action_and_evaluation_as_typed_models() -> None:
     ]
     assert iteration.evaluation_state is not None
     assert iteration.evaluation_state.evidence_gain == "meaningful_gain"
+
+
+def test_research_executor_run_state_keeps_typed_recent_retrieval_history() -> None:
+    attempt = RecentRetrievalAttempt(
+        coverage_target_key="objective",
+        selected_family=FamilyName.DOCS_SEARCH,
+        target_problem="补齐官方文档证据。",
+        query_fingerprint="official documentation",
+        result_status=AcquisitionStatus.NO_RESULT,
+        result_utility=RetrievalResultUtility.NOT_USEFUL,
+    )
+    state = ResearchExecutorRunState(
+        evidence_coverage_map=_coverage_map(),
+        recent_retrieval_attempts=[attempt],
+    )
+
+    assert state.recent_retrieval_attempts == [attempt]

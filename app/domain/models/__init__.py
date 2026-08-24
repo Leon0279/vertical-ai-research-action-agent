@@ -75,6 +75,7 @@ from app.domain.models.planning.execution_plan import ExecutionPlan
 from app.domain.models.planning.plan_step import PlanStep
 from app.domain.models.retrieval import (
     NormalizedRetrievalItem,
+    RecentRetrievalAttempt,
     RetrievalAttemptTrace,
     RetrievalExecutionSummary,
     RetrievalSourceSummary,
@@ -179,6 +180,7 @@ __all__ = [
     "PlanStep",
     "EvidenceProcessingSummary",
     "NormalizedRetrievalItem",
+    "RecentRetrievalAttempt",
     "ProcessedEvidenceSummary",
     "RetrievalAttemptTrace",
     "RetrievalExecutionSummary",

@@ -20,6 +20,9 @@ from app.services.executor.research_coverage_tracker import ResearchCoverageTrac
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
 )
+from app.services.executor.research_retrieval_history_tracker import (
+    ResearchRetrievalHistoryTracker,
+)
 
 
 class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
@@ -30,9 +33,11 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
         *,
         llm_client: LLMClientProtocol,
         coverage_tracker: ResearchCoverageTracker,
+        retrieval_history_tracker: ResearchRetrievalHistoryTracker,
     ) -> None:
         self._llm_client = llm_client
         self._coverage_tracker = coverage_tracker
+        self._retrieval_history_tracker = retrieval_history_tracker
 
     async def assess(
         self,
@@ -115,7 +120,12 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             "- next_evidence_need：此前判断出的下一步 evidence need，如果存在。\n"
             "如果这些字段为空，请根据当前输入重新判断。\n"
             "如果这些字段非空，请优先复用仍然有效的缺口，不要每轮都无理由创造全新缺口。\n\n"
-            "6. runtime_control\n"
+            "6. recent_retrieval_history\n"
+            "- 这是此前已经完成的少量检索尝试摘要，不包含原始网页、工具返回或异常堆栈。\n"
+            "- coverage_target_key 表示该尝试服务的覆盖对象；selected_family / selected_tool 表示实际资料渠道；\n"
+            "  result_status 表示是否拿到材料，result_utility 表示材料是否实际推进了该对象。\n"
+            "- 它只用于判断同一目标是否已经尝试过某条路径、是否需要调整证据需求；不要据此指定工具、检索路径或 action mode。\n\n"
+            "7. runtime_control\n"
             "- iteration_index：当前是第几轮研究迭代。\n"
             "- remaining_iteration_budget：当前还允许继续多少轮。\n"
             "- input_budget_pressure：当前上下文或预算压力。\n"
@@ -331,6 +341,9 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
                     else None
                 ),
             },
+            "recent_retrieval_history": (
+                self._retrieval_history_tracker.assessment_prompt_value(run_state)
+            ),
             "runtime_control": {
                 "iteration_index": run_state.require_current_iteration().iteration_index,
                 "remaining_iteration_budget": (

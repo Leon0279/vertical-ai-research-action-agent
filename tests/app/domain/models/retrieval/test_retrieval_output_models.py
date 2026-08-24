@@ -3,9 +3,14 @@
 import pytest
 from pydantic import ValidationError
 
-from app.domain.enums import AcquisitionStatus, FamilyName
+from app.domain.enums import (
+    AcquisitionStatus,
+    FamilyName,
+    RetrievalResultUtility,
+)
 from app.domain.models import (
     NormalizedRetrievalItem,
+    RecentRetrievalAttempt,
     RetrievalExecutionSummary,
     RetrievalSourceSummary,
     SourceReference,
@@ -119,6 +124,7 @@ def test_retrieval_trace_splits_context_errors_and_observability() -> None:
             "attempts": [
                 {
                     "selected_family": "docs_search",
+                    "selected_tool": "llms_txt_docs_search_v1",
                     "generated_query": "typed retrieval docs",
                     "acquisition_status": AcquisitionStatus.SUCCESS,
                 }
@@ -132,3 +138,32 @@ def test_retrieval_trace_splits_context_errors_and_observability() -> None:
     assert trace.errors["search_error"] == "temporary failure"
     assert trace.observability["attempted_urls"] == ["https://example.test"]
     assert trace.attempts[0].acquisition_status == AcquisitionStatus.SUCCESS
+    assert trace.attempts[0].selected_tool == "llms_txt_docs_search_v1"
+
+
+def test_recent_retrieval_attempt_keeps_typed_history_json_safe() -> None:
+    attempt = RecentRetrievalAttempt(
+        coverage_target_key="sub_question:1",
+        selected_family=FamilyName.WEB_SEARCH,
+        selected_tool="tavily_web_search_v1",
+        target_problem="确认当前方案是否有近期变化。",
+        generated_query="current retrieval design updates",
+        query_fingerprint="current retrieval design updates",
+        result_status=AcquisitionStatus.NO_RESULT,
+        result_utility=RetrievalResultUtility.NOT_USEFUL,
+        fallback_applied=True,
+    )
+
+    assert attempt.selected_family == FamilyName.WEB_SEARCH
+    assert attempt.result_utility == RetrievalResultUtility.NOT_USEFUL
+    assert attempt.model_dump(mode="json") == {
+        "coverage_target_key": "sub_question:1",
+        "selected_family": "web_search",
+        "selected_tool": "tavily_web_search_v1",
+        "target_problem": "确认当前方案是否有近期变化。",
+        "generated_query": "current retrieval design updates",
+        "query_fingerprint": "current retrieval design updates",
+        "result_status": "no_result",
+        "result_utility": "not_useful",
+        "fallback_applied": True,
+    }

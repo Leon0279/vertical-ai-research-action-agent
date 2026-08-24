@@ -22,6 +22,9 @@ from app.services.executor.models.research_executor_run_state import (
 from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
+from app.services.executor.research_retrieval_history_tracker import (
+    ResearchRetrievalHistoryTracker,
+)
 from app.services.executor.research_stage_result_builder import ResearchStageResultBuilder
 from app.services.executor.research_state_assessor import ResearchStateAssessor
 from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
@@ -51,15 +54,21 @@ class ResearchExecutorService(ResearchExecutorProtocol):
             )
 
         coverage_tracker = ResearchCoverageTracker()
+        retrieval_history_tracker = ResearchRetrievalHistoryTracker()
         self._coverage_tracker = coverage_tracker
+        self._retrieval_history_tracker = retrieval_history_tracker
         self._state_assessor = ResearchStateAssessor(
             llm_client=llm_client,
             coverage_tracker=coverage_tracker,
+            retrieval_history_tracker=retrieval_history_tracker,
         )
-        self._action_decider = ResearchActionDecider()
+        self._action_decider = ResearchActionDecider(
+            retrieval_history_tracker=retrieval_history_tracker,
+        )
         self._material_acquirer = ResearchMaterialAcquirer(
             tool_execution_layer_service=tool_execution_layer_service,
             evidence_processing_service=evidence_processing_service,
+            retrieval_history_tracker=retrieval_history_tracker,
         )
         self._findings_refiner = IntermediateFindingsRefiner(llm_client=llm_client)
         self._outcome_evaluator = IterationOutcomeEvaluator(llm_client=llm_client)
@@ -174,4 +183,6 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     ) -> ResearchIterationOutcome:
         """Step 7：判定当前 iteration 应继续、停止还是降级收束。"""
 
-        return await self._outcome_evaluator.evaluate(stage_input, run_state)
+        outcome = await self._outcome_evaluator.evaluate(stage_input, run_state)
+        self._retrieval_history_tracker.record_completed_iteration(run_state)
+        return outcome

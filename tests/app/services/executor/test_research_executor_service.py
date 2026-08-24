@@ -14,6 +14,8 @@ from app.domain.models import (
     ProcessedEvidenceUnit,
     ResearchStageInput,
     ResearchStageResult,
+    RetrievalAttemptTrace,
+    RetrievalTrace,
     SourceReference,
     ToolExecutionLayerRequest,
     ToolExecutionLayerResult,
@@ -2030,3 +2032,57 @@ def test_research_executor_invalid_or_missing_iteration_budget_defaults_to_one()
     assert missing_budget_result.executed_iteration_count == 1
     assert invalid_budget_service.calls.count("evaluate_iteration_outcome") == 1
     assert invalid_budget_result.executed_iteration_count == 1
+
+
+def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_external() -> None:
+    memory_no_result = ToolExecutionLayerResult(
+        execution_status="completed",
+        acquisition_status=AcquisitionStatus.NO_RESULT,
+        retrieval_trace=RetrievalTrace(
+            target_problem="补充 memory-backed retrieval 的直接事实证据。",
+            selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+            selected_tool="research_knowledge_memory_v1",
+            attempts=[
+                RetrievalAttemptTrace(
+                    selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                    selected_tool="research_knowledge_memory_v1",
+                    generated_query="memory retrieval ineffective query",
+                    acquisition_status=AcquisitionStatus.NO_RESULT,
+                )
+            ],
+        ),
+    )
+    fake_llm = _FakeLLMClient(
+        outcome_responses=[
+            json.dumps(
+                _valid_outcome_payload(proposed_iteration_outcome="continue"),
+                ensure_ascii=False,
+            )
+        ]
+    )
+    fake_tel = _FakeToolExecutionLayerService(result=memory_no_result)
+    service = _StateCapturingResearchExecutorService(
+        llm_client=fake_llm,
+        tool_execution_layer_service=fake_tel,
+        evidence_processing_service=_FakeEvidenceProcessingService(),
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Decide whether memory or external retrieval should be used.",
+                available_tools=["research_knowledge_recall", "docs_search"],
+                iteration_budget=2,
+            )
+        )
+    )
+
+    assessment_prompts = _assessment_prompts(fake_llm)
+    assert len(assessment_prompts) == 2
+    assert '"recent_retrieval_history"' in assessment_prompts[1]
+    assert "research_knowledge_recall" in assessment_prompts[1]
+    assert "not_useful" in assessment_prompts[1]
+    assert "memory retrieval ineffective query" not in assessment_prompts[1]
+    assert fake_tel.requests[0].action_mode == "memory_backed_acquisition"
+    assert fake_tel.requests[1].action_mode == "external_acquisition"
+    assert fake_tel.requests[1].allowed_source_families == [FamilyName.DOCS_SEARCH]

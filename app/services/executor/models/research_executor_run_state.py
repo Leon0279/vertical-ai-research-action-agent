@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from app.domain.models import (
     EvidenceProcessingResult,
     ProcessedEvidenceUnit,
+    RecentRetrievalAttempt,
     ToolExecutionLayerResult,
 )
 from app.services.executor.models.evidence_coverage_entry import EvidenceCoverageMap
@@ -62,6 +63,15 @@ class ResearchExecutorRunState:
     finding_caveats: list[str] = field(
         default_factory=list,
         metadata={"description": "可选字段，默认空列表。与当前 intermediate findings 对应的限制说明。"},
+    )
+    recent_retrieval_attempts: list[RecentRetrievalAttempt] = field(
+        default_factory=list,
+        metadata={
+            "description": (
+                "可选字段，默认空列表。本 stage 内已经完成、可供下一轮路径规避使用的压缩检索历史；"
+                "不保存 raw trace，不进入 RunningState、Memory 或 ResearchStageResult。"
+            )
+        },
     )
     tool_execution_results: list[ToolExecutionLayerResult] = field(
         default_factory=list,

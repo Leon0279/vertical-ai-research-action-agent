@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from app.domain.enums import AcquisitionStatus, FamilyName
+from app.domain.enums import AcquisitionStatus, FamilyName, RetrievalResultUtility
 from app.domain.models import (
     BaseFamilyExecutionResult,
     DocsSearchFamilyRequest,
@@ -299,6 +299,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             return
         attempt = self._attempt_trace(
             selected_family=attempt_outcome.selected_family,
+            selected_tool=attempt_outcome.family_result.selected_tool,
             query_generation_result=attempt_outcome.query_generation_result,
             family_result=attempt_outcome.family_result,
             evaluation_result=attempt_outcome.evaluation_result,
@@ -429,6 +430,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             recent_low_value_queries=unique_non_empty_strings(
                 request.recent_low_value_queries
             ),
+            recent_retrieval_attempts=list(request.recent_retrieval_attempts),
             preferred_tool=(request.preferred_tool or "").strip() or None,
             source_names=unique_non_empty_strings(request.source_names),
             include_domains=unique_non_empty_strings(request.include_domains),
@@ -506,9 +508,43 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
                 evidence_shape=request.evidence_shape,
                 success_hint=request.success_hint,
                 task_framing=request.task_framing,
-                recent_low_value_queries=request.recent_low_value_queries,
+                recent_low_value_queries=(
+                    self._recent_low_value_queries_for_selected_family(
+                        request,
+                        selected_family,
+                    )
+                ),
             )
         )
+
+    def _recent_low_value_queries_for_selected_family(
+        self,
+        request: ToolExecutionLayerRequest,
+        selected_family: FamilyName,
+    ) -> list[str]:
+        """合并显式负例与同问题、同 family 的已验证低价值历史 query。"""
+
+        history_queries = [
+            attempt.generated_query
+            for attempt in request.recent_retrieval_attempts
+            if (
+                attempt.selected_family == selected_family
+                and attempt.target_problem == request.target_problem
+                and attempt.generated_query is not None
+                and (
+                    attempt.result_status
+                    in {AcquisitionStatus.FAILED, AcquisitionStatus.NO_RESULT}
+                    or (
+                        attempt.result_status != AcquisitionStatus.PARTIAL_SUCCESS
+                        and attempt.result_utility
+                        == RetrievalResultUtility.NOT_USEFUL
+                    )
+                )
+            )
+        ]
+        return unique_non_empty_strings(
+            [*request.recent_low_value_queries, *history_queries]
+        )[:3]
 
     async def _execute_family(
         self,
@@ -666,6 +702,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
         self,
         *,
         selected_family: FamilyName,
+        selected_tool: str | None,
         query_generation_result: RetrievalQueryGenerationResult,
         family_result: BaseFamilyExecutionResult,
         evaluation_result: RequestCompletionEvaluationResult,
@@ -674,6 +711,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
     ) -> dict[str, Any]:
         return {
             "selected_family": selected_family,
+            "selected_tool": selected_tool,
             "generated_query": query_generation_result.generated_query,
             "query_focus": query_generation_result.query_focus,
             "acquisition_status": family_result.acquisition_status,

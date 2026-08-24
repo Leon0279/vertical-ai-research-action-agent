@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.domain.enums import ActionMode, FamilyName
+from app.domain.models.retrieval import RecentRetrievalAttempt
 from app.domain.models.tool_execution_layer.evidence_shape import EvidenceShape
 from app.domain.models.tool_execution_layer.request_completion_evaluation_request import (
     FallbackPolicy,
@@ -109,6 +110,16 @@ class ToolExecutionLayerRequest(BaseModel):
             "可选字段，默认空列表。近期效果较差、应避免重复使用的 query 表达。当前项目中有用："
             "RetrievalQueryGenerationService 会读取并最多使用前几条作为负面示例，降低重复低价值检索的概率。"
             "这些字符串不是历史 retrieval result，只是 query phrasing hint。"
+        ),
+    )
+    recent_retrieval_attempts: list[RecentRetrievalAttempt] = Field(
+        default_factory=list,
+        description=(
+            "可选字段，默认空列表。由 Research Executor 从先前 iteration 压缩并传入的近期 retrieval 尝试。"
+            "当前项目中有用：TEL 在已选择 family 后，会从同一 target_problem、同一 family 且明确低价值的 "
+            "attempt 派生 query 负例，降低重复无效 query 的概率。每项包含 coverage target、family/tool、"
+            "query、执行状态、实际效用和 fallback 标记；它不是 raw trace，也不直接决定高层 memory/external 路径。"
+            "旧调用方可继续只传 recent_low_value_queries。"
         ),
     )
     preferred_tool: str | None = Field(

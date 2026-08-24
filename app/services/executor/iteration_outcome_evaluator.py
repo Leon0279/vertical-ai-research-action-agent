@@ -34,7 +34,11 @@ from app.services.executor.research_executor_collaborator_support import (
 class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
     """按规则短路、LLM 判断和 guardrail 决定 iteration outcome。"""
 
-    def __init__(self, *, llm_client: LLMClientProtocol) -> None:
+    def __init__(
+        self,
+        *,
+        llm_client: LLMClientProtocol,
+    ) -> None:
         self._llm_client = llm_client
 
     async def evaluate(
@@ -109,6 +113,16 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             return (
                 "stop",
                 "当前 findings 已稳定且支撑强度足够，本轮无需继续发起新的 iteration。",
+            )
+
+        if (
+            iteration.acquisition_paths_exhausted
+            and not self._did_new_evidence_arrive(iteration)
+        ):
+            return (
+                "degrade",
+                "当前 coverage target 的所有兼容 acquisition 路径均已在近期尝试中证明低价值，"
+                "且本轮没有新增 evidence，因此不继续重复检索。",
             )
 
         evidence_processing_result = iteration.evidence_processing_result

@@ -24,6 +24,14 @@ class RetrievalAttemptTrace(BaseModel):
             "web_search 或 research_knowledge_recall，用于解释 fallback 前后 family 是否发生变化。"
         ),
     )
+    selected_tool: str | None = Field(
+        default=None,
+        description=(
+            "可选字段。本次 attempt 在 selected_family 内实际执行的 concrete tool id。当前项目中有用："
+            "Research Executor 会把它压缩进 RecentRetrievalAttempt，以支持后续按实际 tool 和 query pattern "
+            "规避低价值路径。family 无可用 tool 或 attempt 在 tool 执行前失败时可为空。"
+        ),
+    )
     generated_query: str | None = Field(
         default=None,
         description=(
@@ -85,7 +93,7 @@ class RetrievalAttemptTrace(BaseModel):
         default_factory=dict,
         description=(
             "可选字段，默认空 dict。本次 attempt 的扩展信息。当前项目中有用但不是稳定主字段。"
-            "兼容旧 dict 输入时，除 selected_family、generated_query、query_focus、acquisition_status、"
+            "兼容旧 dict 输入时，除 selected_family、selected_tool、generated_query、query_focus、acquisition_status、"
             "evaluation_status、recovery_action、next_step_hint、retry_count、fallback_applied、metadata 之外的 key "
             "会被收拢到这里。可用于记录 attempt-specific debug 信息，例如 family/tool 错误摘要或临时诊断字段。"
         ),
@@ -98,6 +106,7 @@ class RetrievalAttemptTrace(BaseModel):
             return value
         known = {
             "selected_family",
+            "selected_tool",
             "generated_query",
             "query_focus",
             "acquisition_status",

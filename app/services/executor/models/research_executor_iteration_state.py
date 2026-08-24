@@ -48,6 +48,15 @@ class ResearchExecutorIterationState:
         default=None,
         metadata={"description": "可选字段。系统选择本轮 action mode 的确定性说明。"},
     )
+    acquisition_paths_exhausted: bool = field(
+        default=False,
+        metadata={
+            "description": (
+                "可选字段，默认 False。当前 coverage target 的全部兼容 acquisition 路径是否已被近期历史"
+                "判定为低价值；为 True 时本轮仅 refine，Step 7 会避免无意义继续循环。"
+            )
+        },
+    )
     action_request: ResearchActionRequest | None = field(
         default=None,
         metadata={"description": "可选字段。进入 acquisition 时构造的强类型内部请求；refine 路径为空。"},
