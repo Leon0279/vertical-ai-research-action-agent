@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from app.domain.models import ExecutionContext, RequestContext
+from app.domain.enums import FamilyName
 from app.services.intake.request_intake_service import RequestIntakeService
 
 
@@ -49,9 +50,13 @@ def test_request_intake_service_preserves_existing_session_id() -> None:
     assert state.runtime_context.session_id_generated is False
 
 
-def test_request_intake_service_applies_server_registered_capabilities() -> None:
+def test_request_intake_service_applies_server_registered_families() -> None:
     service = RequestIntakeService(
-        available_tools=[" docs_search ", "docs_search", "web_search", ""],
+        available_families=[
+            FamilyName.DOCS_SEARCH,
+            FamilyName.DOCS_SEARCH,
+            FamilyName.WEB_SEARCH,
+        ],
         tool_registry_version="test-retrieval-v1",
     )
 
@@ -64,7 +69,10 @@ def test_request_intake_service_applies_server_registered_capabilities() -> None
         )
     )
 
-    assert state.runtime_context.available_tools == ["docs_search", "web_search"]
+    assert state.runtime_context.available_families == [
+        FamilyName.DOCS_SEARCH,
+        FamilyName.WEB_SEARCH,
+    ]
     assert state.runtime_context.tool_registry_version == "test-retrieval-v1"
 
 

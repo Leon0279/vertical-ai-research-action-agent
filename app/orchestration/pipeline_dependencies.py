@@ -170,7 +170,7 @@ def build_default_dependencies() -> PipelineDependencies:
 
     return PipelineDependencies(
         request_intake=RequestIntakeService(
-            available_tools=[family.value for family in registered_families],
+            available_families=list(registered_families),
             tool_registry_version=_DEFAULT_TOOL_REGISTRY_VERSION,
         ),
         task_interpreter=TaskInterpreterService(llm_client=ZhipuLLMClient()),

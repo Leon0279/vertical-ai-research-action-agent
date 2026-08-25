@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.domain.enums import PlanningDepth
+from app.domain.enums import FamilyName, PlanningDepth
 from app.domain.models import (
     ContextItem,
     ExecutionContext,
@@ -101,7 +101,7 @@ def test_execution_context_composes_required_runtime_objects() -> None:
     assert context.running_state is running_state
     assert isinstance(context.supplemental_context, SupplementalContext)
     assert context.runtime_context is runtime_context
-    assert context.runtime_context.available_tools == []
+    assert context.runtime_context.available_families == []
 
 
 def test_runtime_context_carries_request_and_session_identity() -> None:
@@ -117,3 +117,25 @@ def test_runtime_context_carries_request_and_session_identity() -> None:
     assert runtime_context.session_id == "session-1"
     assert runtime_context.session_id_generated is True
     assert runtime_context.stage_history == []
+
+
+def test_runtime_context_uses_retrieval_family_enum() -> None:
+    runtime_context = RuntimeContext(
+        request_id="trace-1",
+        user_id="user-1",
+        session_id="session-1",
+        available_families=[FamilyName.DOCS_SEARCH],
+    )
+
+    assert runtime_context.available_families == [FamilyName.DOCS_SEARCH]
+    assert runtime_context.model_dump(mode="json")["available_families"] == [
+        "docs_search"
+    ]
+
+    with pytest.raises(ValidationError):
+        RuntimeContext(
+            request_id="trace-1",
+            user_id="user-1",
+            session_id="session-1",
+            available_families=["llms_txt_docs_search_v1"],
+        )

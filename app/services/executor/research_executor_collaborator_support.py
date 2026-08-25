@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from app.common.utils.text import strip_or_none, unique_non_empty_strings
-from app.domain.enums import AcquisitionStatus
+from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import EvidenceProcessingResult, ResearchStageInput
 from app.domain.models.context.context_item import ContextItem
 from app.services.executor.models.research_executor_iteration_state import (
@@ -44,14 +44,10 @@ class ResearchExecutorCollaboratorSupport:
             or next_evidence_need.desired_evidence_kind == "none"
         )
 
-    def _available_tool_names(self, stage_input: ResearchStageInput) -> set[str]:
-        """规范化 runtime capability 名称，供确定性规则匹配。"""
+    def _available_families(self, stage_input: ResearchStageInput) -> set[FamilyName]:
+        """返回当前 research stage 可选择的 retrieval family 集合。"""
 
-        return {
-            tool_name.strip().lower()
-            for tool_name in stage_input.available_tools
-            if tool_name.strip()
-        }
+        return set(stage_input.available_families)
 
     def _positive_int(self, value: object, *, default: int) -> int:
         """返回正整数值；无效值时使用指定默认值。"""

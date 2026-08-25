@@ -189,12 +189,12 @@ def test_default_dependencies_register_the_same_capabilities_as_tel(monkeypatch)
     )
 
     expected_families = [
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL.value,
-        FamilyName.DOCS_SEARCH.value,
-        FamilyName.PAPER_SEARCH.value,
-        FamilyName.WEB_SEARCH.value,
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+        FamilyName.DOCS_SEARCH,
+        FamilyName.PAPER_SEARCH,
+        FamilyName.WEB_SEARCH,
     ]
-    assert context.runtime_context.available_tools == expected_families
+    assert context.runtime_context.available_families == expected_families
     assert context.runtime_context.tool_registry_version == (
         "default_retrieval_families_v1"
     )
@@ -271,7 +271,7 @@ def test_research_stage_projects_input_and_applies_result() -> None:
             request_id="trace-1",
             user_id="user-1",
             session_id="session-1",
-            available_tools=["docs_search"],
+            available_families=[FamilyName.DOCS_SEARCH],
             latency_budget_ms=1000,
             iteration_budget=2,
             scope_restrictions=["project_only"],
@@ -329,7 +329,7 @@ def test_research_stage_projects_input_and_applies_result() -> None:
         research_support=[research_support],
         decision_support=[decision_support],
         action_support=[action_support],
-        available_tools=["docs_search"],
+        available_families=[FamilyName.DOCS_SEARCH],
         latency_budget_ms=1000,
         iteration_budget=2,
         scope_restrictions=["project_only"],

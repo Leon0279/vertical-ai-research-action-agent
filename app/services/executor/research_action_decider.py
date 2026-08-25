@@ -26,24 +26,11 @@ from app.services.executor.research_retrieval_history_tracker import (
     ResearchRetrievalHistoryTracker,
 )
 
-_MEMORY_CAPABILITY_NAMES = {
-    "memory",
-    "memory_backed_acquisition",
-    "research_knowledge_memory",
-    FamilyName.RESEARCH_KNOWLEDGE_RECALL.value,
+_EXTERNAL_FAMILIES = {
+    FamilyName.DOCS_SEARCH,
+    FamilyName.PAPER_SEARCH,
+    FamilyName.WEB_SEARCH,
 }
-_EXTERNAL_CAPABILITY_FAMILY_MAP = {
-    "docs": FamilyName.DOCS_SEARCH,
-    "docs_search": FamilyName.DOCS_SEARCH,
-    "llms_txt_docs_search_v1": FamilyName.DOCS_SEARCH,
-    "paper": FamilyName.PAPER_SEARCH,
-    "paper_search": FamilyName.PAPER_SEARCH,
-    "arxiv_paper_search_v1": FamilyName.PAPER_SEARCH,
-    "web": FamilyName.WEB_SEARCH,
-    "web_search": FamilyName.WEB_SEARCH,
-    "tavily_web_search_v1": FamilyName.WEB_SEARCH,
-}
-_EXTERNAL_ALL_CAPABILITY_NAMES = {"external", "external_acquisition"}
 
 
 class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
@@ -162,7 +149,7 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
             and assessment.support_strength == "strong_enough"
         ):
             return True
-        if not self._available_tool_names(stage_input):
+        if not self._available_families(stage_input):
             return True
         return self._is_latency_constrained(stage_input) and top_gap.gap_severity != "blocking"
 
@@ -378,7 +365,7 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
             return "当前 gap 或 evidence need 更依赖新鲜、直接、比较型或外部可追溯材料，因此进入 external acquisition。"
         if run_state.require_current_iteration().acquisition_paths_exhausted:
             return "当前 coverage target 的所有兼容 acquisition 路径都已被近期历史判定为低价值，因此不重复检索并等待降级收束。"
-        if not self._available_tool_names(stage_input):
+        if not self._available_families(stage_input):
             return "当前 runtime 未声明 acquisition capability，因此本轮基于已有 state refine。"
         if self._has_no_actionable_evidence_need(top_gap, next_evidence_need):
             return "当前 top_gap / next_evidence_need 表示没有可推进的 actionable gap，因此不发起 acquisition。"
@@ -529,29 +516,23 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
         return run_state.next_evidence_need
 
     def _has_memory_capability(self, stage_input: ResearchStageInput) -> bool:
-        """判断 runtime capability 是否包含 memory acquisition 路径。"""
+        """判断 runtime family 是否包含 memory acquisition 路径。"""
 
-        return bool(self._available_tool_names(stage_input) & _MEMORY_CAPABILITY_NAMES)
+        return FamilyName.RESEARCH_KNOWLEDGE_RECALL in self._available_families(
+            stage_input,
+        )
 
     def _external_source_families(
         self,
         stage_input: ResearchStageInput,
     ) -> list[FamilyName]:
-        """将外部 runtime capability 映射为 retrieval family enum。"""
+        """返回当前 runtime 中按原顺序可选的 external retrieval family。"""
 
-        available_tool_names = self._available_tool_names(stage_input)
-        if available_tool_names & _EXTERNAL_ALL_CAPABILITY_NAMES:
-            return [
-                FamilyName.DOCS_SEARCH,
-                FamilyName.PAPER_SEARCH,
-                FamilyName.WEB_SEARCH,
-            ]
-        families: list[FamilyName] = []
-        for tool_name in available_tool_names:
-            family = _EXTERNAL_CAPABILITY_FAMILY_MAP.get(tool_name)
-            if family is not None and family not in families:
-                families.append(family)
-        return families
+        return [
+            family
+            for family in stage_input.available_families
+            if family in _EXTERNAL_FAMILIES
+        ]
 
     def _is_latency_constrained(self, stage_input: ResearchStageInput) -> bool:
         """判断 latency budget 是否应抑制非阻塞 acquisition。"""

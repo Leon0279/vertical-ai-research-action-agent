@@ -157,13 +157,13 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             )
 
         if (
-            not self._available_tool_names(stage_input)
+            not self._available_families(stage_input)
             and not self._has_no_actionable_evidence_need(top_gap, next_evidence_need)
             and not self._did_new_evidence_arrive(iteration)
         ):
             return (
                 "degrade",
-                "当前存在 actionable gap，但 runtime 未声明 acquisition capability 且没有新增 evidence，因此进入降级收束。",
+                "当前存在 actionable gap，但 runtime 未声明可选 retrieval family 且没有新增 evidence，因此进入降级收束。",
             )
 
         return None
@@ -306,7 +306,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             "5. runtime_constraints\n"
             "- remaining_iteration_budget_after_current：本轮结束后还剩多少轮。\n"
             "- input_budget_pressure：当前预算压力，取值 low / medium / high。\n"
-            "- available_capabilities：当前可用能力摘要。\n"
+            "- available_families：当前可选择的资料来源类别。每项表示 retrieval family，不是具体工具名或调用参数。\n"
             "如果没有剩余轮次，即使你认为继续可能有价值，也只能提出 stop 或 degrade。\n\n"
             "请只完成 4 件事：\n"
             "1. 判断本轮是否推进了 iteration_start_reference.top_gap。\n"
@@ -413,7 +413,9 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                     stage_input,
                     iteration,
                 ),
-                "available_capabilities": stage_input.available_tools,
+                "available_families": [
+                    family.value for family in stage_input.available_families
+                ],
                 "latency_budget_ms": stage_input.latency_budget_ms,
             },
         }

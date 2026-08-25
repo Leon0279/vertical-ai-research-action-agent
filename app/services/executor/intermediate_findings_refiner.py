@@ -106,7 +106,8 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
             "7. runtime_limits\n"
             "- iteration_index：当前是第几轮研究迭代。\n"
             "- remaining_iteration_budget：当前还允许继续多少轮。\n"
-            "- available_capabilities：当前可用能力摘要，只用于理解本轮材料是否可能继续补充。\n\n"
+            "- available_families：当前可选择的资料来源类别，只用于理解本轮材料是否可能继续补充。"
+            "每项表示 retrieval family，不是具体工具名或调用参数。\n\n"
             "请按以下原则更新中间发现：\n"
             "- intermediate_findings 必须是全量 updated list（全量更新后的列表），不是增量补丁。\n"
             "- 每条 finding 应该是简短、可被后续阶段复用的中文研究判断。\n"
@@ -216,7 +217,9 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
                 "remaining_iteration_budget": (
                     run_state.require_current_iteration().remaining_iteration_budget
                 ),
-                "available_capabilities": stage_input.available_tools,
+                "available_families": [
+                    family.value for family in stage_input.available_families
+                ],
             },
         }
 

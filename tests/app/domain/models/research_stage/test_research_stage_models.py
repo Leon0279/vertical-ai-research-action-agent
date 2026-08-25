@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from app.domain.enums import FamilyName
 from app.domain.models import ResearchStageInput, ResearchStageResult, SourceReference
 
 
@@ -21,10 +22,34 @@ def test_research_stage_input_minimal_construction() -> None:
     assert stage_input.research_support == []
     assert stage_input.decision_support == []
     assert stage_input.action_support == []
-    assert stage_input.available_tools == []
+    assert stage_input.available_families == []
     dumped = stage_input.model_dump()
     assert "existing_evidence_summary" not in dumped
     assert "external_evidence_support" not in dumped
+
+
+def test_research_stage_input_uses_retrieval_family_enum() -> None:
+    stage_input = ResearchStageInput(
+        original_query="Find official documentation.",
+        available_families=[FamilyName.DOCS_SEARCH],
+    )
+
+    assert stage_input.available_families == [FamilyName.DOCS_SEARCH]
+    assert stage_input.model_dump(mode="json")["available_families"] == [
+        "docs_search"
+    ]
+
+    string_input = ResearchStageInput(
+        original_query="Accept valid family strings for model compatibility.",
+        available_families=["web_search"],
+    )
+    assert string_input.available_families == [FamilyName.WEB_SEARCH]
+
+    with pytest.raises(ValidationError):
+        ResearchStageInput(
+            original_query="Reject concrete tool identifiers.",
+            available_families=["tavily_web_search_v1"],
+        )
 
 
 def test_research_stage_result_defaults_do_not_write_back_content() -> None:

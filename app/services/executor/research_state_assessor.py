@@ -129,7 +129,8 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             "- iteration_index：当前是第几轮研究迭代。\n"
             "- remaining_iteration_budget：当前还允许继续多少轮。\n"
             "- input_budget_pressure：当前上下文或预算压力。\n"
-            "- available_capabilities：当前可用能力摘要。它只用于判断某个 evidence need 是否现实可推进，"
+            "- available_families：当前可选择的资料来源类别。每项表示 retrieval family，不是具体工具名或调用参数。"
+            "它只用于判断某个 evidence need 是否现实可推进，"
             "不要在输出中指定具体工具名、执行路径或 action mode。\n\n"
             "请在内部按以下顺序判断，但不要输出推理过程：\n\n"
             "1. 判断 current_research_objective 是否已经被 processed_evidence 和可信的 supporting context 基本覆盖。\n"
@@ -149,7 +150,7 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             "4. 对 comparison 任务，导致候选对象或比较维度不平衡的 gap 优先。\n"
             "5. 对 tracking 任务，新鲜度不足或状态不明确的 gap 优先。\n"
             "6. 对 recommendation / action planning 任务，导致建议不可执行、风险不清或决策支撑不足的 gap 优先。\n"
-            "7. 在当前 remaining_iteration_budget、input_budget_pressure 和 available_capabilities 下更现实可推进的 gap 优先。\n\n"
+            "7. 在当前 remaining_iteration_budget、input_budget_pressure 和 available_families 下更现实可推进的 gap 优先。\n\n"
             "next_evidence_need 只描述“下一步需要补充哪类 evidence”。\n"
             "它不是搜索词，不是工具调用参数，也不是执行步骤。\n"
             "不要把 need_summary 写成可直接执行的搜索 query。\n\n"
@@ -353,7 +354,9 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
                     stage_input,
                     run_state.require_current_iteration(),
                 ),
-                "available_capabilities": stage_input.available_tools,
+                "available_families": [
+                    family.value for family in stage_input.available_families
+                ],
             },
         }
 

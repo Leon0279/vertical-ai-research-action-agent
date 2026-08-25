@@ -112,7 +112,7 @@ Fixed outer workflow with stage-by-stage execution."""
             research_support=supplemental_context.research_support,
             decision_support=supplemental_context.decision_support,
             action_support=supplemental_context.action_support,
-            available_tools=runtime_context.available_tools,
+            available_families=runtime_context.available_families,
             latency_budget_ms=runtime_context.latency_budget_ms,
             iteration_budget=runtime_context.iteration_budget,
             scope_restrictions=runtime_context.scope_restrictions,

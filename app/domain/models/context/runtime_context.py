@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.domain.enums import FamilyName
 
 class RuntimeContext(BaseModel):
     """当前 run 的运行时身份、能力、预算与环境标记。
 
     RuntimeContext 不表达任务语义，也不承载 evidence 或 conclusion。它用于告诉各 stage：
-    当前 run 属于哪个用户/会话、已经走过哪些 stage、可用哪些工具，以及执行预算和环境约束是什么。
+    当前 run 属于哪个用户/会话、已经走过哪些 stage、可用哪些 retrieval family，以及执行预算和环境约束是什么。
     """
 
     request_id: str = Field(
@@ -50,13 +51,14 @@ class RuntimeContext(BaseModel):
         ),
     )
 
-    available_tools: list[str] = Field(
+    available_families: list[FamilyName] = Field(
         default_factory=list,
         description=(
-            "可选字段，默认空列表。当前 run 可用 tool/capability 的轻量列表。当前项目中有用："
-            "默认 RequestIntakeService 会从服务端已注册且已注入 ToolExecutionLayerService 的 retrieval family 生成该列表，"
-            "ResearchExecutor 会通过 ResearchStageInput 读取它决定是否允许 acquisition。列表元素是 family/capability 标识字符串，"
-            "不是完整 tool config，也不由 API 调用方直接声明。"
+            "可选字段，默认空列表。当前 run 可选择的 retrieval family，类型为 list[FamilyName]。当前项目中有用："
+            "RequestIntakeService 会从服务端已注册且已注入 ToolExecutionLayerService 的 family 写入该列表，"
+            "ResearchExecutor 通过 ResearchStageInput 读取它决定是否允许 memory 或 external acquisition。"
+            "列表元素只能是 research_knowledge_recall、docs_search、paper_search 或 web_search 等 family，"
+            "不是 family 内部的 concrete tool id，也不由 API 调用方直接声明。"
         ),
     )
     tool_registry_version: str | None = Field(

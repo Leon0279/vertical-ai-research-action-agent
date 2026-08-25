@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.domain.enums import FamilyName
 from app.domain.models.context.context_item import ContextItem
 
 
@@ -123,9 +124,14 @@ class ResearchStageInput(BaseModel):
             "它不是 raw action record，也不是本轮 retrieval evidence。"
         ),
     )
-    available_tools: list[str] = Field(
+    available_families: list[FamilyName] = Field(
         default_factory=list,
-        description="可选字段，默认空列表。当前 runtime 声明可供 research stage 使用的工具或能力标识。",
+        description=(
+            "可选字段，默认空列表。当前 runtime 声明可供 research stage 选择的 retrieval family，"
+            "类型为 list[FamilyName]。当前项目中有用：ResearchActionDecider 据此判断 memory-backed "
+            "或 external acquisition 是否可走，并将选中的 family 约束传给 TEL。"
+            "它不包含 concrete tool id、adapter 名称或泛化 capability alias。"
+        ),
     )
     latency_budget_ms: int | None = Field(
         default=None,

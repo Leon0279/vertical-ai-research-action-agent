@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.common.utils.ids import generate_session_id, generate_trace_id
+from app.domain.enums import FamilyName
 from app.domain.models import ExecutionContext, RequestContext, RunningState, RuntimeContext
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
 
@@ -15,10 +16,10 @@ class RequestIntakeService(RequestIntakeProtocol):
     def __init__(
         self,
         *,
-        available_tools: list[str] | None = None,
+        available_families: list[FamilyName] | None = None,
         tool_registry_version: str | None = None,
     ) -> None:
-        self._available_tools = self._normalize_available_tools(available_tools or [])
+        self._available_families = self._normalize_available_families(available_families or [])
         self._tool_registry_version = tool_registry_version
 
     async def intake(self, request: RequestContext) -> ExecutionContext:
@@ -63,7 +64,7 @@ class RequestIntakeService(RequestIntakeProtocol):
             user_id=user_id,
             session_id=session_id,
             session_id_generated=session_id_generated,
-            available_tools=list(self._available_tools),
+            available_families=list(self._available_families),
             tool_registry_version=self._tool_registry_version,
         )
         runtime_context.stage_history.append("request_intake")
@@ -73,14 +74,15 @@ class RequestIntakeService(RequestIntakeProtocol):
         )
 
     @staticmethod
-    def _normalize_available_tools(available_tools: list[str]) -> list[str]:
-        """Return stable, non-empty server-registered capability names."""
+    def _normalize_available_families(
+        available_families: list[FamilyName],
+    ) -> list[FamilyName]:
+        """返回去重且保序的服务端注册 retrieval family 列表。"""
 
-        normalized_tools: list[str] = []
-        seen: set[str] = set()
-        for tool_name in available_tools:
-            normalized = tool_name.strip().lower()
-            if normalized and normalized not in seen:
-                normalized_tools.append(normalized)
-                seen.add(normalized)
-        return normalized_tools
+        normalized_families: list[FamilyName] = []
+        seen: set[FamilyName] = set()
+        for family in available_families:
+            if family not in seen:
+                normalized_families.append(family)
+                seen.add(family)
+        return normalized_families

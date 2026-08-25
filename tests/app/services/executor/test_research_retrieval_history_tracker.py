@@ -158,7 +158,7 @@ def test_memory_low_value_history_switches_current_target_to_external() -> None:
         decider.decide(
             ResearchStageInput(
                 original_query="补齐当前目标的可靠支撑材料。",
-                available_tools=["research_knowledge_recall", "docs_search"],
+                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL, FamilyName.DOCS_SEARCH],
             ),
             state,
         )
@@ -190,7 +190,7 @@ def test_weakly_useful_history_does_not_block_memory_path() -> None:
         decider.decide(
             ResearchStageInput(
                 original_query="补齐当前目标的可靠支撑材料。",
-                available_tools=["research_knowledge_recall", "docs_search"],
+                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL, FamilyName.DOCS_SEARCH],
             ),
             state,
         )
@@ -214,7 +214,7 @@ def test_exhausted_memory_and_external_paths_degrade_without_outcome_llm() -> No
         decider.decide(
             ResearchStageInput(
                 original_query="补齐当前目标的可靠支撑材料。",
-                available_tools=["research_knowledge_recall", "docs_search"],
+                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL, FamilyName.DOCS_SEARCH],
             ),
             state,
         )
@@ -223,7 +223,7 @@ def test_exhausted_memory_and_external_paths_degrade_without_outcome_llm() -> No
         IterationOutcomeEvaluator(llm_client=_FailIfCalledLLMClient()).evaluate(
             ResearchStageInput(
                 original_query="补齐当前目标的可靠支撑材料。",
-                available_tools=["research_knowledge_recall", "docs_search"],
+                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL, FamilyName.DOCS_SEARCH],
             ),
             state,
         )

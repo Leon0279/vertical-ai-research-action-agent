@@ -506,7 +506,7 @@ def test_research_executor_runs_acquisition_steps_when_action_decision_requires_
         service.execute(
             ResearchStageInput(
                 original_query="Acquire external evidence when docs search is available.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -541,7 +541,7 @@ def test_research_executor_projects_default_working_state_into_result() -> None:
         "当前证据支持：memory-backed retrieval 适合已有知识覆盖充分的场景。"
     ]
     assert any(
-        "runtime 未声明 acquisition capability" in question
+        "runtime 未声明可选 retrieval family" in question
         for question in result.open_questions
     )
     assert any(
@@ -674,7 +674,7 @@ def test_research_executor_step_six_records_candidate_evidence_without_claiming_
         service.execute(
             ResearchStageInput(
                 original_query="Associate newly acquired evidence with its target.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -775,7 +775,7 @@ def test_research_executor_refines_when_gap_is_noop() -> None:
         service.execute(
             ResearchStageInput(
                 original_query="No further evidence needed.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -806,7 +806,7 @@ def test_research_executor_refines_when_findings_are_stable_and_strong() -> None
         service.execute(
             ResearchStageInput(
                 original_query="Stable findings should not fetch more.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -842,7 +842,7 @@ def test_research_executor_selects_memory_backed_acquisition_when_available() ->
                 original_query="Prefer memory when freshness is normal.",
                 owner_user_id="user-1",
                 project_scope_id="project-1",
-                available_tools=["research_knowledge_recall"],
+                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL],
             )
         )
     )
@@ -889,7 +889,7 @@ def test_research_executor_selects_external_acquisition_for_fresh_required_need(
         service.execute(
             ResearchStageInput(
                 original_query="Fresh external evidence is needed.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -925,7 +925,7 @@ def test_research_executor_maps_supporting_evidence_need_for_tel() -> None:
         service.execute(
             ResearchStageInput(
                 original_query="Map richer research evidence kinds.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -966,7 +966,7 @@ def test_research_executor_processes_tel_result_into_working_state() -> None:
         service.execute(
             ResearchStageInput(
                 original_query="Process acquired materials.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -1028,7 +1028,7 @@ def test_research_executor_returns_processed_evidence_refs_findings_and_summary(
         service.execute(
             ResearchStageInput(
                 original_query="Return real research result.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -1064,7 +1064,7 @@ def test_research_executor_degrades_when_evidence_processing_fails() -> None:
         service.execute(
             ResearchStageInput(
                 original_query="Evidence processing failure should degrade.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -1103,7 +1103,7 @@ def test_research_executor_returns_partial_success_when_degraded_with_outputs() 
         service.execute(
             ResearchStageInput(
                 original_query="Degraded iteration still has partial outputs.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 iteration_budget=1,
             )
         )
@@ -1139,7 +1139,7 @@ def test_research_executor_returns_failed_when_degraded_without_outputs() -> Non
     assert result.evidence_summary is None
     assert result.error_info is not None
     assert any(
-        "runtime 未声明 acquisition capability" in question
+        "runtime 未声明可选 retrieval family" in question
         for question in result.open_questions
     )
 
@@ -1167,7 +1167,7 @@ def test_research_executor_continues_when_llm_outcome_allows_more_iterations() -
         service.execute(
             ResearchStageInput(
                 original_query="Continue when outcome evaluation says so.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 iteration_budget=2,
             )
         )
@@ -1213,7 +1213,7 @@ def test_research_executor_tracks_current_iteration_evidence_delta() -> None:
         service.execute(
             ResearchStageInput(
                 original_query="Only first iteration produces evidence.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 iteration_budget=2,
             )
         )
@@ -1272,7 +1272,7 @@ def test_research_executor_degrades_when_last_iteration_has_no_meaningful_gain()
         service.execute(
             ResearchStageInput(
                 original_query="Guardrail should prevent impossible continuation.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 iteration_budget=1,
             )
         )
@@ -1327,7 +1327,7 @@ def test_research_executor_accepts_fenced_json_iteration_outcome_output() -> Non
         service.execute(
             ResearchStageInput(
                 original_query="Parse fenced outcome JSON.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -1354,7 +1354,7 @@ def test_research_executor_raises_when_iteration_outcome_output_is_not_json() ->
             service.execute(
                 ResearchStageInput(
                     original_query="This outcome step should fail.",
-                    available_tools=["docs_search"],
+                    available_families=[FamilyName.DOCS_SEARCH],
                 )
             )
         )
@@ -1388,7 +1388,7 @@ def test_research_executor_raises_when_iteration_outcome_schema_is_invalid() -> 
             service.execute(
                 ResearchStageInput(
                     original_query="This outcome schema should fail validation.",
-                    available_tools=["docs_search"],
+                    available_families=[FamilyName.DOCS_SEARCH],
                 )
             )
         )
@@ -1413,7 +1413,7 @@ def test_iteration_outcome_prompt_contains_required_context_and_boundaries() -> 
         service.execute(
             ResearchStageInput(
                 original_query="Evaluate iteration outcome prompt.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 iteration_budget=2,
             )
         )
@@ -1524,7 +1524,7 @@ def test_intermediate_findings_prompt_contains_required_context_and_boundaries()
                 research_support=[research_support],
                 decision_support=[decision_support],
                 action_support=[action_support],
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 iteration_budget=1,
             )
         )
@@ -1622,7 +1622,7 @@ def test_research_executor_refines_when_latency_constrained_and_gap_not_blocking
         service.execute(
             ResearchStageInput(
                 original_query="Latency should block non-blocking acquisition.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 latency_budget_ms=500,
             )
         )
@@ -1643,7 +1643,7 @@ def test_research_executor_allows_blocking_external_acquisition_under_latency_pr
         service.execute(
             ResearchStageInput(
                 original_query="Blocking gaps can still acquire evidence.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 latency_budget_ms=500,
             )
         )
@@ -1745,7 +1745,7 @@ def test_research_assessment_prompt_contains_required_context_and_boundaries() -
                 research_support=[research_support],
                 decision_support=[decision_support],
                 action_support=[action_support],
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 latency_budget_ms=500,
                 iteration_budget=2,
             )
@@ -1799,7 +1799,7 @@ def test_research_assessment_prompt_contains_required_context_and_boundaries() -
     assert "不要输出搜索词或工具调用参数" in prompt
     assert "next_evidence_need 只描述" in prompt
     assert "它不是搜索词，不是工具调用参数，也不是执行步骤" in prompt
-    assert "available_capabilities：当前可用能力摘要。它只用于判断某个 evidence need 是否现实可推进" in prompt
+    assert "available_families：当前可选择的资料来源类别。每项表示 retrieval family，不是具体工具名或调用参数。" in prompt
     assert "不要基于 project_context_summary、decision_support 或 action_support 扩大研究范围" in prompt
     assert "existing_evidence_summary" not in prompt
     assert "external_evidence_support" not in prompt
@@ -1864,7 +1864,7 @@ def test_research_executor_second_iteration_prompt_serializes_typed_processed_ev
         service.execute(
             ResearchStageInput(
                 original_query="Carry processed evidence across iterations.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 iteration_budget=2,
             )
         )
@@ -1932,7 +1932,7 @@ def test_research_executor_next_assessment_confirms_prior_candidate_evidence() -
         service.execute(
             ResearchStageInput(
                 original_query="Confirm coverage using evidence from the prior iteration.",
-                available_tools=["docs_search"],
+                available_families=[FamilyName.DOCS_SEARCH],
                 iteration_budget=2,
             )
         )
@@ -2071,7 +2071,7 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
         service.execute(
             ResearchStageInput(
                 original_query="Decide whether memory or external retrieval should be used.",
-                available_tools=["research_knowledge_recall", "docs_search"],
+                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL, FamilyName.DOCS_SEARCH],
                 iteration_budget=2,
             )
         )
