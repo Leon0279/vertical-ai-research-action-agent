@@ -8,7 +8,6 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.common.utils.json_utils import strip_json_code_fence
 from app.common.utils.text import unique_non_empty_strings
 from app.domain.models import (
     RetrievalQueryGenerationRequest,
@@ -58,7 +57,7 @@ Generate a retrieval query without selecting tools or executing retrieval."""
 
         prompt = self._build_prompt(normalized_request)
         try:
-            llm_output = await self._llm_client.generate_text(prompt)
+            llm_output = await self._llm_client.generate_json_object(prompt)
             payload = self._parse_llm_output(llm_output)
         except Exception as exc:
             return self._failed_result(
@@ -148,15 +147,12 @@ Generate a retrieval query without selecting tools or executing retrieval."""
             f"{json.dumps(prompt_input, ensure_ascii=False, indent=2)}"
         )
 
-    def _parse_llm_output(self, llm_output: str) -> _LLMQueryGenerationPayload:
-        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
+    def _parse_llm_output(
+        self,
+        llm_output: dict[str, Any],
+    ) -> _LLMQueryGenerationPayload:
         try:
-            raw_payload = json.loads(json_text)
-        except json.JSONDecodeError as exc:
-            raise ValueError("LLM response was not valid JSON.") from exc
-
-        try:
-            payload = _LLMQueryGenerationPayload.model_validate(raw_payload)
+            payload = _LLMQueryGenerationPayload.model_validate(llm_output)
         except ValidationError as exc:
             raise ValueError("LLM response did not match the query generation schema.") from exc
 

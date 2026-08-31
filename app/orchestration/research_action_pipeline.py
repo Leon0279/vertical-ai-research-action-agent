@@ -81,7 +81,20 @@ Fixed outer workflow with stage-by-stage execution."""
 
         context.runtime_context.stage_history.append("research")
         stage_input = self._build_research_stage_input(context)
-        stage_result = await self._dependencies.research_executor.execute(stage_input)
+        try:
+            stage_result = await self._dependencies.research_executor.execute(stage_input)
+        except Exception:
+            logger.exception(
+                "Research stage execution failed.",
+                extra={"trace_id": context.runtime_context.request_id},
+            )
+            stage_result = ResearchStageResult(
+                research_status="failed",
+                open_questions=[
+                    "研究阶段在生成或处理证据时遇到运行错误，未能形成可靠材料。"
+                ],
+                error_info="Research stage execution failed.",
+            )
         self._apply_research_stage_result(context, stage_result)
 
     def _build_research_stage_input(self, context: ExecutionContext) -> ResearchStageInput:

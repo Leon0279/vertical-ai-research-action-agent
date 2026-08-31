@@ -78,6 +78,21 @@ def test_fresh_status_evidence_selects_web_search() -> None:
     assert result.selected_family == "web_search"
 
 
+def test_fresh_direct_fact_selects_web_search() -> None:
+    result = _select(
+        FamilySelectionRequest(
+            target_problem="Check the current stable FastAPI release",
+            evidence_shape=EvidenceShape(
+                desired_evidence_kind="direct_fact",
+                freshness_requirement="fresh_required",
+                breadth="normal",
+            ),
+        )
+    )
+
+    assert result.selected_family == "web_search"
+
+
 def test_comparison_evidence_selects_paper_search() -> None:
     result = _select(
         FamilySelectionRequest(

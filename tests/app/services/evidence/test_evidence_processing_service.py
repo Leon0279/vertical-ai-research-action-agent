@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 
 from app.domain.enums import AcquisitionStatus, FamilyName
 
@@ -24,6 +25,16 @@ class FakeLLMClient:
     async def generate_text(self, prompt: str) -> str:
         self.prompts.append(prompt)
         return self.responses.pop(0)
+
+    async def generate_json_object(self, prompt: str) -> dict[str, Any]:
+        response = await self.generate_text(prompt)
+        try:
+            payload = json.loads(response)
+        except json.JSONDecodeError as exc:
+            raise ValueError("LLM response was not valid JSON.") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("LLM response must be a JSON object.")
+        return payload
 
 
 def _process(service: EvidenceProcessingService, request: EvidenceProcessingRequest):
@@ -327,12 +338,10 @@ def test_llm_prompt_uses_minimal_material_context() -> None:
     assert "metadata" not in prompt_input["material"]
 
 
-def test_llm_code_fence_json_is_parsed() -> None:
+def test_llm_json_object_from_adapter_is_processed() -> None:
     llm = FakeLLMClient(
         [
-            """```json
-{"decision":"keep","evidence_units":[{"content":"The API supports structured outputs.","evidence_type":"direct_fact"}]}
-```"""
+            """{"decision":"keep","evidence_units":[{"content":"The API supports structured outputs.","evidence_type":"direct_fact"}]}"""
         ]
     )
     service = EvidenceProcessingService(llm_client=llm)

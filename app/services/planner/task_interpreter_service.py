@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
-from typing import Any
 
 from pydantic import ValidationError
 
@@ -39,11 +37,14 @@ Interpret task intent with an optional LLM and deterministic fallback."""
 
         try:
             prompt = self._build_prompt(context)
-            response = await self._llm_client.generate_text(prompt) if self._llm_client else ""
-            payload = self._extract_json_object(response)
+            payload = (
+                await self._llm_client.generate_json_object(prompt)
+                if self._llm_client
+                else {}
+            )
             payload["task_type"] = self._normalize_task_type(payload.get("task_type"))
             return TaskInterpretationResult.model_validate(payload)
-        except (json.JSONDecodeError, KeyError, TypeError, ValueError, ValidationError):
+        except (KeyError, TypeError, ValueError, ValidationError):
             return None
         except Exception:
             return None
@@ -86,24 +87,6 @@ Interpret task intent with an optional LLM and deterministic fallback."""
             "输入 JSON：\n"
             f"{json.dumps(prompt_input, ensure_ascii=False, indent=2)}"
         )
-
-    def _extract_json_object(self, response: str) -> dict[str, Any]:
-        """Parse a JSON object, accepting common fenced JSON formatting."""
-
-        content = response.strip()
-        fenced_match = re.search(r"```(?:json)?\s*(.*?)```", content, flags=re.DOTALL | re.IGNORECASE)
-        if fenced_match:
-            content = fenced_match.group(1).strip()
-        else:
-            object_start = content.find("{")
-            object_end = content.rfind("}")
-            if object_start >= 0 and object_end > object_start:
-                content = content[object_start : object_end + 1]
-
-        payload = json.loads(content)
-        if not isinstance(payload, dict):
-            raise TypeError("Task interpretation response must be a JSON object.")
-        return payload
 
     def _normalize_task_type(self, value: object) -> str:
         if not isinstance(value, str):

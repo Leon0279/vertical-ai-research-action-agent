@@ -247,7 +247,7 @@ Select a retrieval family without resolving a concrete tool."""
             self._add_score(scores, FamilyName.WEB_SEARCH, 10)
 
         if freshness == "fresh_required":
-            self._add_score(scores, FamilyName.WEB_SEARCH, 40)
+            self._add_score(scores, FamilyName.WEB_SEARCH, 50)
             self._add_score(scores, FamilyName.DOCS_SEARCH, 25)
         elif freshness == "fresh_preferred":
             self._add_score(scores, FamilyName.WEB_SEARCH, 15)

@@ -39,6 +39,9 @@ class _FailIfCalledLLMClient:
     async def generate_text(self, prompt: str) -> str:
         raise AssertionError(f"不应调用 outcome LLM：{prompt}")
 
+    async def generate_json_object(self, prompt: str) -> dict[str, object]:
+        raise AssertionError(f"不应调用 outcome LLM：{prompt}")
+
 
 def _run_state(
     *,

@@ -8,7 +8,6 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.common.utils.json_utils import strip_json_code_fence
 from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_executor_llm_payloads import (
     _LLMResearchAssessmentAndGapsPayload,
@@ -47,7 +46,7 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
         """Run LLD 4.4: assess state, identify gaps, and select the next evidence need."""
 
         prompt = self._build_research_assessment_prompt(stage_input, run_state)
-        llm_output = await self._llm_client.generate_text(prompt)
+        llm_output = await self._llm_client.generate_json_object(prompt)
         payload = self._parse_research_assessment_output(llm_output)
         evidence_coverage_map = self._coverage_tracker.validated_map(
             stage_input,
@@ -363,18 +362,12 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
 
     def _parse_research_assessment_output(
         self,
-        llm_output: str,
+        llm_output: dict[str, Any],
     ) -> _LLMResearchAssessmentAndGapsPayload:
         """Parse and validate the LLM assessment JSON."""
 
-        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
         try:
-            raw_payload = json.loads(json_text)
-        except json.JSONDecodeError as exc:
-            raise ValueError("Research assessment LLM response was not valid JSON.") from exc
-
-        try:
-            return _LLMResearchAssessmentAndGapsPayload.model_validate(raw_payload)
+            return _LLMResearchAssessmentAndGapsPayload.model_validate(llm_output)
         except ValidationError as exc:
             raise ValueError(
                 "Research assessment LLM response did not match the required schema."

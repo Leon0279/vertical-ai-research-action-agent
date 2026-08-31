@@ -8,7 +8,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.common.utils.json_utils import strip_json_code_fence
 from app.common.utils.text import strip_or_none, unique_non_empty_strings
 from app.domain.models import Citation, ContextItem, ExecutionContext, SourceReference
 from app.services.output.contracts.conclusion_generator_protocol import (
@@ -58,7 +57,7 @@ Generate user-facing conclusions from the accumulated execution context."""
             return
 
         prompt = self._build_conclusion_prompt(context)
-        llm_output = await self._llm_client.generate_text(prompt)
+        llm_output = await self._llm_client.generate_json_object(prompt)
         payload = self._parse_conclusion_output(llm_output)
         self._apply_conclusion_payload(context, payload)
 
@@ -298,17 +297,14 @@ Generate user-facing conclusions from the accumulated execution context."""
             return source_reference.citation_text
         return source_reference.title
 
-    def _parse_conclusion_output(self, llm_output: str) -> _LLMConclusionPayload:
+    def _parse_conclusion_output(
+        self,
+        llm_output: dict[str, Any],
+    ) -> _LLMConclusionPayload:
         """Parse and validate the LLM conclusion JSON."""
 
-        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
         try:
-            raw_payload = json.loads(json_text)
-        except json.JSONDecodeError as exc:
-            raise ValueError("Conclusion LLM response was not valid JSON.") from exc
-
-        try:
-            return _LLMConclusionPayload.model_validate(raw_payload)
+            return _LLMConclusionPayload.model_validate(llm_output)
         except ValidationError as exc:
             raise ValueError(
                 "Conclusion LLM response did not match the required schema."

@@ -9,7 +9,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.common.utils.json_utils import strip_json_code_fence
 from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     EvidenceProcessingSummary,
@@ -332,7 +331,7 @@ Convert candidate materials into current-round processed evidence units."""
             return [self._fallback_evidence_unit(request, material)]
 
         prompt = self._build_prompt(request, material)
-        llm_output = await self._llm_client.generate_text(prompt)
+        llm_output = await self._llm_client.generate_json_object(prompt)
         payload = self._parse_llm_output(llm_output)
         if payload.decision == "drop":
             return []
@@ -481,15 +480,12 @@ Convert candidate materials into current-round processed evidence units."""
             return str(value)
         return value
 
-    def _parse_llm_output(self, llm_output: str) -> _LLMStructuringPayload:
-        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
+    def _parse_llm_output(
+        self,
+        llm_output: dict[str, Any],
+    ) -> _LLMStructuringPayload:
         try:
-            raw_payload = json.loads(json_text)
-        except json.JSONDecodeError as exc:
-            raise ValueError("LLM response was not valid JSON.") from exc
-
-        try:
-            payload = _LLMStructuringPayload.model_validate(raw_payload)
+            payload = _LLMStructuringPayload.model_validate(llm_output)
         except ValidationError as exc:
             raise ValueError("LLM response did not match evidence schema.") from exc
 

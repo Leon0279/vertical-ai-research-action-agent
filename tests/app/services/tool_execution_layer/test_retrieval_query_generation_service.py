@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import json
+from typing import Any
 
 from app.domain.models import EvidenceShape, RetrievalQueryGenerationRequest
 from app.services.tool_execution_layer.retrieval_query_generation_service import (
@@ -20,6 +22,16 @@ class FakeLLMClient:
         if isinstance(self.response, Exception):
             raise self.response
         return self.response
+
+    async def generate_json_object(self, prompt: str) -> dict[str, Any]:
+        response = await self.generate_text(prompt)
+        try:
+            payload = json.loads(response)
+        except json.JSONDecodeError as exc:
+            raise ValueError("LLM response was not valid JSON.") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("LLM response must be a JSON object.")
+        return payload
 
 
 def _generate(
@@ -196,19 +208,19 @@ def test_missing_required_llm_field_returns_failed() -> None:
     assert result.error_info == "LLM response did not match the query generation schema."
 
 
-def test_markdown_code_fence_json_is_parsed() -> None:
+def test_json_object_from_adapter_is_parsed() -> None:
     result, _ = _generate(
         RetrievalQueryGenerationRequest(
             selected_family="web_search",
             target_problem="Find current model release status",
         ),
-        """```json
+        """
         {
           "generated_query": "current model release status",
           "query_focus": "latest_status",
           "preserved_terms": ["model release"]
         }
-        ```""",
+        """,
     )
 
     assert result.generation_status == "succeeded"

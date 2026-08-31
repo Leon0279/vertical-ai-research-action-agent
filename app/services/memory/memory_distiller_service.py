@@ -8,7 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.common.utils.json_utils import is_json_serializable, strip_json_code_fence
+from app.common.utils.json_utils import is_json_serializable
 from app.domain.enums.memory_type import MemoryType
 from app.domain.models import ExecutionContext, MemoryCandidate, SourceReference
 from app.services._confidence import confidence_to_score
@@ -146,10 +146,8 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         """通过一次无状态 LLM 调用提取并初步分类 candidate drafts。"""
 
         prompt = self._build_distillation_prompt(inputs)
-        response = await self._llm_client.generate_text(prompt)
-        payload = _LLMMemoryDistillationPayload.model_validate(
-            json.loads(strip_json_code_fence(response, json_only=True))
-        )
+        response = await self._llm_client.generate_json_object(prompt)
+        payload = _LLMMemoryDistillationPayload.model_validate(response)
         return payload.candidates
 
     def _screen_candidates(

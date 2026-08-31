@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from pydantic import ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.common.utils.json_utils import strip_json_code_fence
 from app.domain.enums import AcquisitionStatus
 from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_executor_llm_payloads import (
@@ -66,7 +66,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             return outcome
 
         prompt = self._build_iteration_outcome_prompt(stage_input, run_state)
-        llm_output = await self._llm_client.generate_text(prompt)
+        llm_output = await self._llm_client.generate_json_object(prompt)
         payload = self._parse_iteration_outcome_output(llm_output)
         final_outcome, final_rationale, guardrail_applied = (
             self._apply_iteration_outcome_guardrails(
@@ -492,20 +492,12 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
 
     def _parse_iteration_outcome_output(
         self,
-        llm_output: str,
+        llm_output: dict[str, Any],
     ) -> _LLMIterationOutcomePayload:
         """Parse and validate the LLM iteration-outcome JSON."""
 
-        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
         try:
-            raw_payload = json.loads(json_text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                "Iteration outcome LLM response was not valid JSON."
-            ) from exc
-
-        try:
-            return _LLMIterationOutcomePayload.model_validate(raw_payload)
+            return _LLMIterationOutcomePayload.model_validate(llm_output)
         except ValidationError as exc:
             raise ValueError(
                 "Iteration outcome LLM response did not match the required schema."

@@ -1,5 +1,7 @@
 """No-op LLM adapter used in Phase 1."""
 
+from typing import Any
+
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 
 
@@ -10,3 +12,7 @@ Stub client that avoids real external calls."""
 
     async def generate_text(self, prompt: str) -> str:
         return f"[stub-llm] {prompt[:80]}"
+
+    async def generate_json_object(self, prompt: str) -> dict[str, Any]:
+        _ = prompt
+        return {}

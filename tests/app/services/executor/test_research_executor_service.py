@@ -184,6 +184,16 @@ class _FakeLLMClient:
             )
         return self._default_assessment_response_for_prompt(prompt)
 
+    async def generate_json_object(self, prompt: str) -> dict[str, Any]:
+        response = await self.generate_text(prompt)
+        try:
+            payload = json.loads(response)
+        except json.JSONDecodeError as exc:
+            raise ValueError("LLM response was not valid JSON.") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("LLM response must be a JSON object.")
+        return payload
+
     def _default_assessment_response_for_prompt(self, prompt: str) -> str:
         """Build a valid default snapshot for the target catalog included in a prompt."""
 
@@ -901,6 +911,7 @@ def test_research_executor_selects_external_acquisition_for_fresh_required_need(
     assert action_request.action_mode == "external_acquisition"
     assert action_request.fallback_policy == "fallback_to_broader_search"
     assert action_request.allowed_source_families == [FamilyName.DOCS_SEARCH]
+    assert action_request.preferred_source_families == []
     assert action_request.desired_evidence_kind == "fresh_status_evidence"
     assert action_request.freshness_requirement == "fresh_required"
     assert action_request.success_hint == "补充最新状态 evidence。"
@@ -1304,7 +1315,7 @@ def test_research_executor_reports_budget_exhaustion_when_loop_wants_to_continue
     )
 
 
-def test_research_executor_accepts_fenced_json_iteration_outcome_output() -> None:
+def test_research_executor_accepts_json_object_iteration_outcome_output() -> None:
     payload = json.dumps(
         _valid_outcome_payload(
             proposed_iteration_outcome="stop",
@@ -1313,7 +1324,7 @@ def test_research_executor_accepts_fenced_json_iteration_outcome_output() -> Non
         ensure_ascii=False,
     )
     service = _StateCapturingResearchExecutorService(
-        llm_client=_FakeLLMClient(outcome_responses=[f"```json\n{payload}\n```"]),
+        llm_client=_FakeLLMClient(outcome_responses=[payload]),
         tool_execution_layer_service=_FakeToolExecutionLayerService(
             result=ToolExecutionLayerResult(
                 execution_status="completed",
@@ -1349,7 +1360,7 @@ def test_research_executor_raises_when_iteration_outcome_output_is_not_json() ->
         evidence_processing_service=_successful_evidence_service(),
     )
 
-    with pytest.raises(ValueError, match="Iteration outcome.*not valid JSON"):
+    with pytest.raises(ValueError, match="not valid JSON"):
         asyncio.run(
             service.execute(
                 ResearchStageInput(
@@ -1558,7 +1569,7 @@ def test_intermediate_findings_prompt_contains_required_context_and_boundaries()
     assert "supporting_context" not in findings_prompt
 
 
-def test_research_executor_accepts_fenced_json_intermediate_findings_output() -> None:
+def test_research_executor_accepts_json_object_intermediate_findings_output() -> None:
     payload = json.dumps(
         _valid_findings_payload(
             intermediate_findings=["fenced finding"],
@@ -1567,7 +1578,7 @@ def test_research_executor_accepts_fenced_json_intermediate_findings_output() ->
         ensure_ascii=False,
     )
     service = _StateCapturingResearchExecutorService(
-        llm_client=_FakeLLMClient(findings_responses=[f"```json\n{payload}\n```"])
+        llm_client=_FakeLLMClient(findings_responses=[payload])
     )
 
     asyncio.run(
@@ -1585,7 +1596,7 @@ def test_research_executor_raises_when_intermediate_findings_output_is_not_json(
         llm_client=_FakeLLMClient(findings_responses=["not json"])
     )
 
-    with pytest.raises(ValueError, match="Intermediate findings.*not valid JSON"):
+    with pytest.raises(ValueError, match="not valid JSON"):
         asyncio.run(
             service.execute(
                 ResearchStageInput(original_query="This findings step should fail.")
@@ -1654,19 +1665,19 @@ def test_research_executor_allows_blocking_external_acquisition_under_latency_pr
     assert action_iteration.action_request is not None
 
 
-def test_research_executor_accepts_fenced_json_assessment_output() -> None:
-    payload = json.dumps(_valid_assessment_payload(gap_summary="fenced gap"), ensure_ascii=False)
+def test_research_executor_accepts_json_object_assessment_output() -> None:
+    payload = json.dumps(_valid_assessment_payload(gap_summary="structured gap"), ensure_ascii=False)
     service = _StateCapturingResearchExecutorService(
-        llm_client=_FakeLLMClient(responses=[f"```json\n{payload}\n```"])
+        llm_client=_FakeLLMClient(responses=[payload])
     )
 
     asyncio.run(
         service.execute(
-            ResearchStageInput(original_query="Assess fenced JSON.")
+            ResearchStageInput(original_query="Assess structured JSON.")
         )
     )
 
-    assert service.captured_states[0].identified_gaps[0].gap_summary == "fenced gap"
+    assert service.captured_states[0].identified_gaps[0].gap_summary == "structured gap"
 
 
 def test_research_executor_raises_when_llm_output_is_not_json() -> None:

@@ -31,6 +31,12 @@ class _FakeResearchExecutor:
         return self.result
 
 
+class _FailingResearchExecutor:
+    async def execute(self, stage_input: ResearchStageInput) -> ResearchStageResult:
+        del stage_input
+        raise RuntimeError("provider response did not match the expected schema")
+
+
 class _FakeZhipuLLMClient:
     async def generate_text(self, prompt: str) -> str:
         if "最终结论生成调用" in prompt:
@@ -117,6 +123,13 @@ class _FakeZhipuLLMClient:
                 for target in prompt_input["evidence_state"]["coverage_targets"]
             ]
         return json.dumps(payload, ensure_ascii=False)
+
+    async def generate_json_object(self, prompt: str) -> dict[str, object]:
+        response = await self.generate_text(prompt)
+        payload = json.loads(response)
+        if not isinstance(payload, dict):
+            raise ValueError("LLM response must be a JSON object.")
+        return payload
 
 
 class _FakeProviderClient:
@@ -386,6 +399,41 @@ def test_empty_research_stage_result_does_not_clear_existing_state() -> None:
     assert context.running_state.evidence_summary == "Keep this summary."
     assert context.running_state.intermediate_findings == ["Keep this finding."]
     assert context.running_state.open_questions == ["Keep this question."]
+
+
+def test_research_stage_failure_becomes_a_structured_failed_result() -> None:
+    context = ExecutionContext(
+        running_state=RunningState(original_query="Handle a research runtime failure."),
+        runtime_context=RuntimeContext(
+            request_id="trace-research-failure",
+            user_id="user-1",
+            session_id="session-1",
+        ),
+    )
+    pipeline = ResearchActionPipeline(
+        dependencies=PipelineDependencies(
+            request_intake=object(),
+            task_interpreter=object(),
+            workflow_router=object(),
+            decomposition_planner=object(),
+            context_memory_loader=object(),
+            research_executor=_FailingResearchExecutor(),
+            conclusion_generator=object(),
+            memory_distiller=object(),
+            memory_persistence=object(),
+            session_continuity_manager=object(),
+            response_assembler=object(),
+        )
+    )
+
+    asyncio.run(pipeline._research(context))
+
+    assert context.runtime_context.stage_history == ["research"]
+    assert context.running_state.research_status == "failed"
+    assert context.running_state.research_iteration_count == 0
+    assert context.running_state.open_questions == [
+        "研究阶段在生成或处理证据时遇到运行错误，未能形成可靠材料。"
+    ]
 
 
 def test_research_stage_result_deduplicates_typed_source_ids() -> None:

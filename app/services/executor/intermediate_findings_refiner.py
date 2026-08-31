@@ -8,7 +8,6 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.common.utils.json_utils import strip_json_code_fence
 from app.common.utils.text import unique_non_empty_strings
 from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_executor_llm_payloads import (
@@ -36,7 +35,7 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
         """Step 7. Produce or refine intermediate findings from the working state."""
 
         prompt = self._build_intermediate_findings_prompt(stage_input, run_state)
-        llm_output = await self._llm_client.generate_text(prompt)
+        llm_output = await self._llm_client.generate_json_object(prompt)
         payload = self._parse_intermediate_findings_output(llm_output)
 
         run_state.intermediate_findings = unique_non_empty_strings(
@@ -226,20 +225,12 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
 
     def _parse_intermediate_findings_output(
         self,
-        llm_output: str,
+        llm_output: dict[str, Any],
     ) -> _LLMIntermediateFindingsPayload:
         """Parse and validate the LLM intermediate-findings JSON."""
 
-        json_text = strip_json_code_fence(llm_output, allow_unterminated=True)
         try:
-            raw_payload = json.loads(json_text)
-        except json.JSONDecodeError as exc:
-            raise ValueError(
-                "Intermediate findings LLM response was not valid JSON."
-            ) from exc
-
-        try:
-            return _LLMIntermediateFindingsPayload.model_validate(raw_payload)
+            return _LLMIntermediateFindingsPayload.model_validate(llm_output)
         except ValidationError as exc:
             raise ValueError(
                 "Intermediate findings LLM response did not match the required schema."

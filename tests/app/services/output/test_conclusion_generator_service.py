@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from typing import Any
 
 import pytest
 
@@ -24,6 +25,16 @@ class _FakeLLMClient:
     async def generate_text(self, prompt: str) -> str:
         self.prompts.append(prompt)
         return self.response
+
+    async def generate_json_object(self, prompt: str) -> dict[str, Any]:
+        response = await self.generate_text(prompt)
+        try:
+            payload = json.loads(response)
+        except json.JSONDecodeError as exc:
+            raise ValueError("LLM response was not valid JSON.") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("LLM response must be a JSON object.")
+        return payload
 
 
 def _valid_payload(**overrides) -> dict:
@@ -110,12 +121,12 @@ def test_conclusion_generator_writes_llm_conclusion_to_context() -> None:
     assert context.running_state.caveats == ["当前证据仍缺少线上流量验证。"]
 
 
-def test_conclusion_generator_accepts_fenced_json() -> None:
+def test_conclusion_generator_accepts_json_object_from_adapter() -> None:
     payload = json.dumps(
         _valid_payload(final_summary="fenced summary"),
         ensure_ascii=False,
     )
-    llm = _FakeLLMClient(f"```json\n{payload}\n```")
+    llm = _FakeLLMClient(payload)
     context = _context()
 
     asyncio.run(ConclusionGeneratorService(llm_client=llm).generate(context))

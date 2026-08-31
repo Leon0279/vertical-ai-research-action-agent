@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from typing import Any
 
 import pytest
 
@@ -20,6 +21,16 @@ class _FakeLLMClient:
         if self.error:
             raise self.error
         return self.response
+
+    async def generate_json_object(self, prompt: str) -> dict[str, Any]:
+        response = await self.generate_text(prompt)
+        try:
+            payload = json.loads(response)
+        except json.JSONDecodeError as exc:
+            raise ValueError("LLM response was not valid JSON.") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("LLM response must be a JSON object.")
+        return payload
 
 
 def _context(
@@ -102,10 +113,8 @@ def _draft(
     }
 
 
-def _llm(response_candidates: list[dict], *, fenced: bool = False) -> _FakeLLMClient:
+def _llm(response_candidates: list[dict]) -> _FakeLLMClient:
     response = json.dumps({"candidates": response_candidates}, ensure_ascii=False)
-    if fenced:
-        response = f"```json\n{response}\n```"
     return _FakeLLMClient(response=response)
 
 
@@ -143,8 +152,8 @@ def test_distillation_prompt_is_stateless_and_contains_grounding_inputs() -> Non
     assert "原始工具输出" in prompt
 
 
-def test_distiller_accepts_fenced_json() -> None:
-    llm = _llm([_draft()], fenced=True)
+def test_distiller_accepts_json_object_from_adapter() -> None:
+    llm = _llm([_draft()])
 
     candidates = asyncio.run(MemoryDistillerService(llm).distill(_context()))
 

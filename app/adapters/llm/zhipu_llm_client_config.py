@@ -18,9 +18,10 @@ Typed runtime settings for Zhipu chat completions."""
     api_key: str = Field(description="必填字段。调用智谱 LLM API 所需的认证密钥，不应出现在日志、prompt 或最终输出中。")
     base_url: str = Field(default="https://open.bigmodel.cn/api/paas/v4", description="智谱 chat completion API 的基础地址。")
     model: str = Field(default="glm-5.1", description="当前 LLM adapter 调用的模型名称。")
-    timeout_seconds: float = Field(default=30.0, gt=0, description="单次 LLM HTTP 调用的超时时间，单位秒。")
-    temperature: float = Field(default=1.0, ge=0, description="LLM 生成随机性参数；值越高，输出通常越发散。")
-    max_tokens: int = Field(default=1024, gt=0, description="单次 LLM 响应允许生成的最大 token 数。")
+    timeout_seconds: float = Field(default=60.0, gt=0, description="单次 LLM HTTP 调用的超时时间，单位秒。")
+    temperature: float = Field(default=0.2, ge=0, description="LLM 生成随机性参数；值越高，输出通常越发散。")
+    max_tokens: int = Field(default=4096, gt=0, description="单次 LLM 响应允许生成的最大 token 数。")
+    max_retries: int = Field(default=1, ge=0, description="单次 LLM 调用遇到可恢复错误时允许的最大重试次数。")
 
     @classmethod
     def from_env(cls) -> "ZhipuLLMClientConfig":
@@ -54,4 +55,10 @@ Typed runtime settings for Zhipu chat completions."""
                 os.getenv("ZHIPU_TEMPERATURE", str(cls.model_fields["temperature"].default))
             ),
             max_tokens=int(os.getenv("ZHIPU_MAX_TOKENS", str(cls.model_fields["max_tokens"].default))),
+            max_retries=int(
+                os.getenv(
+                    "ZHIPU_MAX_RETRIES",
+                    str(cls.model_fields["max_retries"].default),
+                )
+            ),
         )

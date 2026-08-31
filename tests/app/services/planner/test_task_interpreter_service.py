@@ -1,6 +1,8 @@
 """Task interpreter service tests."""
 
 import asyncio
+import json
+from typing import Any
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.domain.enums.task_type import TaskType
@@ -21,6 +23,16 @@ class FakeLLMClient(LLMClientProtocol):
         if self.error:
             raise self.error
         return self.response
+
+    async def generate_json_object(self, prompt: str) -> dict[str, Any]:
+        response = await self.generate_text(prompt)
+        try:
+            payload = json.loads(response)
+        except json.JSONDecodeError as exc:
+            raise ValueError("LLM response was not valid JSON.") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("LLM response must be a JSON object.")
+        return payload
 
 
 def _context(query: str) -> ExecutionContext:
@@ -82,10 +94,9 @@ def test_task_interpreter_calls_llm_and_maps_valid_json() -> None:
     )
 
 
-def test_task_interpreter_accepts_fenced_json() -> None:
+def test_task_interpreter_accepts_json_object_from_adapter() -> None:
     llm_client = FakeLLMClient(
         """
-        ```json
         {
           "user_goal": "Plan the agent rollout.",
           "task_type": "action-planning",
@@ -93,7 +104,6 @@ def test_task_interpreter_accepts_fenced_json() -> None:
           "constraints": [],
           "project_context_summary": null
         }
-        ```
         """
     )
     context = _context("Plan the agent rollout.")

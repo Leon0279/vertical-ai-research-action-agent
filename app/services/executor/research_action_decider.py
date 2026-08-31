@@ -261,7 +261,10 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
             desired_evidence_kind=next_evidence_need.desired_evidence_kind,
             freshness_requirement=next_evidence_need.freshness_requirement,
             allowed_source_families=allowed_source_families,
-            preferred_source_families=list(allowed_source_families),
+            preferred_source_families=self._preferred_source_families_for_action(
+                action_mode,
+                allowed_source_families,
+            ),
             blocked_source_families=blocked_source_families,
             scope_restrictions=list(stage_input.scope_restrictions),
             success_hint=(
@@ -273,6 +276,17 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
                 else "fallback_to_broader_search"
             ),
         )
+
+    @staticmethod
+    def _preferred_source_families_for_action(
+        action_mode: ResearchActionMode,
+        allowed_source_families: list[FamilyName],
+    ) -> list[FamilyName]:
+        """Preserve an explicit memory choice without overriding external ranking."""
+
+        if action_mode == _MEMORY_ACTION_MODE:
+            return list(allowed_source_families)
+        return []
 
     def _allowed_source_families_for_action(
         self,
