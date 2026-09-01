@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal
 
+from app.common.observability import retrieval_query_log_fields
+from app.common.utils.text import unique_non_empty_strings
 from app.domain.enums import AcquisitionStatus, FamilyName, RetrievalResultUtility
 from app.domain.models import (
     BaseFamilyExecutionResult,
@@ -25,7 +28,6 @@ from app.domain.models.retrieval import (
     RetrievalSourceSummary,
     RetrievalTrace,
 )
-from app.common.utils.text import unique_non_empty_strings
 from app.services.families.contracts.docs_search_family_service_protocol import (
     DocsSearchFamilyServiceProtocol,
 )
@@ -59,6 +61,7 @@ from app.services.tool_execution_layer.models.tool_execution_layer_run_state imp
 )
 
 _ExecutionDirective = Literal["continue", "complete"]
+logger = logging.getLogger(__name__)
 
 
 class ToolExecutionLayerService(ToolExecutionLayerServiceProtocol):
@@ -112,11 +115,13 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
                 available_families=effective_available_families,
             )
             if attempt_outcome.error_info is not None:
-                return self._failed_from_state(
+                result = self._failed_from_state(
                     request=normalized_request,
                     state=state,
                     error_info=attempt_outcome.error_info,
                 )
+                self._log_request_result(result)
+                return result
 
             self._record_attempt(state, attempt_outcome)
             directive = self._apply_evaluation_result(
@@ -126,7 +131,12 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             )
             if directive == "continue":
                 continue
-            return self._completed_from_state(request=normalized_request, state=state)
+            result = self._completed_from_state(
+                request=normalized_request,
+                state=state,
+            )
+            self._log_request_result(result)
+            return result
 
     def _create_execution_state(
         self,
@@ -307,6 +317,48 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             fallback_applied=state.fallback_applied,
         )
         state.attempts.append(attempt)
+        logger.info(
+            "Retrieval attempt completed.",
+            extra={
+                "event": "retrieval_attempt_completed",
+                "attempt_index": len(state.attempts),
+                "selected_family": attempt["selected_family"],
+                "selected_tool": attempt["selected_tool"],
+                **retrieval_query_log_fields(attempt["generated_query"]),
+                "acquisition_status": attempt["acquisition_status"],
+                "evaluation_status": attempt["evaluation_status"],
+                "recovery_action": attempt["recovery_action"],
+                "next_step_hint": attempt["next_step_hint"],
+                "retry_count": attempt["retry_count"],
+                "fallback_applied": attempt["fallback_applied"],
+            },
+        )
+
+    def _log_request_result(self, result: ToolExecutionLayerResult) -> None:
+        """Write one bounded TEL request summary without material or prompt data."""
+
+        summary = result.execution_summary
+        trace = result.retrieval_trace
+        failed = result.execution_status == "failed"
+        logger.log(
+            logging.WARNING if failed else logging.INFO,
+            "Retrieval request failed." if failed else "Retrieval request completed.",
+            extra={
+                "event": (
+                    "retrieval_request_failed"
+                    if failed
+                    else "retrieval_request_completed"
+                ),
+                "execution_status": result.execution_status,
+                "acquisition_status": result.acquisition_status,
+                "attempt_count": len(trace.attempts),
+                "retry_count": summary.retry_count,
+                "fallback_applied": summary.fallback_applied,
+                "recovery_attempt_count": summary.recovery_attempt_count,
+                "recovery_exhausted_reason": summary.recovery_exhausted_reason,
+                "error_info": result.error_info,
+            },
+        )
 
     def _apply_evaluation_result(
         self,

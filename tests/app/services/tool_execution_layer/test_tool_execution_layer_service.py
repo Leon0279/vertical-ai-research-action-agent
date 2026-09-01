@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from app.domain.enums import (
@@ -402,7 +403,13 @@ def test_memory_selected_without_owner_user_id_returns_failed() -> None:
     assert memory.requests == []
 
 
-def test_retry_same_tool_reuses_same_family_query_and_original_preferred_tool() -> None:
+def test_retry_same_tool_reuses_same_family_query_and_original_preferred_tool(
+    caplog,
+) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.tool_execution_layer.tool_execution_layer_service",
+    )
     selector = FakeFamilySelectionService([_selection_result("docs_search")])
     query = FakeQueryGenerationService([
         _query_result("docs_search", "original query"),
@@ -441,9 +448,25 @@ def test_retry_same_tool_reuses_same_family_query_and_original_preferred_tool() 
     assert docs.requests[1].query_text == "original query"
     assert docs.requests[0].preferred_tool == "executor_hint"
     assert docs.requests[1].preferred_tool == "executor_hint"
+    attempt_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "retrieval_attempt_completed"
+    ]
+    assert [record.retry_count for record in attempt_records] == [0, 1]
+    assert [record.generated_query for record in attempt_records] == [
+        "original query",
+        "original query",
+    ]
 
 
-def test_broader_fallback_blocks_current_family_and_executes_new_family() -> None:
+def test_broader_fallback_blocks_current_family_and_executes_new_family(
+    caplog,
+) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.tool_execution_layer.tool_execution_layer_service",
+    )
     selector = FakeFamilySelectionService(
         [_selection_result("docs_search"), _selection_result("web_search")]
     )
@@ -485,6 +508,29 @@ def test_broader_fallback_blocks_current_family_and_executes_new_family() -> Non
     assert selector.requests[1].blocked_source_families == ["docs_search"]
     assert docs.requests[0].query_text == "docs query"
     assert web.requests[0].query_text == "web query"
+    attempt_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "retrieval_attempt_completed"
+    ]
+    assert [record.selected_family for record in attempt_records] == [
+        FamilyName.DOCS_SEARCH,
+        FamilyName.WEB_SEARCH,
+    ]
+    assert [record.generated_query for record in attempt_records] == [
+        "docs query",
+        "web query",
+    ]
+    assert [record.fallback_applied for record in attempt_records] == [False, True]
+    assert all(len(record.query_fingerprint) == 16 for record in attempt_records)
+    summary_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "retrieval_request_completed"
+    )
+    assert summary_record.attempt_count == 2
+    assert summary_record.fallback_applied is True
+    assert summary_record.recovery_attempt_count == 1
 
 
 def test_same_family_fallback_is_recorded_as_unavailable() -> None:
@@ -510,6 +556,74 @@ def test_same_family_fallback_is_recorded_as_unavailable() -> None:
     )
 
 
+def test_second_broader_fallback_is_logged_as_exhausted(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.tool_execution_layer.tool_execution_layer_service",
+    )
+    selector = FakeFamilySelectionService(
+        [_selection_result("docs_search"), _selection_result("web_search")]
+    )
+    query = FakeQueryGenerationService(
+        [
+            _query_result("docs_search", "docs query"),
+            _query_result("web_search", "web query"),
+        ]
+    )
+    evaluator = FakeCompletionEvaluationService(
+        [
+            _evaluation_result("fallback", "fallback_to_broader_search"),
+            _evaluation_result("fallback", "fallback_to_broader_search"),
+        ]
+    )
+    docs = FakeFamilyService(
+        selected_family="docs_search",
+        results=[
+            _family_result(
+                "docs_search",
+                acquisition_status=AcquisitionStatus.NO_RESULT,
+            )
+        ],
+    )
+    web = FakeFamilyService(
+        selected_family="web_search",
+        results=[
+            _family_result(
+                "web_search",
+                acquisition_status=AcquisitionStatus.NO_RESULT,
+            )
+        ],
+    )
+    service = _service(
+        selector=selector,
+        query=query,
+        evaluator=evaluator,
+        docs=docs,
+        web=web,
+    )
+
+    result = _execute(
+        service,
+        ToolExecutionLayerRequest(
+            target_problem="Find public evidence",
+            fallback_policy="fallback_to_broader_search",
+        ),
+    )
+
+    assert result.execution_status == "completed"
+    assert result.acquisition_status == AcquisitionStatus.NO_RESULT
+    assert result.execution_summary.recovery_exhausted_reason == (
+        "fallback_already_applied"
+    )
+    summary_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "retrieval_request_completed"
+    )
+    assert summary_record.attempt_count == 2
+    assert summary_record.recovery_exhausted_reason == "fallback_already_applied"
+
+
 def test_family_exception_is_evaluated_as_tool_error() -> None:
     selector = FakeFamilySelectionService([_selection_result("docs_search")])
     evaluator = FakeCompletionEvaluationService(
@@ -532,7 +646,11 @@ def test_family_exception_is_evaluated_as_tool_error() -> None:
     assert result.retrieval_trace["family_exception"] == "family boom"
 
 
-def test_evaluation_failed_returns_failed_with_family_result() -> None:
+def test_evaluation_failed_returns_failed_with_family_result(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.tool_execution_layer.tool_execution_layer_service",
+    )
     selector = FakeFamilySelectionService([_selection_result("docs_search")])
     evaluator = FakeCompletionEvaluationService(
         [_evaluation_result("stop", "none", status="failed")]
@@ -548,6 +666,13 @@ def test_evaluation_failed_returns_failed_with_family_result() -> None:
     assert result.execution_status == "failed"
     assert result.error_info == "evaluation failed"
     assert result.normalized_items == [{"item_id": "1"}]
+    failed_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "retrieval_request_failed"
+    )
+    assert failed_record.execution_status == "failed"
+    assert failed_record.error_info == "evaluation failed"
 
 
 def test_family_request_mapping_for_all_families() -> None:

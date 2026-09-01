@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 from typing import TypeVar
 
+from app.common.observability import (
+    bind_trace_id,
+    exception_diagnostic_fields,
+    reset_trace_id,
+)
 from app.domain.models import (
     ExecutionContext,
     MemoryCandidate,
@@ -37,15 +43,53 @@ Fixed outer workflow with stage-by-stage execution."""
         Returns:
             StructuredOutput: 经请求接入、规划、研究、结论、记忆写回和输出组装后得到的用户可读结果。
         """
-        context = await self._request_intake(request)
-        await self._task_interpretation(context)
-        await self._context_memory_load(context)
-        await self._workflow_routing(context)
-        await self._planning(context)
-        await self._research(context)
-        await self._conclusion(context)
-        await self._memory_writeback(context)
-        return await self._output(context)
+        started_at = perf_counter()
+        context: ExecutionContext | None = None
+        trace_token = None
+        try:
+            context = await self._request_intake(request)
+            trace_token = bind_trace_id(context.runtime_context.request_id)
+            logger.info(
+                "Agent run started.",
+                extra={"event": "agent_run_started"},
+            )
+            await self._task_interpretation(context)
+            await self._context_memory_load(context)
+            await self._workflow_routing(context)
+            await self._planning(context)
+            await self._research(context)
+            await self._conclusion(context)
+            await self._memory_writeback(context)
+            output = await self._output(context)
+            logger.info(
+                "Agent run completed.",
+                extra={
+                    "event": "agent_run_completed",
+                    "duration_ms": _elapsed_ms(started_at),
+                    "research_status": context.running_state.research_status,
+                    "research_iteration_count": (
+                        context.running_state.research_iteration_count
+                    ),
+                    "citation_count": len(output.citations),
+                },
+            )
+            return output
+        except Exception as error:
+            extra = {
+                "event": "agent_run_failed",
+                "duration_ms": _elapsed_ms(started_at),
+                **exception_diagnostic_fields(error),
+            }
+            if context is not None:
+                extra["research_status"] = context.running_state.research_status
+                extra["research_iteration_count"] = (
+                    context.running_state.research_iteration_count
+                )
+            logger.exception("Agent run failed.", extra=extra)
+            raise
+        finally:
+            if trace_token is not None:
+                reset_trace_id(trace_token)
 
     async def _request_intake(self, request: RequestContext) -> ExecutionContext:
         """Initialize execution context from the incoming request."""
@@ -83,10 +127,14 @@ Fixed outer workflow with stage-by-stage execution."""
         stage_input = self._build_research_stage_input(context)
         try:
             stage_result = await self._dependencies.research_executor.execute(stage_input)
-        except Exception:
+        except Exception as error:
             logger.exception(
                 "Research stage execution failed.",
-                extra={"trace_id": context.runtime_context.request_id},
+                extra={
+                    "event": "research_stage_failed",
+                    "trace_id": context.runtime_context.request_id,
+                    **exception_diagnostic_fields(error),
+                },
             )
             stage_result = ResearchStageResult(
                 research_status="failed",
@@ -220,3 +268,9 @@ def build_default_pipeline() -> ResearchActionPipeline:
     """Construct pipeline with all default stub dependencies."""
 
     return ResearchActionPipeline(dependencies=build_default_dependencies())
+
+
+def _elapsed_ms(started_at: float) -> int:
+    """Return a non-negative elapsed duration for structured logs."""
+
+    return max(0, round((perf_counter() - started_at) * 1000))

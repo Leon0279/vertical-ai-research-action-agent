@@ -2,7 +2,12 @@
 
 import asyncio
 import json
+import logging
 
+import pytest
+
+from app.adapters.llm.zhipu_llm_client_error import ZhipuLLMClientError
+from app.common.observability import current_trace_id
 from app.domain.enums import FamilyName
 from app.domain.models import (
     ContextItem,
@@ -19,6 +24,7 @@ from app.orchestration import pipeline_dependencies
 from app.orchestration.pipeline_dependencies import PipelineDependencies
 from app.orchestration.research_action_pipeline import build_default_pipeline
 from app.orchestration.research_action_pipeline import ResearchActionPipeline
+from app.services.intake.request_intake_service import RequestIntakeService
 
 
 class _FakeResearchExecutor:
@@ -35,6 +41,18 @@ class _FailingResearchExecutor:
     async def execute(self, stage_input: ResearchStageInput) -> ResearchStageResult:
         del stage_input
         raise RuntimeError("provider response did not match the expected schema")
+
+
+class _FailingTaskInterpreter:
+    async def interpret(self, context: ExecutionContext) -> None:
+        del context
+        raise ZhipuLLMClientError(
+            "Provider unavailable.",
+            status_code=503,
+            provider_code="service_unavailable",
+            request_id="provider-request-1",
+            finish_reason="error",
+        )
 
 
 class _FakeZhipuLLMClient:
@@ -162,7 +180,11 @@ def _patch_default_provider_clients(monkeypatch) -> None:
         monkeypatch.setattr(pipeline_dependencies, client_name, _FakeProviderClient)
 
 
-def test_pipeline_stage_order(monkeypatch) -> None:
+def test_pipeline_stage_order(monkeypatch, caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.orchestration.research_action_pipeline",
+    )
     _patch_default_provider_clients(monkeypatch)
     pipeline = build_default_pipeline()
     output = asyncio.run(
@@ -186,6 +208,66 @@ def test_pipeline_stage_order(monkeypatch) -> None:
         "memory_writeback",
         "output",
     ]
+    lifecycle_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        in {"agent_run_started", "agent_run_completed"}
+    ]
+    assert [record.event for record in lifecycle_records] == [
+        "agent_run_started",
+        "agent_run_completed",
+    ]
+    completed_record = lifecycle_records[-1]
+    assert completed_record.duration_ms >= 0
+    assert completed_record.research_status == "no_result"
+    assert completed_record.research_iteration_count == 1
+    assert completed_record.citation_count == 0
+    assert current_trace_id() is None
+
+
+def test_pipeline_failure_logs_provider_diagnostics_and_clears_trace(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.orchestration.research_action_pipeline",
+    )
+    pipeline = ResearchActionPipeline(
+        dependencies=PipelineDependencies(
+            request_intake=RequestIntakeService(),
+            task_interpreter=_FailingTaskInterpreter(),
+            workflow_router=object(),
+            decomposition_planner=object(),
+            context_memory_loader=object(),
+            research_executor=object(),
+            conclusion_generator=object(),
+            memory_distiller=object(),
+            memory_persistence=object(),
+            session_continuity_manager=object(),
+            response_assembler=object(),
+        )
+    )
+
+    with pytest.raises(ZhipuLLMClientError):
+        asyncio.run(
+            pipeline.run(
+                RequestContext(
+                    original_query="Trigger a safe provider failure.",
+                    user_id="user-1",
+                )
+            )
+        )
+
+    failed_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "agent_run_failed"
+    )
+    assert failed_record.provider_http_status == 503
+    assert failed_record.provider_error_code == "service_unavailable"
+    assert failed_record.provider_request_id == "provider-request-1"
+    assert failed_record.finish_reason == "error"
+    assert failed_record.exception_type == "ZhipuLLMClientError"
+    assert current_trace_id() is None
 
 
 def test_default_dependencies_register_the_same_capabilities_as_tel(monkeypatch) -> None:
