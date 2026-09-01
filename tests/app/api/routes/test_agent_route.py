@@ -52,6 +52,7 @@ def test_agent_route_returns_normal_pipeline_output(monkeypatch) -> None:
 
     assert pipeline.request.original_query == "解释检索策略。"
     assert pipeline.request.user_id == "user-1"
+    assert pipeline.request.iteration_budget == 2
     assert response.answer == "这是正常研究完成后的答案。"
     assert response.metadata["research_status"] == "completed"
     assert response.metadata["research_iteration_count"] == 2
@@ -78,3 +79,25 @@ def test_agent_route_returns_safe_degraded_pipeline_output(monkeypatch) -> None:
     assert response.confidence == 0.2
     assert response.citations == []
     assert response.metadata["research_status"] == "failed"
+
+
+def test_agent_route_forwards_explicit_iteration_budget(monkeypatch) -> None:
+    pipeline = _FakePipeline(
+        _output(
+            answer="预算参数已传递。",
+            metadata={"research_iteration_count": 1},
+        )
+    )
+    monkeypatch.setattr(agent, "_pipeline", pipeline)
+
+    asyncio.run(
+        agent.run_agent(
+            AgentRunRequest(
+                query="执行较深入的研究。",
+                user_id="user-1",
+                iteration_budget=3,
+            )
+        )
+    )
+
+    assert pipeline.request.iteration_budget == 3

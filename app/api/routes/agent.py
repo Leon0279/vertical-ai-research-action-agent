@@ -22,6 +22,7 @@ async def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
         user_id=payload.user_id,
         session_id=payload.session_id,
         project_id=payload.project_id,
+        iteration_budget=payload.iteration_budget,
     )
 
     output = await _pipeline.run(request_context)

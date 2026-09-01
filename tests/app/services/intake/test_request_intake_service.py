@@ -31,6 +31,7 @@ def test_request_intake_service_normalizes_and_generates_session_id() -> None:
     assert state.runtime_context.session_id.startswith("session-")
     assert state.runtime_context.session_id_generated is True
     assert state.runtime_context.stage_history == ["request_intake"]
+    assert state.runtime_context.iteration_budget == 2
 
 
 def test_request_intake_service_preserves_existing_session_id() -> None:
@@ -74,6 +75,22 @@ def test_request_intake_service_applies_server_registered_families() -> None:
         FamilyName.WEB_SEARCH,
     ]
     assert state.runtime_context.tool_registry_version == "test-retrieval-v1"
+
+
+def test_request_intake_service_preserves_explicit_iteration_budget() -> None:
+    service = RequestIntakeService()
+
+    state = asyncio.run(
+        service.intake(
+            RequestContext(
+                original_query="Run a deeper research loop.",
+                user_id="user-1",
+                iteration_budget=4,
+            )
+        )
+    )
+
+    assert state.runtime_context.iteration_budget == 4
 
 
 def test_request_intake_service_rejects_blank_query() -> None:

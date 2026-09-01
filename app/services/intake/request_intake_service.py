@@ -42,6 +42,7 @@ class RequestIntakeService(RequestIntakeProtocol):
             session_id=session_id,
             session_id_generated=session_id_generated,
             project_id=request.project_id,
+            iteration_budget=request.iteration_budget,
         )
 
     def _build_execution_context(
@@ -52,6 +53,7 @@ class RequestIntakeService(RequestIntakeProtocol):
         session_id: str,
         session_id_generated: bool,
         project_id: str | None,
+        iteration_budget: int,
     ) -> ExecutionContext:
         """Build the initial execution context after request normalization."""
 
@@ -66,6 +68,7 @@ class RequestIntakeService(RequestIntakeProtocol):
             session_id_generated=session_id_generated,
             available_families=list(self._available_families),
             tool_registry_version=self._tool_registry_version,
+            iteration_budget=iteration_budget,
         )
         runtime_context.stage_history.append("request_intake")
         return ExecutionContext(

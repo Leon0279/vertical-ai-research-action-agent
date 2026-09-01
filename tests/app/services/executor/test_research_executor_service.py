@@ -2209,7 +2209,7 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
     assert handler is not None
     trace_token = bind_trace_id("trace-two-iterations")
     try:
-        asyncio.run(
+        result = asyncio.run(
             service.execute(
                 ResearchStageInput(
                     original_query="Decide whether memory or external retrieval should be used.",
@@ -2256,9 +2256,15 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
         "memory_backed_acquisition",
         "external_acquisition",
     ]
+    assert [record["remaining_iteration_budget"] for record in action_records] == [
+        2,
+        1,
+    ]
     assert [record["iteration_index"] for record in action_records] == [1, 2]
     assert [record["iteration_index"] for record in outcome_records] == [1, 2]
     assert outcome_records[0]["iteration_outcome"] == "continue"
+    assert result.executed_iteration_count == 2
+    assert result.executed_iteration_count <= 2
     assert all(
         record["trace_id"] == "trace-two-iterations"
         for record in [*action_records, *outcome_records]

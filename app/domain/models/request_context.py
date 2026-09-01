@@ -20,3 +20,10 @@ Transport-agnostic request context for orchestration."""
         default=None,
         description="可选字段。请求关联的项目范围标识；没有项目上下文时为 None。",
     )
+    iteration_budget: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        strict=True,
+        description="可选字段。当前请求允许执行的最大 research iteration 数量。",
+    )
