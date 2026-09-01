@@ -19,6 +19,7 @@ from app.common.observability import (
     reset_trace_id,
     retrieval_query_log_fields,
 )
+from app.domain.enums import FamilyName
 
 
 def _settings(path: Path, *, max_bytes: int = 100_000) -> FileLoggingSettings:
@@ -81,6 +82,15 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                 "event": "provider_failed",
                 "selected_family": "web_search",
                 "generated_query": "safe retrieval query",
+                "candidate_action_modes": [
+                    "refine_from_existing_state",
+                    "external_acquisition",
+                ],
+                "allowed_source_families": [
+                    FamilyName.DOCS_SEARCH,
+                    FamilyName.WEB_SEARCH,
+                ],
+                "action_rationale": "api_key=rationale-secret " + ("x" * 2100),
                 "prompt": "private prompt must not be serialized",
                 "raw_response": "private provider response",
             },
@@ -96,11 +106,18 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert record["trace_id"] == "trace-jsonl"
     assert record["selected_family"] == "web_search"
     assert record["generated_query"] == "safe retrieval query"
+    assert record["candidate_action_modes"] == [
+        "refine_from_existing_state",
+        "external_acquisition",
+    ]
+    assert record["allowed_source_families"] == ["docs_search", "web_search"]
+    assert len(str(record["action_rationale"])) == 2000
     serialized = json.dumps(record, ensure_ascii=False)
     assert "super-secret" not in serialized
     assert "key-secret" not in serialized
     assert "private prompt" not in serialized
     assert "private provider response" not in serialized
+    assert "rationale-secret" not in serialized
     assert "[REDACTED]" in serialized
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from pydantic import ValidationError
@@ -29,6 +30,8 @@ from app.services.executor.models.research_iteration_evaluation_state import (
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
@@ -253,7 +256,48 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         iteration.outcome_decision_source = outcome_decision_source
         iteration.proposed_iteration_outcome = proposed_iteration_outcome
         iteration.outcome_guardrail_applied = outcome_guardrail_applied
-
+        tool_execution_result = iteration.tool_execution_result
+        logger.log(
+            logging.WARNING
+            if iteration_outcome == "degrade"
+            else logging.INFO,
+            "Research iteration outcome selected.",
+            extra={
+                "event": "research_iteration_outcome",
+                "iteration_index": iteration.iteration_index,
+                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "remaining_iteration_budget_after_current": max(
+                    0,
+                    iteration.remaining_iteration_budget - 1,
+                ),
+                "action_mode": iteration.action_mode,
+                "acquisition_status": (
+                    tool_execution_result.acquisition_status
+                    if tool_execution_result is not None
+                    else None
+                ),
+                "processed_evidence_count": len(
+                    iteration.processed_evidence_units
+                ),
+                "top_gap_progress": iteration_evaluation_state.top_gap_progress,
+                "evidence_gain": iteration_evaluation_state.evidence_gain,
+                "finding_progress": iteration_evaluation_state.finding_progress,
+                "residual_uncertainty": (
+                    iteration_evaluation_state.residual_uncertainty
+                ),
+                "short_circuit_reason": (
+                    iteration_evaluation_state.short_circuit_reason
+                ),
+                "proposed_iteration_outcome": proposed_iteration_outcome,
+                "iteration_outcome": iteration_outcome,
+                "outcome_decision_source": outcome_decision_source,
+                "outcome_guardrail_applied": outcome_guardrail_applied,
+                "outcome_rationale": outcome_rationale,
+                "acquisition_paths_exhausted": (
+                    iteration.acquisition_paths_exhausted
+                ),
+            },
+        )
 
     def _iteration_evaluation_state(
         self,

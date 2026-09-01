@@ -48,6 +48,34 @@ _STRUCTURED_FIELDS = (
     "provider_request_id",
     "finish_reason",
     "exception_type",
+    "iteration_index",
+    "remaining_iteration_budget",
+    "remaining_iteration_budget_after_current",
+    "candidate_action_modes",
+    "action_mode",
+    "action_rationale",
+    "acquisition_paths_exhausted",
+    "top_gap_nature",
+    "top_gap_severity",
+    "evidence_need_purpose",
+    "desired_evidence_kind",
+    "freshness_requirement",
+    "coverage_target_key",
+    "allowed_source_families",
+    "preferred_source_families",
+    "blocked_source_families",
+    "fallback_policy",
+    "processed_evidence_count",
+    "top_gap_progress",
+    "evidence_gain",
+    "finding_progress",
+    "residual_uncertainty",
+    "short_circuit_reason",
+    "proposed_iteration_outcome",
+    "iteration_outcome",
+    "outcome_decision_source",
+    "outcome_guardrail_applied",
+    "outcome_rationale",
 )
 
 _BEARER_PATTERN = re.compile(r"(?i)(\bbearer\s+)[^\s,;]+")
@@ -243,6 +271,11 @@ def _safe_log_value(value: Any, *, max_length: int) -> Any:
         return value
     if isinstance(value, Enum):
         return _safe_log_value(value.value, max_length=max_length)
+    if isinstance(value, list | tuple):
+        return [
+            _safe_log_value(item, max_length=max_length)
+            for item in value
+        ]
     return sanitize_sensitive_text(value, max_length=max_length)
 
 

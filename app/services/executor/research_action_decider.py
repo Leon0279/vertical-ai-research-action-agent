@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from app.domain.enums import FamilyName
 from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_action_request import ResearchActionRequest
@@ -31,6 +33,7 @@ _EXTERNAL_FAMILIES = {
     FamilyName.PAPER_SEARCH,
     FamilyName.WEB_SEARCH,
 }
+logger = logging.getLogger(__name__)
 
 
 class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
@@ -90,6 +93,51 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
             run_state,
             top_gap,
             next_evidence_need,
+        )
+        action_request = iteration.action_request
+        logger.info(
+            "Research action selected.",
+            extra={
+                "event": "research_action_selected",
+                "iteration_index": iteration.iteration_index,
+                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "candidate_action_modes": iteration.candidate_action_modes,
+                "action_mode": iteration.action_mode,
+                "action_rationale": iteration.action_rationale,
+                "acquisition_paths_exhausted": (
+                    iteration.acquisition_paths_exhausted
+                ),
+                "top_gap_nature": top_gap.gap_nature,
+                "top_gap_severity": top_gap.gap_severity,
+                "evidence_need_purpose": next_evidence_need.need_purpose,
+                "desired_evidence_kind": (
+                    next_evidence_need.desired_evidence_kind
+                ),
+                "freshness_requirement": (
+                    next_evidence_need.freshness_requirement
+                ),
+                "coverage_target_key": next_evidence_need.coverage_target_key,
+                "allowed_source_families": (
+                    list(action_request.allowed_source_families)
+                    if action_request is not None
+                    else []
+                ),
+                "preferred_source_families": (
+                    list(action_request.preferred_source_families)
+                    if action_request is not None
+                    else []
+                ),
+                "blocked_source_families": (
+                    list(action_request.blocked_source_families)
+                    if action_request is not None
+                    else []
+                ),
+                "fallback_policy": (
+                    action_request.fallback_policy
+                    if action_request is not None
+                    else None
+                ),
+            },
         )
         return action_mode != _REFINE_ACTION_MODE
 

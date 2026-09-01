@@ -2,11 +2,20 @@
 
 import asyncio
 import json
+import logging
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from app.common.observability import (
+    FileLoggingSettings,
+    bind_trace_id,
+    configure_file_logging,
+    remove_file_logging_handler,
+    reset_trace_id,
+)
 from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     ContextItem,
@@ -763,7 +772,8 @@ def test_research_executor_rejects_invalid_coverage_snapshot_contract(
         asyncio.run(service.execute(stage_input))
 
 
-def test_research_executor_refines_when_gap_is_noop() -> None:
+def test_research_executor_refines_when_gap_is_noop(caplog) -> None:
+    caplog.set_level(logging.INFO)
     payload = _valid_assessment_payload(
         gap_nature="none",
         gap_severity="none",
@@ -800,6 +810,27 @@ def test_research_executor_refines_when_gap_is_noop() -> None:
     assert outcome_iteration.iteration_outcome == "stop"
     assert outcome_iteration.outcome_decision_source == "rule_short_circuit"
     assert _outcome_prompts(service.llm_client) == []
+    action_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_action_selected"
+    )
+    assert action_record.iteration_index == 1
+    assert action_record.action_mode == "refine_from_existing_state"
+    assert action_record.candidate_action_modes == [
+        "refine_from_existing_state"
+    ]
+    assert action_record.allowed_source_families == []
+    assert action_record.fallback_policy is None
+    outcome_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_iteration_outcome"
+    )
+    assert outcome_record.levelno == logging.INFO
+    assert outcome_record.iteration_outcome == "stop"
+    assert outcome_record.outcome_decision_source == "rule_short_circuit"
+    assert outcome_record.short_circuit_reason == outcome_record.outcome_rationale
 
 
 def test_research_executor_refines_when_findings_are_stable_and_strong() -> None:
@@ -843,7 +874,10 @@ def test_research_executor_refines_when_no_acquisition_capability_is_declared() 
     assert iteration.action_request is None
 
 
-def test_research_executor_selects_memory_backed_acquisition_when_available() -> None:
+def test_research_executor_selects_memory_backed_acquisition_when_available(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
     service = _StateCapturingResearchExecutorService()
 
     asyncio.run(
@@ -882,9 +916,26 @@ def test_research_executor_selects_memory_backed_acquisition_when_available() ->
     assert tel_request.allowed_source_families == [
         FamilyName.RESEARCH_KNOWLEDGE_RECALL
     ]
+    action_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_action_selected"
+    )
+    assert action_record.action_mode == "memory_backed_acquisition"
+    assert action_record.allowed_source_families == [
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL
+    ]
+    assert action_record.preferred_source_families == [
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL
+    ]
+    assert action_record.blocked_source_families == []
+    assert action_record.fallback_policy == "fallback_within_same_family"
 
 
-def test_research_executor_selects_external_acquisition_for_fresh_required_need() -> None:
+def test_research_executor_selects_external_acquisition_for_fresh_required_need(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
     payload = _valid_assessment_payload(
         gap_nature="stale",
         freshness_requirement="fresh_required",
@@ -921,6 +972,18 @@ def test_research_executor_selects_external_acquisition_for_fresh_required_need(
     assert tel_request.evidence_shape is not None
     assert tel_request.evidence_shape.desired_evidence_kind == "status_evidence"
     assert tel_request.evidence_shape.freshness_requirement == "fresh_required"
+    action_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_action_selected"
+    )
+    assert action_record.action_mode == "external_acquisition"
+    assert action_record.top_gap_nature == "stale"
+    assert action_record.desired_evidence_kind == "fresh_status_evidence"
+    assert action_record.freshness_requirement == "fresh_required"
+    assert action_record.allowed_source_families == [FamilyName.DOCS_SEARCH]
+    assert action_record.preferred_source_families == []
+    assert action_record.fallback_policy == "fallback_to_broader_search"
 
 
 def test_research_executor_maps_supporting_evidence_need_for_tel() -> None:
@@ -1155,7 +1218,10 @@ def test_research_executor_returns_failed_when_degraded_without_outputs() -> Non
     )
 
 
-def test_research_executor_continues_when_llm_outcome_allows_more_iterations() -> None:
+def test_research_executor_continues_when_llm_outcome_allows_more_iterations(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
     outcome_payload = json.dumps(
         _valid_outcome_payload(
             proposed_iteration_outcome="continue",
@@ -1192,6 +1258,20 @@ def test_research_executor_continues_when_llm_outcome_allows_more_iterations() -
     assert second_outcome.iteration_outcome == "stop"
     assert second_outcome.outcome_guardrail_applied is True
     assert len(_outcome_prompts(service.llm_client)) == 2
+    outcome_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_iteration_outcome"
+    ]
+    assert [record.iteration_outcome for record in outcome_records] == [
+        "continue",
+        "stop",
+    ]
+    assert all(record.levelno == logging.INFO for record in outcome_records)
+    assert outcome_records[0].proposed_iteration_outcome == "continue"
+    assert outcome_records[0].outcome_guardrail_applied is False
+    assert outcome_records[1].proposed_iteration_outcome == "continue"
+    assert outcome_records[1].outcome_guardrail_applied is True
 
 
 def test_research_executor_tracks_current_iteration_evidence_delta() -> None:
@@ -1256,7 +1336,10 @@ def test_research_executor_tracks_current_iteration_evidence_delta() -> None:
     )
 
 
-def test_research_executor_degrades_when_last_iteration_has_no_meaningful_gain() -> None:
+def test_research_executor_degrades_when_last_iteration_has_no_meaningful_gain(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
     outcome_payload = json.dumps(
         _valid_outcome_payload(
             top_gap_progress="not_advanced",
@@ -1294,6 +1377,23 @@ def test_research_executor_degrades_when_last_iteration_has_no_meaningful_gain()
     assert outcome_iteration.iteration_outcome == "degrade"
     assert outcome_iteration.outcome_guardrail_applied is True
     assert "没有剩余 iteration budget" in (outcome_iteration.outcome_rationale or "")
+    outcome_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_iteration_outcome"
+    )
+    assert outcome_record.levelno == logging.WARNING
+    assert outcome_record.remaining_iteration_budget == 1
+    assert outcome_record.remaining_iteration_budget_after_current == 0
+    assert outcome_record.proposed_iteration_outcome == "continue"
+    assert outcome_record.iteration_outcome == "degrade"
+    assert outcome_record.outcome_decision_source == "llm_with_guardrails"
+    assert outcome_record.outcome_guardrail_applied is True
+    assert outcome_record.top_gap_progress == "not_advanced"
+    assert outcome_record.evidence_gain == "no_meaningful_gain"
+    assert outcome_record.finding_progress == "no_material_change"
+    assert outcome_record.residual_uncertainty == "high"
+    assert outcome_record.processed_evidence_count == 1
 
 
 def test_research_executor_reports_budget_exhaustion_when_loop_wants_to_continue() -> None:
@@ -1315,7 +1415,10 @@ def test_research_executor_reports_budget_exhaustion_when_loop_wants_to_continue
     )
 
 
-def test_research_executor_accepts_json_object_iteration_outcome_output() -> None:
+def test_research_executor_accepts_json_object_iteration_outcome_output(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
     payload = json.dumps(
         _valid_outcome_payload(
             proposed_iteration_outcome="stop",
@@ -1346,6 +1449,15 @@ def test_research_executor_accepts_json_object_iteration_outcome_output() -> Non
     outcome_iteration = service.outcome_states[0].require_current_iteration()
     assert outcome_iteration.iteration_outcome == "stop"
     assert outcome_iteration.outcome_rationale == "fenced outcome rationale"
+    outcome_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_iteration_outcome"
+    )
+    assert outcome_record.levelno == logging.INFO
+    assert outcome_record.proposed_iteration_outcome == "stop"
+    assert outcome_record.iteration_outcome == "stop"
+    assert outcome_record.outcome_guardrail_applied is False
 
 
 def test_research_executor_raises_when_iteration_outcome_output_is_not_json() -> None:
@@ -2045,7 +2157,9 @@ def test_research_executor_invalid_or_missing_iteration_budget_defaults_to_one()
     assert invalid_budget_result.executed_iteration_count == 1
 
 
-def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_external() -> None:
+def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_external(
+    tmp_path: Path,
+) -> None:
     memory_no_result = ToolExecutionLayerResult(
         execution_status="completed",
         acquisition_status=AcquisitionStatus.NO_RESULT,
@@ -2078,15 +2192,41 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
         evidence_processing_service=_FakeEvidenceProcessingService(),
     )
 
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Decide whether memory or external retrieval should be used.",
-                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL, FamilyName.DOCS_SEARCH],
-                iteration_budget=2,
+    executor_logger = logging.getLogger("app.services.executor")
+    previous_level = executor_logger.level
+    previous_propagate = executor_logger.propagate
+    log_path = tmp_path / "research-events.jsonl"
+    handler = configure_file_logging(
+        FileLoggingSettings(
+            enabled=True,
+            path=log_path,
+            level=logging.INFO,
+            max_bytes=100_000,
+            backup_count=1,
+        ),
+        logger=executor_logger,
+    )
+    assert handler is not None
+    trace_token = bind_trace_id("trace-two-iterations")
+    try:
+        asyncio.run(
+            service.execute(
+                ResearchStageInput(
+                    original_query="Decide whether memory or external retrieval should be used.",
+                    available_families=[
+                        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                        FamilyName.DOCS_SEARCH,
+                    ],
+                    iteration_budget=2,
+                )
             )
         )
-    )
+    finally:
+        reset_trace_id(trace_token)
+        handler.flush()
+        remove_file_logging_handler(logger=executor_logger)
+        executor_logger.setLevel(previous_level)
+        executor_logger.propagate = previous_propagate
 
     assessment_prompts = _assessment_prompts(fake_llm)
     assert len(assessment_prompts) == 2
@@ -2097,3 +2237,29 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
     assert fake_tel.requests[0].action_mode == "memory_backed_acquisition"
     assert fake_tel.requests[1].action_mode == "external_acquisition"
     assert fake_tel.requests[1].allowed_source_families == [FamilyName.DOCS_SEARCH]
+    log_records = [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    action_records = [
+        record
+        for record in log_records
+        if record.get("event") == "research_action_selected"
+    ]
+    outcome_records = [
+        record
+        for record in log_records
+        if record.get("event") == "research_iteration_outcome"
+    ]
+    assert [record["action_mode"] for record in action_records] == [
+        "memory_backed_acquisition",
+        "external_acquisition",
+    ]
+    assert [record["iteration_index"] for record in action_records] == [1, 2]
+    assert [record["iteration_index"] for record in outcome_records] == [1, 2]
+    assert outcome_records[0]["iteration_outcome"] == "continue"
+    assert all(
+        record["trace_id"] == "trace-two-iterations"
+        for record in [*action_records, *outcome_records]
+    )
