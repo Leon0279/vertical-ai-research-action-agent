@@ -10,6 +10,7 @@ from app.adapters.paper_content_fetch.contracts.paper_content_fetch_client_proto
 from app.adapters.paper_search.contracts.paper_search_client_protocol import (
     PaperSearchClientProtocol,
 )
+from app.common.observability import sanitize_sensitive_text
 from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     ArxivPaperSearchToolRequest,
@@ -55,7 +56,13 @@ Tool service that searches arXiv papers and fetches full text for top candidates
                 )
             )
         except Exception as exc:
-            return self._failed_result(str(exc))
+            return self._failed_result(
+                sanitize_sensitive_text(exc, max_length=500),
+                diagnostics=self._exception_diagnostics(
+                    exc,
+                    default_stage="paper_search",
+                ),
+            )
 
         candidates = search_response.results[: normalized_request.max_search_results]
         if not candidates:
@@ -130,7 +137,11 @@ Tool service that searches arXiv papers and fetches full text for top candidates
             except Exception as exc:
                 fetch_failures[paper_id] = {
                     "status": "exception",
-                    "error_info": str(exc),
+                    "error_info": sanitize_sensitive_text(exc, max_length=500),
+                    **self._exception_diagnostics(
+                        exc,
+                        default_stage="paper_content_fetch",
+                    ),
                 }
                 continue
             fetch_results[paper_id] = response
@@ -208,6 +219,7 @@ Tool service that searches arXiv papers and fetches full text for top candidates
                             "paper_id_type": candidate.paper_id_type,
                             "status": "empty_text",
                             "error_info": fetched.error_info,
+                            **self._content_fetch_diagnostics(fetched.metadata),
                         }
                     )
                 elif fetched is not None:
@@ -222,6 +234,7 @@ Tool service that searches arXiv papers and fetches full text for top candidates
                             "paper_id_type": candidate.paper_id_type,
                             "status": fetched.extraction_status,
                             "error_info": fetched.error_info,
+                            **self._content_fetch_diagnostics(fetched.metadata),
                         }
                     )
                 elif failed is not None:
@@ -235,6 +248,11 @@ Tool service that searches arXiv papers and fetches full text for top candidates
                             "paper_id_type": candidate.paper_id_type,
                             "status": failed["status"],
                             "error_info": failed["error_info"],
+                            **{
+                                key: value
+                                for key, value in failed.items()
+                                if key not in {"status", "error_info"}
+                            },
                         }
                     )
                 else:
@@ -281,6 +299,7 @@ Tool service that searches arXiv papers and fetches full text for top candidates
                 "selected_paper_ids": [candidate.paper_id for candidate in selected_candidates],
                 "fetched_paper_ids": fetched_paper_ids,
                 "failed_fetches": failed_fetches,
+                **self._fetch_failure_summary(failed_fetches),
             },
         )
         return normalized_items, execution_summary, retrieval_trace
@@ -329,7 +348,13 @@ Tool service that searches arXiv papers and fetches full text for top candidates
             return None
         return candidate.paper_id.strip() or None
 
-    def _failed_result(self, error_info: str) -> ArxivPaperSearchToolResult:
+    def _failed_result(
+        self,
+        error_info: str,
+        *,
+        diagnostics: dict[str, Any] | None = None,
+    ) -> ArxivPaperSearchToolResult:
+        safe_diagnostics = diagnostics or {}
         return ArxivPaperSearchToolResult(
             normalized_items=[],
             acquisition_status=AcquisitionStatus.FAILED,
@@ -348,6 +373,7 @@ Tool service that searches arXiv papers and fetches full text for top candidates
                     "fetch_empty_count": 0,
                     "fetch_failed_count": 1,
                 },
+                observability=safe_diagnostics,
             ),
             retrieval_trace=RetrievalTrace(
                 selected_family=FamilyName.PAPER_SEARCH,
@@ -355,10 +381,71 @@ Tool service that searches arXiv papers and fetches full text for top candidates
                 observability={
                     "attempted_paper_ids": [],
                     "fetched_paper_ids": [],
+                    **safe_diagnostics,
                 },
             ),
             error_info=error_info,
         )
+
+    def _exception_diagnostics(
+        self,
+        error: BaseException,
+        *,
+        default_stage: str,
+    ) -> dict[str, Any]:
+        return {
+            key: value
+            for key, value in {
+                "failure_stage": getattr(error, "stage", default_stage),
+                "failure_reason": getattr(error, "failure_reason", "unknown_error"),
+                "error_category": getattr(error, "error_category", "unknown_error"),
+                "provider_http_status": getattr(error, "status_code", None),
+                "retryable": getattr(error, "retryable", False),
+                "exception_type": (
+                    getattr(error, "cause_type", None) or type(error).__name__
+                ),
+            }.items()
+            if value is not None
+        }
+
+    def _content_fetch_diagnostics(self, metadata: dict[str, Any]) -> dict[str, Any]:
+        allowed_keys = {
+            "failure_stage",
+            "failure_reason",
+            "error_category",
+            "provider_http_status",
+            "retryable",
+            "exception_type",
+            "response_content_type",
+            "download_bytes",
+        }
+        return {
+            key: metadata[key]
+            for key in allowed_keys
+            if metadata.get(key) is not None
+        }
+
+    def _fetch_failure_summary(
+        self,
+        failed_fetches: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        if not failed_fetches:
+            return {}
+        first = failed_fetches[0]
+        return {
+            key: value
+            for key, value in {
+                "failure_stage": first.get("failure_stage") or "paper_content_fetch",
+                "failure_reason": first.get("failure_reason"),
+                "error_category": first.get("error_category"),
+                "provider_http_status": first.get("provider_http_status"),
+                "retryable": first.get("retryable"),
+                "exception_type": first.get("exception_type"),
+                "attempt_error_info": first.get("error_info"),
+                "content_fetch_failure_count": len(failed_fetches),
+            }.items()
+            if value is not None
+        }
 
     def _no_result(self) -> ArxivPaperSearchToolResult:
         return ArxivPaperSearchToolResult(

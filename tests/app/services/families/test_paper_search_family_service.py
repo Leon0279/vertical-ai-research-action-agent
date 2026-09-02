@@ -149,3 +149,44 @@ def test_run_preserves_partial_success_no_result_and_failed_statuses() -> None:
         assert result.acquisition_status == status
         assert result.selected_family == "paper_search"
         assert result.selected_tool == "arxiv_paper_search_v1"
+
+
+def test_run_preserves_arxiv_failure_diagnostics() -> None:
+    tool = FakeArxivPaperSearchTool(
+        ArxivPaperSearchToolResult(
+            normalized_items=[],
+            acquisition_status=AcquisitionStatus.FAILED,
+            dropped_item_count=0,
+            source_summary=RetrievalSourceSummary(),
+            execution_summary=RetrievalExecutionSummary(
+                observability={
+                    "failure_stage": "search_http",
+                    "error_category": "timeout",
+                }
+            ),
+            retrieval_trace=RetrievalTrace(
+                errors={"search_error": "arXiv paper search timed out."},
+                observability={
+                    "failure_stage": "search_http",
+                    "failure_reason": "timeout",
+                    "error_category": "timeout",
+                    "retryable": True,
+                },
+            ),
+            error_info="arXiv paper search timed out.",
+        )
+    )
+    service = PaperSearchFamilyService(tool)
+
+    result = asyncio.run(
+        service.run(PaperSearchFamilyRequest(query_text="agent research"))
+    )
+
+    assert result.error_info == "arXiv paper search timed out."
+    assert result.retrieval_trace.errors["search_error"] == (
+        "arXiv paper search timed out."
+    )
+    assert result.retrieval_trace.observability["failure_stage"] == "search_http"
+    assert result.retrieval_trace.observability["failure_reason"] == "timeout"
+    assert result.retrieval_trace.observability["error_category"] == "timeout"
+    assert result.retrieval_trace.observability["retryable"] is True

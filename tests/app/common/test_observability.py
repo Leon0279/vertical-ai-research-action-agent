@@ -91,6 +91,12 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                     FamilyName.WEB_SEARCH,
                 ],
                 "action_rationale": "api_key=rationale-secret " + ("x" * 2100),
+                "failure_stage": "search_http",
+                "failure_reason": "timeout",
+                "error_category": "timeout",
+                "attempt_error_info": "Authorization: Bearer attempt-secret",
+                "provider_http_status": 504,
+                "retryable": True,
                 "prompt": "private prompt must not be serialized",
                 "raw_response": "private provider response",
             },
@@ -112,12 +118,18 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     ]
     assert record["allowed_source_families"] == ["docs_search", "web_search"]
     assert len(str(record["action_rationale"])) == 2000
+    assert record["failure_stage"] == "search_http"
+    assert record["failure_reason"] == "timeout"
+    assert record["error_category"] == "timeout"
+    assert record["provider_http_status"] == 504
+    assert record["retryable"] is True
     serialized = json.dumps(record, ensure_ascii=False)
     assert "super-secret" not in serialized
     assert "key-secret" not in serialized
     assert "private prompt" not in serialized
     assert "private provider response" not in serialized
     assert "rationale-secret" not in serialized
+    assert "attempt-secret" not in serialized
     assert "[REDACTED]" in serialized
 
 

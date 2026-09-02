@@ -5,7 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Literal
 
-from app.common.observability import retrieval_query_log_fields
+from app.common.observability import (
+    retrieval_query_log_fields,
+    sanitize_sensitive_text,
+)
 from app.common.utils.text import unique_non_empty_strings
 from app.domain.enums import AcquisitionStatus, FamilyName, RetrievalResultUtility
 from app.domain.models import (
@@ -313,11 +316,14 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             query_generation_result=attempt_outcome.query_generation_result,
             family_result=attempt_outcome.family_result,
             evaluation_result=attempt_outcome.evaluation_result,
+            execution_failure_reason=attempt_outcome.execution_failure_reason,
             retry_count=state.retry_count,
             fallback_applied=state.fallback_applied,
         )
         state.attempts.append(attempt)
-        logger.info(
+        failed = attempt_outcome.family_result.acquisition_status == AcquisitionStatus.FAILED
+        logger.log(
+            logging.WARNING if failed else logging.INFO,
             "Retrieval attempt completed.",
             extra={
                 "event": "retrieval_attempt_completed",
@@ -331,6 +337,13 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
                 "next_step_hint": attempt["next_step_hint"],
                 "retry_count": attempt["retry_count"],
                 "fallback_applied": attempt["fallback_applied"],
+                "failure_stage": attempt.get("failure_stage"),
+                "failure_reason": attempt.get("failure_reason"),
+                "error_category": attempt.get("error_category"),
+                "attempt_error_info": attempt.get("attempt_error_info"),
+                "provider_http_status": attempt.get("provider_http_status"),
+                "retryable": attempt.get("retryable"),
+                "exception_type": attempt.get("exception_type"),
             },
         )
 
@@ -758,6 +771,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
         query_generation_result: RetrievalQueryGenerationResult,
         family_result: BaseFamilyExecutionResult,
         evaluation_result: RequestCompletionEvaluationResult,
+        execution_failure_reason: str | None,
         retry_count: int,
         fallback_applied: bool,
     ) -> dict[str, Any]:
@@ -772,6 +786,63 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             "next_step_hint": evaluation_result.next_step_hint,
             "retry_count": retry_count,
             "fallback_applied": fallback_applied,
+            **self._attempt_diagnostic_fields(
+                family_result=family_result,
+                execution_failure_reason=execution_failure_reason,
+            ),
+        }
+
+    def _attempt_diagnostic_fields(
+        self,
+        *,
+        family_result: BaseFamilyExecutionResult,
+        execution_failure_reason: str | None,
+    ) -> dict[str, Any]:
+        observability = family_result.retrieval_trace.observability
+        trace_errors = family_result.retrieval_trace.errors
+        attempt_error_info = (
+            family_result.error_info
+            or observability.get("attempt_error_info")
+            or next(
+                (
+                    value
+                    for value in trace_errors.values()
+                    if isinstance(value, str) and value.strip()
+                ),
+                None,
+            )
+        )
+        failure_reason = observability.get("failure_reason") or execution_failure_reason
+        error_category = observability.get("error_category")
+        if (
+            family_result.acquisition_status == AcquisitionStatus.FAILED
+            and failure_reason is None
+        ):
+            failure_reason = "unknown_error"
+        if (
+            family_result.acquisition_status == AcquisitionStatus.FAILED
+            and error_category is None
+        ):
+            error_category = "unknown_error"
+
+        return {
+            key: value
+            for key, value in {
+                "failure_stage": observability.get("failure_stage"),
+                "failure_reason": failure_reason,
+                "error_category": error_category,
+                "attempt_error_info": (
+                    sanitize_sensitive_text(attempt_error_info, max_length=500)
+                    if attempt_error_info is not None
+                    else None
+                ),
+                "provider_http_status": observability.get(
+                    "provider_http_status"
+                ),
+                "retryable": observability.get("retryable"),
+                "exception_type": observability.get("exception_type"),
+            }.items()
+            if value is not None
         }
 
     def _completed_result(

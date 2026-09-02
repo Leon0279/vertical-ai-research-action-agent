@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import xml.etree.ElementTree as ET
 from typing import Any
@@ -17,6 +18,10 @@ from app.adapters.paper_search.arxiv_paper_search_client_error import (
 )
 from app.adapters.paper_search.contracts.paper_search_client_protocol import (
     PaperSearchClientProtocol,
+)
+from app.common.observability import (
+    retrieval_query_log_fields,
+    sanitize_sensitive_text,
 )
 from app.common.utils.parsing import parse_optional_iso_datetime
 from app.common.utils.text import normalize_whitespace_or_none
@@ -34,6 +39,7 @@ NAMESPACES = {
     "arxiv": ARXIV_NS,
     "opensearch": OPENSEARCH_NS,
 }
+logger = logging.getLogger(__name__)
 
 
 class ArxivPaperSearchClient(PaperSearchClientProtocol):
@@ -54,22 +60,91 @@ HTTP client for arXiv paper search."""
     async def search_papers(self, query: PaperSearchQuery) -> PaperSearchResponse:
         """Search arXiv papers and normalize the Atom feed results."""
 
-        normalized_query = self._normalize_query(query)
-        feed_xml = await self._fetch_feed(normalized_query)
-        return self._parse_feed(feed_xml)
+        started_at = time.perf_counter()
+        query_fingerprint = retrieval_query_log_fields(query.query_text)[
+            "query_fingerprint"
+        ]
+        logger.info(
+            "arXiv paper search started.",
+            extra={
+                "event": "arxiv_search_started",
+                "provider": "arxiv",
+                "operation": "paper_search",
+                "query_fingerprint": query_fingerprint,
+                "configured_timeout_seconds": self._config.timeout_seconds,
+            },
+        )
+        try:
+            normalized_query = self._normalize_query(query)
+            feed_xml = await self._fetch_feed(normalized_query)
+            result = self._parse_feed(feed_xml)
+        except ArxivPaperSearchClientError as error:
+            self._log_search_failure(
+                error,
+                query_fingerprint=query_fingerprint,
+                started_at=started_at,
+            )
+            raise
+        except Exception as error:
+            wrapped_error = ArxivPaperSearchClientError(
+                "Unexpected arXiv paper search failure.",
+                stage="paper_search",
+                error_category="unknown_error",
+                failure_reason="unknown_error",
+                retryable=False,
+                cause_type=type(error).__name__,
+            )
+            self._log_search_failure(
+                wrapped_error,
+                query_fingerprint=query_fingerprint,
+                started_at=started_at,
+            )
+            raise wrapped_error from error
+
+        logger.info(
+            "arXiv paper search completed.",
+            extra={
+                "event": "arxiv_search_completed",
+                "provider": "arxiv",
+                "operation": "paper_search",
+                "query_fingerprint": query_fingerprint,
+                "configured_timeout_seconds": self._config.timeout_seconds,
+                "duration_ms": self._duration_ms(started_at),
+                "result_count": len(result.results),
+            },
+        )
+        return result
 
     def _normalize_query(self, query: PaperSearchQuery) -> PaperSearchQuery:
         query_text = query.query_text.strip()
         if not query_text:
-            raise ArxivPaperSearchClientError("Paper search query_text must not be empty.")
+            raise ArxivPaperSearchClientError(
+                "Paper search query_text must not be empty.",
+                stage="request_validation",
+                error_category="invalid_request",
+                failure_reason="invalid_request",
+            )
         if query.limit <= 0:
-            raise ArxivPaperSearchClientError("Paper search limit must be greater than zero.")
+            raise ArxivPaperSearchClientError(
+                "Paper search limit must be greater than zero.",
+                stage="request_validation",
+                error_category="invalid_request",
+                failure_reason="invalid_request",
+            )
         if query.limit > self._config.max_limit:
             raise ArxivPaperSearchClientError(
-                f"Paper search limit must not exceed {self._config.max_limit}."
+                f"Paper search limit must not exceed {self._config.max_limit}.",
+                stage="request_validation",
+                error_category="invalid_request",
+                failure_reason="invalid_request",
             )
         if query.start < 0:
-            raise ArxivPaperSearchClientError("Paper search start must be zero or greater.")
+            raise ArxivPaperSearchClientError(
+                "Paper search start must be zero or greater.",
+                stage="request_validation",
+                error_category="invalid_request",
+                failure_reason="invalid_request",
+            )
         return PaperSearchQuery(
             query_text=query_text,
             limit=query.limit or self._config.default_limit,
@@ -98,15 +173,35 @@ HTTP client for arXiv paper search."""
                     async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
                         response = await client.get(url, params=params, headers=headers)
             except httpx.TimeoutException as exc:
-                raise ArxivPaperSearchClientError("arXiv paper search request timed out.") from exc
+                raise ArxivPaperSearchClientError(
+                    "arXiv paper search request timed out.",
+                    stage="search_http",
+                    error_category="timeout",
+                    failure_reason="timeout",
+                    retryable=True,
+                    cause_type=type(exc).__name__,
+                ) from exc
             except httpx.RequestError as exc:
                 raise ArxivPaperSearchClientError(
-                    f"arXiv paper search request failed: {exc}"
+                    "arXiv paper search request failed due to a network error.",
+                    stage="search_http",
+                    error_category="network_error",
+                    failure_reason="tool_error",
+                    retryable=True,
+                    cause_type=type(exc).__name__,
                 ) from exc
 
         if response.status_code < 200 or response.status_code >= 300:
+            error_category, failure_reason, retryable = self._http_failure_diagnostics(
+                response.status_code
+            )
             raise ArxivPaperSearchClientError(
-                f"arXiv paper search request failed with status {response.status_code}."
+                f"arXiv paper search request failed with status {response.status_code}.",
+                stage="search_http",
+                error_category=error_category,
+                failure_reason=failure_reason,
+                status_code=response.status_code,
+                retryable=retryable,
             )
         return response.text
 
@@ -127,14 +222,31 @@ HTTP client for arXiv paper search."""
         try:
             root = ET.fromstring(feed_xml)
         except ET.ParseError as exc:
-            raise ArxivPaperSearchClientError("arXiv paper search response was not valid XML.") from exc
+            raise ArxivPaperSearchClientError(
+                "arXiv paper search response was not valid XML.",
+                stage="response_parsing",
+                error_category="invalid_xml",
+                failure_reason="malformed_response",
+                retryable=False,
+                cause_type=type(exc).__name__,
+            ) from exc
 
         if root.tag != f"{{{ATOM_NS}}}feed":
-            raise ArxivPaperSearchClientError("arXiv paper search response did not contain an Atom feed.")
+            raise ArxivPaperSearchClientError(
+                "arXiv paper search response did not contain an Atom feed.",
+                stage="response_parsing",
+                error_category="invalid_xml",
+                failure_reason="malformed_response",
+            )
 
         feed_error = self._extract_feed_error(root)
         if feed_error:
-            raise ArxivPaperSearchClientError(feed_error)
+            raise ArxivPaperSearchClientError(
+                sanitize_sensitive_text(feed_error, max_length=500),
+                stage="response_validation",
+                error_category="provider_feed_error",
+                failure_reason="invalid_request",
+            )
 
         results: list[PaperSearchResult] = []
         for entry in root.findall("atom:entry", NAMESPACES):
@@ -144,7 +256,10 @@ HTTP client for arXiv paper search."""
 
         if not results and root.findall("atom:entry", NAMESPACES):
             raise ArxivPaperSearchClientError(
-                "arXiv paper search returned entries but none could be normalized."
+                "arXiv paper search returned entries but none could be normalized.",
+                stage="response_normalization",
+                error_category="normalization_error",
+                failure_reason="malformed_response",
             )
 
         return PaperSearchResponse(
@@ -280,5 +395,48 @@ HTTP client for arXiv paper search."""
             return int(normalized)
         except ValueError as exc:
             raise ArxivPaperSearchClientError(
-                f"arXiv paper search response contained a non-integer paging field: {value!r}."
+                "arXiv paper search response contained a non-integer paging field.",
+                stage="response_normalization",
+                error_category="normalization_error",
+                failure_reason="malformed_response",
+                cause_type=type(exc).__name__,
             ) from exc
+
+    def _http_failure_diagnostics(self, status_code: int) -> tuple[str, str, bool]:
+        if status_code == 429:
+            return "rate_limited", "rate_limited", True
+        if status_code >= 500:
+            return "http_server_error", "tool_error", True
+        return "http_client_error", "invalid_request", False
+
+    def _log_search_failure(
+        self,
+        error: ArxivPaperSearchClientError,
+        *,
+        query_fingerprint: str | None,
+        started_at: float,
+    ) -> None:
+        logger.warning(
+            "arXiv paper search failed.",
+            extra={
+                "event": "arxiv_search_failed",
+                "provider": "arxiv",
+                "operation": "paper_search",
+                "query_fingerprint": query_fingerprint,
+                "configured_timeout_seconds": self._config.timeout_seconds,
+                "duration_ms": self._duration_ms(started_at),
+                "failure_stage": error.stage,
+                "failure_reason": error.failure_reason,
+                "error_category": error.error_category,
+                "http_status": error.status_code,
+                "retryable": error.retryable,
+                "exception_type": error.cause_type or type(error).__name__,
+                "attempt_error_info": sanitize_sensitive_text(
+                    error,
+                    max_length=500,
+                ),
+            },
+        )
+
+    def _duration_ms(self, started_at: float) -> int:
+        return max(0, round((time.perf_counter() - started_at) * 1000))

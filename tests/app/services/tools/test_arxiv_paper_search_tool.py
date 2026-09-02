@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from app.domain.enums import AcquisitionStatus
 import asyncio
+
+from app.adapters.paper_search.arxiv_paper_search_client_error import (
+    ArxivPaperSearchClientError,
+)
 from datetime import UTC, datetime
 
 from app.domain.models import (
@@ -236,6 +240,34 @@ def test_run_returns_failed_when_search_raises() -> None:
     assert result.normalized_items == []
 
 
+def test_run_preserves_typed_search_failure_diagnostics() -> None:
+    tool = ArxivPaperSearchTool(
+        FakePaperSearchClient(
+            ArxivPaperSearchClientError(
+                "arXiv paper search request timed out.",
+                stage="search_http",
+                error_category="timeout",
+                failure_reason="timeout",
+                retryable=True,
+                cause_type="ReadTimeout",
+            )
+        ),
+        FakePaperContentFetchClient({}),
+    )
+
+    result = asyncio.run(tool.run(ArxivPaperSearchToolRequest(query_text="topic")))
+
+    assert result.acquisition_status == AcquisitionStatus.FAILED
+    assert result.retrieval_trace.errors == {
+        "search_error": "arXiv paper search request timed out."
+    }
+    assert result.retrieval_trace.observability["failure_stage"] == "search_http"
+    assert result.retrieval_trace.observability["failure_reason"] == "timeout"
+    assert result.retrieval_trace.observability["error_category"] == "timeout"
+    assert result.retrieval_trace.observability["retryable"] is True
+    assert result.retrieval_trace.observability["exception_type"] == "ReadTimeout"
+
+
 def test_run_handles_failed_empty_and_exception_content_with_summary_fallback() -> None:
     search_client = FakePaperSearchClient(SEARCH_RESULTS)
     content_client = FakePaperContentFetchClient(
@@ -287,6 +319,11 @@ def test_run_handles_failed_empty_and_exception_content_with_summary_fallback() 
             "paper_id_type": "arxiv_id",
             "status": "exception",
             "error_info": "download boom",
+            "failure_stage": "paper_content_fetch",
+            "failure_reason": "unknown_error",
+            "error_category": "unknown_error",
+            "retryable": False,
+            "exception_type": "RuntimeError",
         },
     ]
 

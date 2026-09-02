@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 import httpx
 import pytest
@@ -96,7 +97,11 @@ def test_adapter_protocol_conformance() -> None:
     )
 
 
-def test_fetch_content_resolves_arxiv_id_and_extracts_text() -> None:
+def test_fetch_content_resolves_arxiv_id_and_extracts_text(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.paper_content_fetch.arxiv_paper_content_fetch_client",
+    )
     seen_request: httpx.Request | None = None
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -141,9 +146,25 @@ def test_fetch_content_resolves_arxiv_id_and_extracts_text() -> None:
     assert result.error_info is None
     assert result.metadata["download_bytes"] > 0
     assert result.source == "arxiv"
+    completed_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "arxiv_content_fetch_completed"
+    )
+    assert completed_record.paper_id == "2501.12345v2"
+    assert completed_record.extraction_status == "succeeded"
+    assert completed_record.download_bytes > 0
+    assert completed_record.duration_ms >= 0
+    serialized_record = repr(completed_record.__dict__)
+    assert "contact:test@example.com" not in serialized_record
+    assert "vaa-test-agent/1.0" not in serialized_record
 
 
-def test_fetch_content_returns_empty_text_status() -> None:
+def test_fetch_content_returns_empty_text_status(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.paper_content_fetch.arxiv_paper_content_fetch_client",
+    )
     def handler(request: httpx.Request) -> httpx.Response:
         _ = request
         return httpx.Response(
@@ -170,9 +191,23 @@ def test_fetch_content_returns_empty_text_status() -> None:
     assert result.extraction_status == "empty_text"
     assert result.extracted_text is None
     assert result.error_info == "PDF text extraction produced no text."
+    assert result.metadata["error_category"] == "empty_text"
+    failed_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "arxiv_content_fetch_failed"
+    )
+    assert failed_record.extraction_status == "empty_text"
+    assert failed_record.error_category == "empty_text"
 
 
-def test_fetch_content_returns_download_failed_for_http_network_and_content_errors() -> None:
+def test_fetch_content_returns_download_failed_for_http_network_and_content_errors(
+    caplog,
+) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.paper_content_fetch.arxiv_paper_content_fetch_client",
+    )
     def status_handler(request: httpx.Request) -> httpx.Response:
         _ = request
         return httpx.Response(500, content=b"server error")
@@ -182,6 +217,14 @@ def test_fetch_content_returns_download_failed_for_http_network_and_content_erro
 
     def request_error_handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection failed", request=request)
+
+    def rate_limit_handler(request: httpx.Request) -> httpx.Response:
+        _ = request
+        return httpx.Response(429, content=b"rate limited")
+
+    def client_error_handler(request: httpx.Request) -> httpx.Response:
+        _ = request
+        return httpx.Response(403, content=b"forbidden")
 
     def non_pdf_handler(request: httpx.Request) -> httpx.Response:
         _ = request
@@ -216,20 +259,39 @@ def test_fetch_content_returns_download_failed_for_http_network_and_content_erro
             )
 
     cases = [
-        (status_handler, 25_000_000),
-        (timeout_handler, 25_000_000),
-        (request_error_handler, 25_000_000),
-        (non_pdf_handler, 25_000_000),
-        (oversize_handler, 100),
+        (status_handler, 25_000_000, "http_server_error", 500, True),
+        (timeout_handler, 25_000_000, "timeout", None, True),
+        (request_error_handler, 25_000_000, "network_error", None, True),
+        (rate_limit_handler, 25_000_000, "rate_limited", 429, True),
+        (client_error_handler, 25_000_000, "http_client_error", 403, False),
+        (non_pdf_handler, 25_000_000, "unexpected_content_type", None, False),
+        (oversize_handler, 100, "pdf_too_large", None, False),
     ]
-    for handler, max_download_bytes in cases:
+    for handler, max_download_bytes, category, status, retryable in cases:
+        caplog.clear()
         result = asyncio.run(run_case(handler, max_download_bytes=max_download_bytes))
         assert result.extraction_status == "download_failed"
         assert result.extracted_text is None
         assert result.error_info
+        assert result.metadata["error_category"] == category
+        assert result.metadata.get("provider_http_status") == status
+        assert result.metadata["retryable"] is retryable
+        failed_record = next(
+            record
+            for record in caplog.records
+            if getattr(record, "event", None) == "arxiv_content_fetch_failed"
+        )
+        assert failed_record.levelno == logging.WARNING
+        assert failed_record.error_category == category
+        assert failed_record.http_status == status
+        assert failed_record.retryable is retryable
 
 
-def test_fetch_content_returns_extraction_failed_for_malformed_pdf() -> None:
+def test_fetch_content_returns_extraction_failed_for_malformed_pdf(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.paper_content_fetch.arxiv_paper_content_fetch_client",
+    )
     def handler(request: httpx.Request) -> httpx.Response:
         _ = request
         return httpx.Response(
@@ -257,6 +319,15 @@ def test_fetch_content_returns_extraction_failed_for_malformed_pdf() -> None:
     assert result.extracted_text is None
     assert result.error_info is not None
     assert "PDF text extraction failed" in result.error_info
+    assert result.metadata["failure_stage"] == "pdf_extraction"
+    assert result.metadata["error_category"] == "pdf_parse_error"
+    failed_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "arxiv_content_fetch_failed"
+    )
+    assert failed_record.extraction_status == "extraction_failed"
+    assert failed_record.error_category == "pdf_parse_error"
 
 
 def test_fetch_content_rejects_invalid_inputs() -> None:

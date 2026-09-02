@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+import logging
 
 import httpx
 import pytest
@@ -131,7 +132,11 @@ def test_adapter_protocol_conformance() -> None:
     )
 
 
-def test_search_papers_sends_expected_query_and_normalizes_results() -> None:
+def test_search_papers_sends_expected_query_and_normalizes_results(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.paper_search.arxiv_paper_search_client",
+    )
     seen_request: httpx.Request | None = None
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -194,9 +199,29 @@ def test_search_papers_sends_expected_query_and_normalizes_results() -> None:
     assert second.primary_category is None
     assert second.pdf_url is None
     assert second.doi_url is None
+    search_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", "").startswith("arxiv_search_")
+    ]
+    assert [record.event for record in search_records] == [
+        "arxiv_search_started",
+        "arxiv_search_completed",
+    ]
+    assert search_records[0].query_fingerprint
+    assert not hasattr(search_records[0], "generated_query")
+    assert search_records[1].result_count == 2
+    assert search_records[1].duration_ms >= 0
+    serialized_records = repr([record.__dict__ for record in search_records])
+    assert "contact:test@example.com" not in serialized_records
+    assert "vaa-test-agent/1.0" not in serialized_records
 
 
-def test_search_papers_returns_empty_results_for_empty_feed() -> None:
+def test_search_papers_returns_empty_results_for_empty_feed(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.paper_search.arxiv_paper_search_client",
+    )
     def handler(request: httpx.Request) -> httpx.Response:
         _ = request
         return httpx.Response(200, text=EMPTY_FEED)
@@ -218,6 +243,12 @@ def test_search_papers_returns_empty_results_for_empty_feed() -> None:
     assert response.total_results == 0
     assert response.start_index == 0
     assert response.items_per_page == 0
+    completed_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "arxiv_search_completed"
+    )
+    assert completed_record.result_count == 0
 
 
 def test_search_papers_rejects_bad_inputs() -> None:
@@ -276,7 +307,85 @@ def test_search_papers_wraps_http_status_request_and_timeout_errors() -> None:
         asyncio.run(run_case(timeout_handler))
 
 
-def test_search_papers_rejects_invalid_xml_and_error_feed() -> None:
+def test_search_papers_logs_classified_safe_failures(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.paper_search.arxiv_paper_search_client",
+    )
+
+    def timeout_handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.TimeoutException("private retrieval query", request=request)
+
+    def network_handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("private retrieval query", request=request)
+
+    def rate_limit_handler(request: httpx.Request) -> httpx.Response:
+        _ = request
+        return httpx.Response(429, text="Authorization: Bearer secret-token")
+
+    def client_error_handler(request: httpx.Request) -> httpx.Response:
+        _ = request
+        return httpx.Response(400, text="private retrieval query")
+
+    def server_handler(request: httpx.Request) -> httpx.Response:
+        _ = request
+        return httpx.Response(503, text="api_key=server-secret")
+
+    async def run_case(handler) -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            search_client = ArxivPaperSearchClient(
+                config=ArxivPaperSearchClientConfig(
+                    min_interval_seconds=0,
+                    timeout_seconds=4.5,
+                    user_agent="vaa-test-agent/1.0",
+                    client_identity="contact:test@example.com",
+                ),
+                http_client=client,
+            )
+            await search_client.search_papers(
+                PaperSearchQuery(query_text="private retrieval query")
+            )
+
+    cases = [
+        (timeout_handler, "timeout", "timeout", None, True, "TimeoutException"),
+        (network_handler, "network_error", "tool_error", None, True, "ConnectError"),
+        (rate_limit_handler, "rate_limited", "rate_limited", 429, True, "ArxivPaperSearchClientError"),
+        (client_error_handler, "http_client_error", "invalid_request", 400, False, "ArxivPaperSearchClientError"),
+        (server_handler, "http_server_error", "tool_error", 503, True, "ArxivPaperSearchClientError"),
+    ]
+    for handler, category, reason, status, retryable, exception_type in cases:
+        caplog.clear()
+        with pytest.raises(ArxivPaperSearchClientError) as caught:
+            asyncio.run(run_case(handler))
+
+        assert caught.value.error_category == category
+        assert caught.value.failure_reason == reason
+        failed_record = next(
+            record
+            for record in caplog.records
+            if getattr(record, "event", None) == "arxiv_search_failed"
+        )
+        assert failed_record.levelno == logging.WARNING
+        assert failed_record.failure_stage == "search_http"
+        assert failed_record.error_category == category
+        assert failed_record.failure_reason == reason
+        assert failed_record.http_status == status
+        assert failed_record.retryable is retryable
+        assert failed_record.exception_type == exception_type
+        assert failed_record.configured_timeout_seconds == 4.5
+        assert failed_record.duration_ms >= 0
+        serialized_record = repr(failed_record.__dict__)
+        assert "private retrieval query" not in serialized_record
+        assert "secret-token" not in serialized_record
+        assert "server-secret" not in serialized_record
+        assert "contact:test@example.com" not in serialized_record
+
+
+def test_search_papers_rejects_invalid_xml_and_error_feed(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.paper_search.arxiv_paper_search_client",
+    )
     invalid_xml = "<feed>"
 
     def invalid_handler(request: httpx.Request) -> httpx.Response:
@@ -298,10 +407,21 @@ def test_search_papers_rejects_invalid_xml_and_error_feed() -> None:
             )
             await search_client.search_papers(PaperSearchQuery(query_text="retrieval"))
 
-    with pytest.raises(ArxivPaperSearchClientError, match="valid XML"):
+    with pytest.raises(ArxivPaperSearchClientError, match="valid XML") as invalid:
         asyncio.run(run_case(invalid_handler))
-    with pytest.raises(ArxivPaperSearchClientError, match="Bad request"):
+    assert invalid.value.error_category == "invalid_xml"
+    assert invalid.value.failure_reason == "malformed_response"
+    caplog.clear()
+    with pytest.raises(ArxivPaperSearchClientError, match="Bad request") as feed_error:
         asyncio.run(run_case(error_handler))
+    assert feed_error.value.error_category == "provider_feed_error"
+    failed_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "arxiv_search_failed"
+    )
+    assert failed_record.failure_stage == "response_validation"
+    assert failed_record.error_category == "provider_feed_error"
 
 
 def test_search_papers_rejects_unusable_entries() -> None:

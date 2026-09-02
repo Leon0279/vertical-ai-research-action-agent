@@ -192,6 +192,8 @@ def _family_result(
     acquisition_status: AcquisitionStatus,
     selected_tool: str | None = "tool_v1",
     normalized_items: list[dict[str, Any]] | None = None,
+    retrieval_trace: RetrievalTrace | None = None,
+    error_info: str | None = None,
 ) -> BaseFamilyExecutionResult:
     return BaseFamilyExecutionResult(
         normalized_items=normalized_items or [_item()],
@@ -202,8 +204,14 @@ def _family_result(
             selected_tool=selected_tool,
         ),
         execution_summary=RetrievalExecutionSummary(),
-        retrieval_trace=RetrievalTrace(),
-        error_info=None if acquisition_status != AcquisitionStatus.FAILED else "family failed",
+        retrieval_trace=retrieval_trace or RetrievalTrace(),
+        error_info=(
+            error_info
+            if error_info is not None
+            else None
+            if acquisition_status != AcquisitionStatus.FAILED
+            else "family failed"
+        ),
         selected_family=selected_family,
         candidate_tools=[selected_tool] if selected_tool else [],
         selected_tool=selected_tool,
@@ -644,6 +652,79 @@ def test_family_exception_is_evaluated_as_tool_error() -> None:
     assert result.acquisition_status == AcquisitionStatus.FAILED
     assert evaluator.requests[0].failure_reason == "tool_error"
     assert result.retrieval_trace["family_exception"] == "family boom"
+
+
+def test_failed_arxiv_attempt_logs_propagated_safe_diagnostics_without_changing_recovery(
+    caplog,
+) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.tool_execution_layer.tool_execution_layer_service",
+    )
+    selector = FakeFamilySelectionService([_selection_result("paper_search")])
+    evaluator = FakeCompletionEvaluationService(
+        [_evaluation_result("stop", "stop_request", request_completed=True)]
+    )
+    paper = FakeFamilyService(
+        selected_family="paper_search",
+        results=[
+            _family_result(
+                "paper_search",
+                acquisition_status=AcquisitionStatus.FAILED,
+                selected_tool="arxiv_paper_search_v1",
+                retrieval_trace=RetrievalTrace(
+                    selected_family=FamilyName.PAPER_SEARCH,
+                    selected_tool="arxiv_paper_search_v1",
+                    errors={
+                        "search_error": (
+                            "arXiv timed out with api_key=diagnostic-secret"
+                        )
+                    },
+                    observability={
+                        "failure_stage": "search_http",
+                        "failure_reason": "timeout",
+                        "error_category": "timeout",
+                        "provider_http_status": 504,
+                        "retryable": True,
+                        "exception_type": "ReadTimeout",
+                    },
+                ),
+                error_info="arXiv timed out with api_key=diagnostic-secret",
+            )
+        ],
+    )
+    service = _service(
+        selector=selector,
+        evaluator=evaluator,
+        paper=paper,
+    )
+
+    result = _execute(
+        service,
+        ToolExecutionLayerRequest(target_problem="Find the original paper"),
+    )
+
+    assert evaluator.requests[0].failure_reason is None
+    attempt = result.retrieval_trace.attempts[0]
+    assert attempt.metadata["failure_stage"] == "search_http"
+    assert attempt.metadata["failure_reason"] == "timeout"
+    assert attempt.metadata["error_category"] == "timeout"
+    assert attempt.metadata["provider_http_status"] == 504
+    assert attempt.metadata["retryable"] is True
+    attempt_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "retrieval_attempt_completed"
+    )
+    assert attempt_record.levelno == logging.WARNING
+    assert attempt_record.failure_stage == "search_http"
+    assert attempt_record.failure_reason == "timeout"
+    assert attempt_record.error_category == "timeout"
+    assert attempt_record.provider_http_status == 504
+    assert attempt_record.retryable is True
+    assert attempt_record.exception_type == "ReadTimeout"
+    assert "diagnostic-secret" not in attempt_record.attempt_error_info
+    assert "[REDACTED]" in attempt_record.attempt_error_info
 
 
 def test_evaluation_failed_returns_failed_with_family_result(caplog) -> None:
