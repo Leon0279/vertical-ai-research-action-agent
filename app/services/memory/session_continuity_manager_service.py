@@ -48,6 +48,19 @@ class SessionContinuityManagerService(SessionContinuityManagerProtocol):
             candidates,
         )
         updated_memory = self._bound_session_memory(updated_memory)
+        logger.info(
+            "Session memory write-back started.",
+            extra={
+                "event": "session_memory_writeback_started",
+                "memory_type": "session",
+                "session_id": context.runtime_context.session_id,
+                "session_id_generated": context.runtime_context.session_id_generated,
+                "session_memory_created": existing_memory is None,
+                "recent_turn_count": len(updated_memory.recent_turn_summaries),
+                "action_item_count": len(updated_memory.latest_action_items),
+                "open_question_count": len(updated_memory.open_questions),
+            },
+        )
         await self._save_best_effort(updated_memory)
 
     def _resolve_session_boundary(

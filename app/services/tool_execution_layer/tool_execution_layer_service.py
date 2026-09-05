@@ -274,6 +274,18 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             generated_query=generated_query,
             family_service=family_service,
         )
+        if (
+            execution_failure_reason is None
+            and family_result.acquisition_status == AcquisitionStatus.FAILED
+        ):
+            observed_failure_reason = (
+                family_result.retrieval_trace.observability.get("failure_reason")
+                or family_result.execution_summary.observability.get(
+                    "failure_reason"
+                )
+            )
+            if isinstance(observed_failure_reason, str):
+                execution_failure_reason = observed_failure_reason
         state.latest_family_result = family_result
         attempt_outcome.family_result = family_result
         attempt_outcome.execution_failure_reason = execution_failure_reason
@@ -343,6 +355,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
                 "attempt_error_info": attempt.get("attempt_error_info"),
                 "provider_http_status": attempt.get("provider_http_status"),
                 "retryable": attempt.get("retryable"),
+                "retry_after_seconds": attempt.get("retry_after_seconds"),
                 "exception_type": attempt.get("exception_type"),
             },
         )
@@ -840,6 +853,9 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
                     "provider_http_status"
                 ),
                 "retryable": observability.get("retryable"),
+                "retry_after_seconds": observability.get(
+                    "retry_after_seconds"
+                ),
                 "exception_type": observability.get("exception_type"),
             }.items()
             if value is not None

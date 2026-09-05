@@ -31,6 +31,9 @@ from app.domain.models import (
 from app.services.tool_execution_layer.tool_execution_layer_service import (
     ToolExecutionLayerService,
 )
+from app.services.tool_execution_layer.request_completion_evaluation_service import (
+    RequestCompletionEvaluationService,
+)
 
 
 class FakeFamilySelectionService:
@@ -541,6 +544,115 @@ def test_broader_fallback_blocks_current_family_and_executes_new_family(
     assert summary_record.recovery_attempt_count == 1
 
 
+def test_transient_paper_failure_retries_once_then_falls_back_to_web() -> None:
+    selector = FakeFamilySelectionService(
+        [_selection_result("paper_search"), _selection_result("web_search")]
+    )
+    query = FakeQueryGenerationService(
+        [
+            _query_result("paper_search", "original paper query"),
+            _query_result("web_search", "broader web query"),
+        ]
+    )
+    timeout_result = _family_result(
+        "paper_search",
+        acquisition_status=AcquisitionStatus.FAILED,
+        retrieval_trace=RetrievalTrace(
+            selected_family=FamilyName.PAPER_SEARCH,
+            observability={
+                "failure_stage": "search_http",
+                "failure_reason": "timeout",
+                "error_category": "timeout",
+                "retryable": True,
+            },
+        ),
+    )
+    paper = FakeFamilyService(
+        selected_family="paper_search",
+        results=[timeout_result, timeout_result.model_copy(deep=True)],
+    )
+    web = FakeFamilyService(
+        selected_family="web_search",
+        results=[
+            _family_result(
+                "web_search",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ],
+    )
+    service = _service(
+        selector=selector,
+        query=query,
+        evaluator=RequestCompletionEvaluationService(),  # type: ignore[arg-type]
+        paper=paper,
+        web=web,
+    )
+
+    result = _execute(
+        service,
+        ToolExecutionLayerRequest(
+            target_problem="Find the original paper",
+            action_mode=ActionMode.EXTERNAL_ACQUISITION,
+            available_families=[FamilyName.PAPER_SEARCH, FamilyName.WEB_SEARCH],
+            allowed_source_families=[FamilyName.PAPER_SEARCH, FamilyName.WEB_SEARCH],
+            preferred_source_families=[FamilyName.PAPER_SEARCH],
+            retry_budget=1,
+            fallback_policy="fallback_to_broader_search",
+        ),
+    )
+
+    assert result.acquisition_status == AcquisitionStatus.SUCCESS
+    assert len(paper.requests) == 2
+    assert len(web.requests) == 1
+    assert len(query.requests) == 2
+    assert len(result.retrieval_trace.attempts) == 3
+    assert result.execution_summary.retry_count == 1
+    assert result.execution_summary.fallback_applied is True
+
+
+def test_deterministic_paper_client_error_is_not_retried() -> None:
+    selector = FakeFamilySelectionService([_selection_result("paper_search")])
+    paper = FakeFamilyService(
+        selected_family="paper_search",
+        results=[
+            _family_result(
+                "paper_search",
+                acquisition_status=AcquisitionStatus.FAILED,
+                retrieval_trace=RetrievalTrace(
+                    selected_family=FamilyName.PAPER_SEARCH,
+                    observability={
+                        "failure_stage": "search_http",
+                        "failure_reason": "invalid_request",
+                        "error_category": "http_client_error",
+                        "provider_http_status": 400,
+                        "retryable": False,
+                    },
+                ),
+            )
+        ],
+    )
+    service = _service(
+        selector=selector,
+        evaluator=RequestCompletionEvaluationService(),  # type: ignore[arg-type]
+        paper=paper,
+    )
+
+    result = _execute(
+        service,
+        ToolExecutionLayerRequest(
+            target_problem="Find the original paper",
+            action_mode=ActionMode.EXTERNAL_ACQUISITION,
+            available_families=[FamilyName.PAPER_SEARCH],
+            allowed_source_families=[FamilyName.PAPER_SEARCH],
+            retry_budget=1,
+        ),
+    )
+
+    assert result.acquisition_status == AcquisitionStatus.FAILED
+    assert len(paper.requests) == 1
+    assert result.execution_summary.retry_count == 0
+
+
 def test_same_family_fallback_is_recorded_as_unavailable() -> None:
     selector = FakeFamilySelectionService([_selection_result("docs_search")])
     evaluator = FakeCompletionEvaluationService(
@@ -686,6 +798,7 @@ def test_failed_arxiv_attempt_logs_propagated_safe_diagnostics_without_changing_
                         "error_category": "timeout",
                         "provider_http_status": 504,
                         "retryable": True,
+                        "retry_after_seconds": 12.0,
                         "exception_type": "ReadTimeout",
                     },
                 ),
@@ -704,13 +817,14 @@ def test_failed_arxiv_attempt_logs_propagated_safe_diagnostics_without_changing_
         ToolExecutionLayerRequest(target_problem="Find the original paper"),
     )
 
-    assert evaluator.requests[0].failure_reason is None
+    assert evaluator.requests[0].failure_reason == "timeout"
     attempt = result.retrieval_trace.attempts[0]
     assert attempt.metadata["failure_stage"] == "search_http"
     assert attempt.metadata["failure_reason"] == "timeout"
     assert attempt.metadata["error_category"] == "timeout"
     assert attempt.metadata["provider_http_status"] == 504
     assert attempt.metadata["retryable"] is True
+    assert attempt.metadata["retry_after_seconds"] == 12.0
     attempt_record = next(
         record
         for record in caplog.records
@@ -722,6 +836,7 @@ def test_failed_arxiv_attempt_logs_propagated_safe_diagnostics_without_changing_
     assert attempt_record.error_category == "timeout"
     assert attempt_record.provider_http_status == 504
     assert attempt_record.retryable is True
+    assert attempt_record.retry_after_seconds == 12.0
     assert attempt_record.exception_type == "ReadTimeout"
     assert "diagnostic-secret" not in attempt_record.attempt_error_info
     assert "[REDACTED]" in attempt_record.attempt_error_info

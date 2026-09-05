@@ -3,6 +3,7 @@
 import asyncio
 import json
 from datetime import datetime
+import logging
 
 import pytest
 
@@ -87,7 +88,11 @@ def test_redis_session_memory_config_requires_url(monkeypatch: pytest.MonkeyPatc
         RedisSessionMemoryStoreConfig.from_env()
 
 
-def test_save_writes_compact_json_key_and_ttl() -> None:
+def test_save_writes_compact_json_key_and_ttl(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.memory.redis_session_memory_store",
+    )
     redis_client = FakeRedisClient()
     store = RedisSessionMemoryStore(config=_config(), redis_client=redis_client)
 
@@ -105,6 +110,14 @@ def test_save_writes_compact_json_key_and_ttl() -> None:
     assert payload["recent_turn_summaries"][0]["content_summary"] == "Asked about Redis session memory."
     assert payload["updated_at"]
     assert payload["expires_at"]
+    completed = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "session_memory_writeback_completed"
+    )
+    assert completed.session_id == "session/1"
+    assert completed.ttl_seconds == 60
+    assert completed.recent_turn_count == 1
 
 
 def test_load_reads_session_memory() -> None:
@@ -188,13 +201,24 @@ def test_load_returns_none_when_redis_get_fails() -> None:
     assert loaded is None
 
 
-def test_save_does_not_raise_when_redis_set_fails() -> None:
+def test_save_does_not_raise_when_redis_set_fails(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.memory.redis_session_memory_store",
+    )
     store = RedisSessionMemoryStore(
         config=_config(),
         redis_client=FakeRedisClient(fail_set=True),
     )
 
     asyncio.run(store.save(_memory()))
+    failed = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "session_memory_writeback_failed"
+    )
+    assert failed.failure_stage == "redis_set"
+    assert failed.session_id == "session/1"
 
 
 def test_redis_session_memory_store_satisfies_protocol() -> None:

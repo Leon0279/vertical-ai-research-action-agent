@@ -160,6 +160,46 @@ def test_fetch_content_resolves_arxiv_id_and_extracts_text(caplog) -> None:
     assert "vaa-test-agent/1.0" not in serialized_record
 
 
+def test_fetch_content_follows_arxiv_pdf_redirect() -> None:
+    seen_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        if request.url.path.endswith(".pdf"):
+            return httpx.Response(
+                301,
+                headers={"location": "/pdf/2501.12345v2"},
+            )
+        return httpx.Response(
+            200,
+            content=_minimal_pdf("Redirected arXiv full text"),
+            headers={"content-type": "application/pdf"},
+        )
+
+    async def run_case():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            fetch_client = ArxivPaperContentFetchClient(
+                config=ArxivPaperContentFetchClientConfig(
+                    pdf_base_url="https://example.test/pdf",
+                    user_agent="vaa-test-agent/1.0",
+                ),
+                http_client=client,
+            )
+            return await fetch_client.fetch_content(
+                PaperContentFetchRequest(
+                    paper_id="2501.12345v2",
+                    paper_id_type="arxiv_id",
+                )
+            )
+
+    result = asyncio.run(run_case())
+
+    assert seen_paths == ["/pdf/2501.12345v2.pdf", "/pdf/2501.12345v2"]
+    assert result.extraction_status == "succeeded"
+    assert result.extracted_text is not None
+    assert "Redirected arXiv full text" in result.extracted_text
+
+
 def test_fetch_content_returns_empty_text_status(caplog) -> None:
     caplog.set_level(
         logging.INFO,

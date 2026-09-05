@@ -1,6 +1,7 @@
 """Tests for deterministic session continuity rolling updates."""
 
 import asyncio
+import logging
 
 from app.domain.models import (
     ExecutionContext,
@@ -57,7 +58,11 @@ def _context(**state_updates: object) -> ExecutionContext:
     )
 
 
-def test_update_creates_bounded_memory_from_current_run() -> None:
+def test_update_creates_bounded_memory_from_current_run(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.memory.session_continuity_manager_service",
+    )
     store = _RecordingSessionStore()
     context = _context(
         task_framing="Compare the options for this project.",
@@ -93,6 +98,14 @@ def test_update_creates_bounded_memory_from_current_run() -> None:
         "constraints": ["Prefer low operational cost."],
         "current_bottleneck_summary": "Evaluation data is still limited.",
     }
+    started = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "session_memory_writeback_started"
+    )
+    assert started.session_id == "session-1"
+    assert started.session_memory_created is True
+    assert started.recent_turn_count == 1
 
 
 def test_update_refreshes_authoritative_lists_and_preserves_missing_scalar_values() -> None:

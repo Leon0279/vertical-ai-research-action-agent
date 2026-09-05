@@ -401,6 +401,11 @@ Tool service that searches arXiv papers and fetches full text for top candidates
                 "error_category": getattr(error, "error_category", "unknown_error"),
                 "provider_http_status": getattr(error, "status_code", None),
                 "retryable": getattr(error, "retryable", False),
+                "retry_after_seconds": getattr(
+                    error,
+                    "retry_after_seconds",
+                    None,
+                ),
                 "exception_type": (
                     getattr(error, "cause_type", None) or type(error).__name__
                 ),
@@ -415,6 +420,7 @@ Tool service that searches arXiv papers and fetches full text for top candidates
             "error_category",
             "provider_http_status",
             "retryable",
+            "retry_after_seconds",
             "exception_type",
             "response_content_type",
             "download_bytes",
@@ -440,6 +446,7 @@ Tool service that searches arXiv papers and fetches full text for top candidates
                 "error_category": first.get("error_category"),
                 "provider_http_status": first.get("provider_http_status"),
                 "retryable": first.get("retryable"),
+                "retry_after_seconds": first.get("retry_after_seconds"),
                 "exception_type": first.get("exception_type"),
                 "attempt_error_info": first.get("error_info"),
                 "content_fetch_failure_count": len(failed_fetches),

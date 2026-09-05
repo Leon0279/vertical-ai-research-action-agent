@@ -223,6 +223,39 @@ def test_pipeline_stage_order(monkeypatch, caplog) -> None:
     assert completed_record.research_status == "no_result"
     assert completed_record.research_iteration_count == 1
     assert completed_record.citation_count == 0
+    stage_started = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "pipeline_stage_started"
+    ]
+    stage_completed = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "pipeline_stage_completed"
+    ]
+    expected_observed_stages = [
+        "task_interpretation",
+        "context_memory_load",
+        "workflow_routing",
+        "planning",
+        "research",
+        "conclusion",
+        "memory_writeback",
+        "output",
+    ]
+    assert [record.stage_name for record in stage_started] == expected_observed_stages
+    assert [record.stage_name for record in stage_completed] == expected_observed_stages
+    assert all(record.duration_ms >= 0 for record in stage_completed)
+    planning_record = next(
+        record for record in stage_completed if record.stage_name == "planning"
+    )
+    assert planning_record.planning_depth == "MEDIUM"
+    assert planning_record.plan_step_count > 0
+    assert planning_record.sub_question_count > 0
+    memory_record = next(
+        record for record in stage_completed if record.stage_name == "memory_writeback"
+    )
+    assert memory_record.written_count == 0
     assert current_trace_id() is None
 
 
@@ -267,6 +300,14 @@ def test_pipeline_failure_logs_provider_diagnostics_and_clears_trace(caplog) -> 
     assert failed_record.provider_request_id == "provider-request-1"
     assert failed_record.finish_reason == "error"
     assert failed_record.exception_type == "ZhipuLLMClientError"
+    stage_failed_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "pipeline_stage_failed"
+    )
+    assert stage_failed_record.stage_name == "task_interpretation"
+    assert stage_failed_record.stage_status == "failed"
+    assert stage_failed_record.provider_http_status == 503
     assert current_trace_id() is None
 
 

@@ -97,6 +97,13 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                 "attempt_error_info": "Authorization: Bearer attempt-secret",
                 "provider_http_status": 504,
                 "retryable": True,
+                "memory_persistence_items": [
+                    {
+                        "memory_type": "RESEARCH_KNOWLEDGE",
+                        "status": "no_write",
+                        "error_info": "api_key=nested-secret",
+                    }
+                ],
                 "prompt": "private prompt must not be serialized",
                 "raw_response": "private provider response",
             },
@@ -123,6 +130,13 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert record["error_category"] == "timeout"
     assert record["provider_http_status"] == 504
     assert record["retryable"] is True
+    assert record["memory_persistence_items"] == [
+        {
+            "memory_type": "RESEARCH_KNOWLEDGE",
+            "status": "no_write",
+            "error_info": "api_key=[REDACTED]",
+        }
+    ]
     serialized = json.dumps(record, ensure_ascii=False)
     assert "super-secret" not in serialized
     assert "key-secret" not in serialized
@@ -130,6 +144,7 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert "private provider response" not in serialized
     assert "rationale-secret" not in serialized
     assert "attempt-secret" not in serialized
+    assert "nested-secret" not in serialized
     assert "[REDACTED]" in serialized
 
 

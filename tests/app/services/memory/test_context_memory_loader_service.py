@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from app.domain.enums import TaskType
@@ -325,7 +326,11 @@ def test_context_memory_loader_skips_project_scoped_stores_without_project_scope
     assert context.supplemental_context.project_support == []
 
 
-def test_context_memory_loader_degrades_when_one_memory_source_fails() -> None:
+def test_context_memory_loader_degrades_when_one_memory_source_fails(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.memory.context_memory_loader_service",
+    )
     context = _context()
 
     asyncio.run(
@@ -340,6 +345,19 @@ def test_context_memory_loader_degrades_when_one_memory_source_fails() -> None:
     assert context.supplemental_context.project_support == []
     assert len(context.supplemental_context.decision_support) == 1
     assert "Decision 1" in (context.running_state.active_decision_summary or "")
+    failed_sources = {
+        record.memory_load_source
+        for record in caplog.records
+        if getattr(record, "event", None) == "memory_load_source_failed"
+    }
+    assert failed_sources == {"session", "project_profile"}
+    completed = {
+        record.memory_load_source: (record.memory_hit, record.result_count)
+        for record in caplog.records
+        if getattr(record, "event", None) == "memory_load_source_completed"
+    }
+    assert completed["decision"] == (True, 1)
+    assert completed["action"] == (False, 0)
 
 
 def test_context_memory_loader_does_not_recall_research_for_action_planning() -> None:

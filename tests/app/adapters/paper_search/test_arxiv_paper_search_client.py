@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
 import logging
 
 import httpx
@@ -91,6 +93,8 @@ def test_arxiv_config_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("ARXIV_PAPER_SEARCH_DEFAULT_LIMIT", "7")
     monkeypatch.setenv("ARXIV_PAPER_SEARCH_MAX_LIMIT", "15")
     monkeypatch.setenv("ARXIV_PAPER_SEARCH_MIN_INTERVAL_SECONDS", "1.25")
+    monkeypatch.setenv("ARXIV_PAPER_SEARCH_RATE_LIMIT_BACKOFF_SECONDS", "7")
+    monkeypatch.setenv("ARXIV_PAPER_SEARCH_MAX_RETRY_AFTER_SECONDS", "25")
     monkeypatch.setenv("ARXIV_PAPER_SEARCH_USER_AGENT", "vaa-test-agent/1.0")
     monkeypatch.setenv("ARXIV_PAPER_SEARCH_CLIENT_IDENTITY", "contact:test@example.com")
 
@@ -101,6 +105,8 @@ def test_arxiv_config_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None
     assert config.default_limit == 7
     assert config.max_limit == 15
     assert config.min_interval_seconds == 1.25
+    assert config.rate_limit_backoff_seconds == 7.0
+    assert config.max_retry_after_seconds == 25.0
     assert config.user_agent == "vaa-test-agent/1.0"
     assert config.client_identity == "contact:test@example.com"
 
@@ -109,10 +115,12 @@ def test_arxiv_config_uses_expected_defaults() -> None:
     config = ArxivPaperSearchClientConfig(user_agent="vaa-test-agent/1.0")
 
     assert config.base_url == "https://export.arxiv.org/api"
-    assert config.timeout_seconds == 10.0
+    assert config.timeout_seconds == 30.0
     assert config.default_limit == 5
     assert config.max_limit == 20
     assert config.min_interval_seconds == 3.0
+    assert config.rate_limit_backoff_seconds == 10.0
+    assert config.max_retry_after_seconds == 30.0
     assert config.client_identity is None
 
 
@@ -321,7 +329,11 @@ def test_search_papers_logs_classified_safe_failures(caplog) -> None:
 
     def rate_limit_handler(request: httpx.Request) -> httpx.Response:
         _ = request
-        return httpx.Response(429, text="Authorization: Bearer secret-token")
+        return httpx.Response(
+            429,
+            text="Authorization: Bearer secret-token",
+            headers={"retry-after": "12"},
+        )
 
     def client_error_handler(request: httpx.Request) -> httpx.Response:
         _ = request
@@ -351,7 +363,7 @@ def test_search_papers_logs_classified_safe_failures(caplog) -> None:
         (network_handler, "network_error", "tool_error", None, True, "ConnectError"),
         (rate_limit_handler, "rate_limited", "rate_limited", 429, True, "ArxivPaperSearchClientError"),
         (client_error_handler, "http_client_error", "invalid_request", 400, False, "ArxivPaperSearchClientError"),
-        (server_handler, "http_server_error", "tool_error", 503, True, "ArxivPaperSearchClientError"),
+        (server_handler, "http_server_error", "server_error", 503, True, "ArxivPaperSearchClientError"),
     ]
     for handler, category, reason, status, retryable, exception_type in cases:
         caplog.clear()
@@ -371,6 +383,9 @@ def test_search_papers_logs_classified_safe_failures(caplog) -> None:
         assert failed_record.failure_reason == reason
         assert failed_record.http_status == status
         assert failed_record.retryable is retryable
+        if status == 429:
+            assert caught.value.retry_after_seconds == 12.0
+            assert failed_record.retry_after_seconds == 12.0
         assert failed_record.exception_type == exception_type
         assert failed_record.configured_timeout_seconds == 4.5
         assert failed_record.duration_ms >= 0
@@ -456,36 +471,79 @@ def test_search_papers_rejects_unusable_entries() -> None:
 def test_search_papers_enforces_minimum_interval_without_real_sleep(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    call_times = [100.0, 100.0, 101.0, 103.5]
     sleep_calls: list[float] = []
-
-    def fake_monotonic() -> float:
-        if call_times:
-            return call_times.pop(0)
-        return 103.5
 
     async def fake_sleep(duration: float) -> None:
         sleep_calls.append(duration)
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        _ = request
-        return httpx.Response(200, text=EMPTY_FEED)
-
     async def run_case() -> None:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-            search_client = ArxivPaperSearchClient(
-                config=ArxivPaperSearchClientConfig(
-                    min_interval_seconds=3.0,
-                    user_agent="vaa-test-agent/1.0",
-                ),
-                http_client=client,
+        search_client = ArxivPaperSearchClient(
+            config=ArxivPaperSearchClientConfig(
+                min_interval_seconds=3.0,
+                user_agent="vaa-test-agent/1.0",
             )
-            await search_client.search_papers(PaperSearchQuery(query_text="first"))
-            await search_client.search_papers(PaperSearchQuery(query_text="second"))
+        )
+        search_client._last_request_started_at = 100.0
+        await search_client._wait_for_rate_limit()
 
-    monkeypatch.setattr(arxiv_module.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(arxiv_module.time, "monotonic", lambda: 101.0)
     monkeypatch.setattr(arxiv_module.asyncio, "sleep", fake_sleep)
 
     asyncio.run(run_case())
 
     assert sleep_calls == [2.0]
+
+
+def test_retry_after_parsing_uses_default_date_and_cap() -> None:
+    search_client = ArxivPaperSearchClient(
+        config=ArxivPaperSearchClientConfig(
+            min_interval_seconds=3.0,
+            rate_limit_backoff_seconds=10.0,
+            max_retry_after_seconds=30.0,
+            user_agent="vaa-test-agent/1.0",
+        )
+    )
+
+    assert search_client._retry_after_seconds(None) == 10.0
+    assert search_client._retry_after_seconds("invalid") == 10.0
+    assert search_client._retry_after_seconds("90") == 30.0
+    future = format_datetime(datetime.now(UTC) + timedelta(seconds=20))
+    parsed_date = search_client._retry_after_seconds(future)
+    assert 18.0 <= parsed_date <= 20.0
+
+
+def test_provider_retry_after_cooldown_is_waited_and_logged(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog,
+) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.adapters.paper_search.arxiv_paper_search_client",
+    )
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(duration: float) -> None:
+        sleep_calls.append(duration)
+
+    search_client = ArxivPaperSearchClient(
+        config=ArxivPaperSearchClientConfig(
+            min_interval_seconds=3.0,
+            user_agent="vaa-test-agent/1.0",
+        )
+    )
+    search_client._last_request_started_at = 99.0
+    search_client._provider_retry_not_before = 112.0
+    search_client._last_retry_after_seconds = 12.0
+    monkeypatch.setattr(arxiv_module.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(arxiv_module.asyncio, "sleep", fake_sleep)
+
+    asyncio.run(search_client._wait_for_rate_limit())
+
+    assert sleep_calls == [12.0]
+    wait_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "arxiv_rate_limit_wait"
+    )
+    assert wait_record.rate_limit_wait_ms == 12000
+    assert wait_record.retry_after_seconds == 12.0

@@ -18,6 +18,7 @@ Raised when arXiv paper search fails or returns invalid data."""
         status_code: int | None = None,
         retryable: bool = False,
         cause_type: str | None = None,
+        retry_after_seconds: float | None = None,
     ) -> None:
         super().__init__(message)
         self.stage = stage
@@ -26,3 +27,4 @@ Raised when arXiv paper search fails or returns invalid data."""
         self.status_code = status_code
         self.retryable = retryable
         self.cause_type = cause_type
+        self.retry_after_seconds = retry_after_seconds

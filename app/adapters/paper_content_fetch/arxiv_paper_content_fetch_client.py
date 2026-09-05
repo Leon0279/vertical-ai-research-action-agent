@@ -211,10 +211,18 @@ HTTP client for fetching and extracting arXiv PDF text."""
 
         try:
             if self._http_client is not None:
-                response = await self._http_client.get(pdf_url, headers=headers)
+                response = await self._http_client.get(
+                    pdf_url,
+                    headers=headers,
+                    follow_redirects=True,
+                )
             else:
                 async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-                    response = await client.get(pdf_url, headers=headers)
+                    response = await client.get(
+                        pdf_url,
+                        headers=headers,
+                        follow_redirects=True,
+                    )
         except httpx.TimeoutException as exc:
             return None, ArxivPaperContentFetchClientError(
                 "arXiv PDF download request timed out.",

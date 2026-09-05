@@ -83,10 +83,11 @@ Load task-relevant short-term and long-term memory into execution context."""
                 session_id=context.runtime_context.session_id,
             )
         except Exception:
-            logger.warning("Failed to load session memory.", exc_info=True)
+            self._log_memory_load_failed("session")
             return
 
         if not session_memory:
+            self._log_memory_load_completed("session", result_count=0)
             return
 
         context.supplemental_context.session_support.append(
@@ -98,6 +99,7 @@ Load task-relevant short-term and long-term memory into execution context."""
             state.open_questions,
             session_memory.open_questions,
         )
+        self._log_memory_load_completed("session", result_count=1)
 
     async def _load_structured_project_memory(self, context: ExecutionContext) -> None:
         project_id = context.running_state.project_scope_id
@@ -115,10 +117,11 @@ Load task-relevant short-term and long-term memory into execution context."""
                 project_id=project_id,
             )
         except Exception:
-            logger.warning("Failed to load project profile memory.", exc_info=True)
+            self._log_memory_load_failed("project_profile")
             return
 
         if not profile:
+            self._log_memory_load_completed("project_profile", result_count=0)
             return
 
         context.supplemental_context.project_support.append(
@@ -127,6 +130,7 @@ Load task-relevant short-term and long-term memory into execution context."""
         state = context.running_state
         state.project_context_summary = state.project_context_summary or self._project_profile_summary(profile)
         state.constraints = self._merge_unique(state.constraints, profile.constraints)
+        self._log_memory_load_completed("project_profile", result_count=1)
 
     async def _load_active_decisions(self, context: ExecutionContext, *, project_id: str) -> None:
         try:
@@ -135,7 +139,7 @@ Load task-relevant short-term and long-term memory into execution context."""
                 project_id=project_id,
             )
         except Exception:
-            logger.warning("Failed to load decision memory.", exc_info=True)
+            self._log_memory_load_failed("decision")
             return
 
         bounded_decisions = decisions[: self._MAX_DECISION_ITEMS]
@@ -148,6 +152,10 @@ Load task-relevant short-term and long-term memory into execution context."""
                 context.running_state.active_decision_summary
                 or self._active_decision_summary(bounded_decisions)
             )
+        self._log_memory_load_completed(
+            "decision",
+            result_count=len(bounded_decisions),
+        )
 
     async def _load_active_actions(self, context: ExecutionContext, *, project_id: str) -> None:
         try:
@@ -156,7 +164,7 @@ Load task-relevant short-term and long-term memory into execution context."""
                 project_id=project_id,
             )
         except Exception:
-            logger.warning("Failed to load action memory.", exc_info=True)
+            self._log_memory_load_failed("action")
             return
 
         bounded_actions = actions[: self._MAX_ACTION_ITEMS]
@@ -169,6 +177,10 @@ Load task-relevant short-term and long-term memory into execution context."""
                 context.running_state.current_action_status
                 or self._current_action_status(bounded_actions)
             )
+        self._log_memory_load_completed(
+            "action",
+            result_count=len(bounded_actions),
+        )
 
     async def _load_preference_policy_memory(self, context: ExecutionContext) -> None:
         task_type = self._task_type_from_state(context)
@@ -180,13 +192,18 @@ Load task-relevant short-term and long-term memory into execution context."""
                 memory_type=None,
             )
         except Exception:
-            logger.warning("Failed to load preference/policy memory.", exc_info=True)
+            self._log_memory_load_failed("preference_policy")
             return
 
-        for policy in policies[: self._MAX_POLICY_ITEMS]:
+        bounded_policies = policies[: self._MAX_POLICY_ITEMS]
+        for policy in bounded_policies:
             context.supplemental_context.policy_support.append(
                 self._context_item_from_policy(policy)
             )
+        self._log_memory_load_completed(
+            "preference_policy",
+            result_count=len(bounded_policies),
+        )
 
     async def _load_research_knowledge_memory(self, context: ExecutionContext) -> None:
         task_type = self._task_type_from_state(context)
@@ -209,13 +226,41 @@ Load task-relevant short-term and long-term memory into execution context."""
                 )
             )
         except Exception:
-            logger.warning("Failed to recall research knowledge memory.", exc_info=True)
+            self._log_memory_load_failed("research_knowledge")
             return
 
-        for result in results[: self._RESEARCH_RECALL_LIMIT]:
+        bounded_results = results[: self._RESEARCH_RECALL_LIMIT]
+        for result in bounded_results:
             context.supplemental_context.research_support.append(
                 self._context_item_from_research_result(result)
             )
+        self._log_memory_load_completed(
+            "research_knowledge",
+            result_count=len(bounded_results),
+        )
+
+    @staticmethod
+    def _log_memory_load_completed(source: str, *, result_count: int) -> None:
+        logger.info(
+            "Memory source load completed.",
+            extra={
+                "event": "memory_load_source_completed",
+                "memory_load_source": source,
+                "memory_hit": result_count > 0,
+                "result_count": result_count,
+            },
+        )
+
+    @staticmethod
+    def _log_memory_load_failed(source: str) -> None:
+        logger.warning(
+            "Memory source load failed.",
+            exc_info=True,
+            extra={
+                "event": "memory_load_source_failed",
+                "memory_load_source": source,
+            },
+        )
 
     def _context_item_from_session_memory(self, memory: SessionMemory) -> ContextItem:
         summary_parts = [

@@ -90,6 +90,51 @@ _STRUCTURED_FIELDS = (
     "outcome_decision_source",
     "outcome_guardrail_applied",
     "outcome_rationale",
+    "retry_after_seconds",
+    "rate_limit_wait_ms",
+    "stage_name",
+    "stage_status",
+    "task_type",
+    "constraint_count",
+    "session_support_count",
+    "project_support_count",
+    "decision_support_count",
+    "action_support_count",
+    "policy_support_count",
+    "research_support_count",
+    "workflow_pattern",
+    "planning_depth",
+    "evidence_strategy",
+    "memory_writeback_focus",
+    "plan_step_count",
+    "sub_question_count",
+    "comparison_candidate_count",
+    "information_gap_count",
+    "initial_evidence_strategy_count",
+    "answer_present",
+    "summary_present",
+    "recommendation_present",
+    "action_item_count",
+    "caveat_count",
+    "confidence",
+    "candidate_count",
+    "candidate_memory_types",
+    "stable_candidate_count",
+    "tentative_candidate_count",
+    "source_reference_count",
+    "written_count",
+    "no_write_count",
+    "failed_count",
+    "memory_persistence_items",
+    "memory_type",
+    "memory_load_source",
+    "memory_hit",
+    "session_id",
+    "session_id_generated",
+    "session_memory_created",
+    "ttl_seconds",
+    "recent_turn_count",
+    "open_question_count",
 )
 
 _BEARER_PATTERN = re.compile(r"(?i)(\bbearer\s+)[^\s,;]+")
@@ -288,8 +333,16 @@ def _safe_log_value(value: Any, *, max_length: int) -> Any:
     if isinstance(value, list | tuple):
         return [
             _safe_log_value(item, max_length=max_length)
-            for item in value
+            for item in value[:50]
         ]
+    if isinstance(value, dict):
+        return {
+            sanitize_sensitive_text(key, max_length=100): _safe_log_value(
+                item,
+                max_length=max_length,
+            )
+            for key, item in list(value.items())[:50]
+        }
     return sanitize_sensitive_text(value, max_length=max_length)
 
 

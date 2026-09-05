@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 import logging
 import time
 import xml.etree.ElementTree as ET
@@ -56,6 +58,8 @@ HTTP client for arXiv paper search."""
         self._http_client = http_client
         self._rate_limit_lock = asyncio.Lock()
         self._last_request_started_at: float | None = None
+        self._provider_retry_not_before: float | None = None
+        self._last_retry_after_seconds: float | None = None
 
     async def search_papers(self, query: PaperSearchQuery) -> PaperSearchResponse:
         """Search arXiv papers and normalize the Atom feed results."""
@@ -195,6 +199,12 @@ HTTP client for arXiv paper search."""
             error_category, failure_reason, retryable = self._http_failure_diagnostics(
                 response.status_code
             )
+            retry_after_seconds = None
+            if response.status_code == 429:
+                retry_after_seconds = self._retry_after_seconds(
+                    response.headers.get("retry-after")
+                )
+                self._schedule_provider_cooldown(retry_after_seconds)
             raise ArxivPaperSearchClientError(
                 f"arXiv paper search request failed with status {response.status_code}.",
                 stage="search_http",
@@ -202,16 +212,63 @@ HTTP client for arXiv paper search."""
                 failure_reason=failure_reason,
                 status_code=response.status_code,
                 retryable=retryable,
+                retry_after_seconds=retry_after_seconds,
             )
         return response.text
 
     async def _wait_for_rate_limit(self) -> None:
-        if self._last_request_started_at is None:
-            return
-        elapsed = time.monotonic() - self._last_request_started_at
-        remaining = self._config.min_interval_seconds - elapsed
+        now = time.monotonic()
+        interval_remaining = 0.0
+        if self._last_request_started_at is not None:
+            elapsed = now - self._last_request_started_at
+            interval_remaining = self._config.min_interval_seconds - elapsed
+        provider_remaining = (
+            self._provider_retry_not_before - now
+            if self._provider_retry_not_before is not None
+            else 0.0
+        )
+        remaining = max(interval_remaining, provider_remaining)
         if remaining > 0:
+            logger.info(
+                "Waiting before the next arXiv paper search request.",
+                extra={
+                    "event": "arxiv_rate_limit_wait",
+                    "provider": "arxiv",
+                    "operation": "paper_search",
+                    "rate_limit_wait_ms": round(remaining * 1000),
+                    "retry_after_seconds": self._last_retry_after_seconds,
+                },
+            )
             await asyncio.sleep(remaining)
+
+    def _retry_after_seconds(self, raw_value: str | None) -> float:
+        parsed_seconds = self._parse_retry_after(raw_value)
+        if parsed_seconds is None:
+            parsed_seconds = self._config.rate_limit_backoff_seconds
+        return min(
+            max(0.0, parsed_seconds),
+            self._config.max_retry_after_seconds,
+        )
+
+    def _parse_retry_after(self, raw_value: str | None) -> float | None:
+        if raw_value is None or not raw_value.strip():
+            return None
+        normalized = raw_value.strip()
+        try:
+            seconds = float(normalized)
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(normalized)
+            except (TypeError, ValueError, OverflowError):
+                return None
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=UTC)
+            seconds = (retry_at - datetime.now(UTC)).total_seconds()
+        return seconds if seconds >= 0 else None
+
+    def _schedule_provider_cooldown(self, retry_after_seconds: float) -> None:
+        self._last_retry_after_seconds = retry_after_seconds
+        self._provider_retry_not_before = time.monotonic() + retry_after_seconds
 
     def _user_agent_header(self) -> str:
         if self._config.client_identity:
@@ -406,7 +463,7 @@ HTTP client for arXiv paper search."""
         if status_code == 429:
             return "rate_limited", "rate_limited", True
         if status_code >= 500:
-            return "http_server_error", "tool_error", True
+            return "http_server_error", "server_error", True
         return "http_client_error", "invalid_request", False
 
     def _log_search_failure(
@@ -430,6 +487,7 @@ HTTP client for arXiv paper search."""
                 "error_category": error.error_category,
                 "http_status": error.status_code,
                 "retryable": error.retryable,
+                "retry_after_seconds": error.retry_after_seconds,
                 "exception_type": error.cause_type or type(error).__name__,
                 "attempt_error_info": sanitize_sensitive_text(
                     error,

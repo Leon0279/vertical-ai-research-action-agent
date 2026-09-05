@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from time import perf_counter
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,6 +15,8 @@ from app.domain.enums.memory_type import MemoryType
 from app.domain.models import ExecutionContext, MemoryCandidate, SourceReference
 from app.services._confidence import confidence_to_score
 from app.services.memory.contracts.memory_distiller_protocol import MemoryDistillerProtocol
+
+logger = logging.getLogger(__name__)
 
 
 class _MemoryDistillationInput(BaseModel):
@@ -69,17 +73,54 @@ class MemoryDistillerService(MemoryDistillerProtocol):
     async def distill(self, context: ExecutionContext) -> list[MemoryCandidate]:
         """执行一次 LLM 提取和后续确定性 candidate 处理。"""
 
-        inputs = self._collect_distillation_inputs(context)
+        started_at = perf_counter()
+        logger.info(
+            "Memory distillation started.",
+            extra={"event": "memory_distillation_started"},
+        )
         try:
+            inputs = self._collect_distillation_inputs(context)
             drafts = await self._extract_candidate_drafts(inputs)
+            screened = self._screen_candidates(drafts)
+            typed = self._resolve_candidate_types(screened)
+            normalized = self._normalize_candidates(typed, inputs)
+            candidates = self._deduplicate_and_order(normalized)
         except Exception:
             # Memory write-back is post-response best effort and must not block the user response.
+            logger.exception(
+                "Memory distillation failed without blocking the response.",
+                extra={
+                    "event": "memory_distillation_failed",
+                    "duration_ms": self._duration_ms(started_at),
+                },
+            )
             return []
 
-        screened = self._screen_candidates(drafts)
-        typed = self._resolve_candidate_types(screened)
-        normalized = self._normalize_candidates(typed, inputs)
-        return self._deduplicate_and_order(normalized)
+        logger.info(
+            "Memory distillation completed.",
+            extra={
+                "event": "memory_distillation_completed",
+                "duration_ms": self._duration_ms(started_at),
+                "candidate_count": len(candidates),
+                "candidate_memory_types": [
+                    candidate.memory_type for candidate in candidates
+                ],
+                "stable_candidate_count": sum(
+                    candidate.stability == "stable" for candidate in candidates
+                ),
+                "tentative_candidate_count": sum(
+                    candidate.stability == "tentative" for candidate in candidates
+                ),
+                "source_reference_count": sum(
+                    len(candidate.source_references) for candidate in candidates
+                ),
+            },
+        )
+        return candidates
+
+    @staticmethod
+    def _duration_ms(started_at: float) -> int:
+        return max(0, round((perf_counter() - started_at) * 1000))
 
     def _collect_distillation_inputs(
         self,

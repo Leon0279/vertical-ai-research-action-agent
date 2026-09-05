@@ -1,6 +1,7 @@
 """Tests for typed memory candidate persistence."""
 
 import asyncio
+import logging
 
 from app.domain.enums.memory_type import MemoryType
 from app.domain.models import (
@@ -130,7 +131,11 @@ def _decision(summary: str = "采用离线评测集作为优先方案。") -> Me
     )
 
 
-def test_decision_candidate_is_shaped_and_written() -> None:
+def test_decision_candidate_is_shaped_and_written(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.memory.memory_persistence_service",
+    )
     store = _DecisionStore()
     result = asyncio.run(_service(decision_store=store).persist(_context(), [_decision()]))
 
@@ -142,6 +147,16 @@ def test_decision_candidate_is_shaped_and_written() -> None:
     assert store.writes[0].project_id == "project-1"
     assert result.items[0].action == "create"
     assert result.items[0].status == "written"
+    completed = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "memory_persistence_completed"
+    )
+    assert completed.written_count == 1
+    assert completed.no_write_count == 0
+    assert completed.failed_count == 0
+    assert completed.memory_persistence_items[0]["memory_type"] == MemoryType.DECISION
+    assert "采用离线评测集" not in repr(completed.__dict__)
 
 
 def test_duplicate_decision_is_no_write() -> None:

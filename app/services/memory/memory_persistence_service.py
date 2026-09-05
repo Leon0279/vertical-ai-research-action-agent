@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from time import perf_counter
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -38,6 +40,8 @@ from app.services.memory.contracts.semantic_resolver_protocol import (
     SemanticResolverProtocol,
 )
 from app.services.memory._keys import memory_candidate_dedupe_key
+
+logger = logging.getLogger(__name__)
 
 
 _StructuredRecord = (
@@ -79,6 +83,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
     ) -> MemoryPersistenceResult:
         """逐条执行准入、解析、写入并返回 best-effort 的批次结果。"""
 
+        started_at = perf_counter()
         validation_errors = self._validate_candidates(context, candidates)
         items: list[MemoryPersistenceItemResult] = []
 
@@ -140,7 +145,31 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                     )
                 )
 
-        return self._build_batch_result(items)
+        result = self._build_batch_result(items)
+        logger.log(
+            logging.WARNING if result.failed_count else logging.INFO,
+            "Memory persistence completed.",
+            extra={
+                "event": "memory_persistence_completed",
+                "duration_ms": max(0, round((perf_counter() - started_at) * 1000)),
+                "candidate_count": len(candidates),
+                "written_count": result.written_count,
+                "no_write_count": result.no_write_count,
+                "failed_count": result.failed_count,
+                "memory_persistence_items": [
+                    {
+                        "memory_type": item.memory_type,
+                        "action": item.action,
+                        "status": item.status,
+                        "written_record_id": item.written_record_id,
+                        "no_write_reason": item.no_write_reason,
+                        "error_info": item.error_info,
+                    }
+                    for item in result.items
+                ],
+            },
+        )
+        return result
 
     def _validate_candidates(
         self,

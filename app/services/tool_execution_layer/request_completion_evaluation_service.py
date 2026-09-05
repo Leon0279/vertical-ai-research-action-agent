@@ -286,7 +286,7 @@ Evaluate whether one family execution result is complete or needs recovery."""
         )
         failure_reason = request.failure_reason or "unknown_error"
 
-        if failure_reason in {"timeout", "rate_limited"}:
+        if failure_reason in {"timeout", "rate_limited", "server_error"}:
             if retry_available:
                 return self._retry_result(
                     request,

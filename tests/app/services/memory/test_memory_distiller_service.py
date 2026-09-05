@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -135,6 +136,29 @@ def test_distiller_calls_llm_once_and_maps_candidate_metadata() -> None:
     assert candidate.confidence == 0.8
     assert candidate.stability == "stable"
     assert candidate.payload == {"rationale": "当前项目缺少量化基线。"}
+
+
+def test_distiller_logs_structural_candidate_summary_without_content(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.memory.memory_distiller_service",
+    )
+    secret_summary = "durable candidate api_key=must-not-appear"
+    llm = _llm([_draft(summary=secret_summary)])
+
+    candidates = asyncio.run(MemoryDistillerService(llm).distill(_context()))
+
+    assert len(candidates) == 1
+    completed = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "memory_distillation_completed"
+    )
+    assert completed.candidate_count == 1
+    assert completed.candidate_memory_types == ["DECISION"]
+    assert completed.stable_candidate_count == 1
+    assert completed.source_reference_count == 1
+    assert secret_summary not in repr(completed.__dict__)
 
 
 def test_distillation_prompt_is_stateless_and_contains_grounding_inputs() -> None:
