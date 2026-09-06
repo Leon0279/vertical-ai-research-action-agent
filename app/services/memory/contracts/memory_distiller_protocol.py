@@ -21,4 +21,7 @@ Extracts durable memory candidates from run state."""
 
         Returns:
             list[MemoryCandidate]: 经初步结构化的长期记忆候选；没有适合持久化的内容时返回空列表。
+
+        Raises:
+            Exception: LLM 或业务 schema 处理最终失败时向 pipeline 的 best-effort 边界传播。
         """

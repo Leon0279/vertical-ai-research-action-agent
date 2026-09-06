@@ -163,6 +163,22 @@ class _FakeEmbeddingClient(_FakeProviderClient):
         raise RuntimeError("Embedding should not be required by this no-op research test.")
 
 
+class _FailingMemoryDistiller:
+    async def distill(self, context: ExecutionContext):
+        del context
+        raise ValueError("memory candidate response did not match the business schema")
+
+
+class _RecordingMemoryPersistence:
+    def __init__(self) -> None:
+        self.called = False
+
+    async def persist(self, context: ExecutionContext, candidates):
+        del context, candidates
+        self.called = True
+        raise AssertionError("Persistence must not run after distillation failure.")
+
+
 def _patch_default_provider_clients(monkeypatch) -> None:
     monkeypatch.setattr(pipeline_dependencies, "ZhipuLLMClient", _FakeZhipuLLMClient)
     monkeypatch.setattr(
@@ -256,6 +272,50 @@ def test_pipeline_stage_order(monkeypatch, caplog) -> None:
         record for record in stage_completed if record.stage_name == "memory_writeback"
     )
     assert memory_record.written_count == 0
+    assert current_trace_id() is None
+
+
+def test_memory_distillation_failure_is_best_effort_and_not_logged_as_completed(
+    monkeypatch,
+    caplog,
+) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.orchestration.research_action_pipeline",
+    )
+    _patch_default_provider_clients(monkeypatch)
+    pipeline = build_default_pipeline()
+    pipeline._dependencies.memory_distiller = _FailingMemoryDistiller()
+    memory_persistence = _RecordingMemoryPersistence()
+    pipeline._dependencies.memory_persistence = memory_persistence
+
+    output = asyncio.run(
+        pipeline.run(
+            RequestContext(
+                original_query="Return a normal response when memory distillation fails.",
+                user_id="u-memory-failure",
+                session_id="s-memory-failure",
+            )
+        )
+    )
+
+    assert output.answer
+    assert "memory_writeback" in output.stage_history
+    memory_events = [
+        record.event
+        for record in caplog.records
+        if getattr(record, "event", None)
+        in {"memory_writeback_failed", "memory_writeback_completed"}
+    ]
+    assert memory_events == ["memory_writeback_failed"]
+    failed_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "memory_writeback_failed"
+    )
+    assert failed_record.candidate_count == 0
+    assert failed_record.exception_type == "ValueError"
+    assert memory_persistence.called is False
     assert current_trace_id() is None
 
 

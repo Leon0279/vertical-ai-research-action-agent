@@ -86,7 +86,8 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             normalized = self._normalize_candidates(typed, inputs)
             candidates = self._deduplicate_and_order(normalized)
         except Exception:
-            # Memory write-back is post-response best effort and must not block the user response.
+            # The pipeline owns the best-effort boundary and must be able to distinguish
+            # distillation failure from a valid empty candidate list.
             logger.exception(
                 "Memory distillation failed without blocking the response.",
                 extra={
@@ -94,7 +95,7 @@ class MemoryDistillerService(MemoryDistillerProtocol):
                     "duration_ms": self._duration_ms(started_at),
                 },
             )
-            return []
+            raise
 
         logger.info(
             "Memory distillation completed.",
@@ -184,7 +185,7 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         self,
         inputs: _MemoryDistillationInput,
     ) -> list[_LLMMemoryCandidateDraft]:
-        """通过一次无状态 LLM 调用提取并初步分类 candidate drafts。"""
+        """通过一次无状态 LLM 调用提取并严格校验 candidate drafts。"""
 
         prompt = self._build_distillation_prompt(inputs)
         response = await self._llm_client.generate_json_object(prompt)
@@ -291,6 +292,8 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         input_json = json.dumps(inputs.model_dump(mode="json"), ensure_ascii=False, indent=2)
         memory_types = ", ".join(sorted(self._MEMORY_TYPES))
         semantic_types = ", ".join(sorted(self._SEMANTIC_TO_MEMORY_TYPES))
+        schema_contract = self._schema_contract()
+        valid_example = self._valid_research_knowledge_example()
         return (
             "你正在执行一次无状态的长期记忆候选提取任务。你只能依据本提示中的说明和输入 JSON 工作，"
             "不能假设自己知道任何项目背景、系统代码或之前的对话。\n\n"
@@ -298,6 +301,8 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             "不要回答用户问题，不要生成最终答案，不要保存原始工具输出、原始证据全文、prompt、debug 信息或临时推理过程。\n\n"
             f"允许的 memory_type：{memory_types}。\n"
             f"允许的 semantic_type：{semantic_types}。\n\n"
+            f"严格输出契约：\n{schema_contract}\n\n"
+            f"合法的 RESEARCH_KNOWLEDGE 示例：\n{valid_example}\n\n"
             "判断要求：\n"
             "1. 只有具备长期复用价值、语义相对稳定的内容才输出。\n"
             "2. 可以综合 final recommendation、findings、action items、项目背景和 supporting summaries，"
@@ -310,6 +315,45 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             "source_reference_indexes。\n\n"
             "输入 JSON：\n"
             f"{input_json}"
+        )
+
+    def _schema_contract(self) -> str:
+        semantic_mapping = {
+            semantic_type: sorted(memory_type.value for memory_type in memory_types)
+            for semantic_type, memory_types in sorted(
+                self._SEMANTIC_TO_MEMORY_TYPES.items()
+            )
+        }
+        return (
+            '- 顶层必须是 {"candidates": [...]}，不得包含其它字段。\n'
+            "- confidence 只能是：low、medium、high。\n"
+            "- stability 只能是：tentative、stable。\n"
+            "- persistability 只能是：durable、temporary、uncertain。\n"
+            "- source_reference_indexes 必须是整数数组，并且只能引用输入中存在的 index。\n"
+            "- semantic_type 与 memory_type 的合法对应关系："
+            + json.dumps(semantic_mapping, ensure_ascii=False, sort_keys=True)
+            + "。"
+        )
+
+    @staticmethod
+    def _valid_research_knowledge_example() -> str:
+        return json.dumps(
+            {
+                "candidates": [
+                    {
+                        "memory_type": "RESEARCH_KNOWLEDGE",
+                        "semantic_type": "reusable_research_knowledge",
+                        "summary": "一条有来源支持、适合跨 session 复用的研究结论。",
+                        "payload": {"topic_tags": ["example"]},
+                        "confidence": "high",
+                        "stability": "stable",
+                        "persistability": "durable",
+                        "source_reference_indexes": [0],
+                    }
+                ]
+            },
+            ensure_ascii=False,
+            indent=2,
         )
 
     @staticmethod

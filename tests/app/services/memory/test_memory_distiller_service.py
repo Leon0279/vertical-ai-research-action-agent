@@ -6,14 +6,22 @@ import logging
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from app.domain.models import ExecutionContext, RunningState, RuntimeContext, SourceReference
 from app.services.memory.memory_distiller_service import MemoryDistillerService
 
 
 class _FakeLLMClient:
-    def __init__(self, response: str | None = None, error: Exception | None = None) -> None:
-        self.response = response or json.dumps({"candidates": []}, ensure_ascii=False)
+    def __init__(
+        self,
+        response: str | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.response = response or json.dumps(
+            {"candidates": []},
+            ensure_ascii=False,
+        )
         self.error = error
         self.prompts: list[str] = []
 
@@ -174,6 +182,11 @@ def test_distillation_prompt_is_stateless_and_contains_grounding_inputs() -> Non
     assert "project_context_summary" in prompt
     assert "不能编造来源" in prompt
     assert "原始工具输出" in prompt
+    assert "confidence 只能是：low、medium、high" in prompt
+    assert "stability 只能是：tentative、stable" in prompt
+    assert "persistability 只能是：durable、temporary、uncertain" in prompt
+    assert '"reusable_research_knowledge": ["RESEARCH_KNOWLEDGE"]' in prompt
+    assert '"memory_type": "RESEARCH_KNOWLEDGE"' in prompt
 
 
 def test_distiller_accepts_json_object_from_adapter() -> None:
@@ -260,21 +273,50 @@ def test_distiller_deduplicates_candidates_and_merges_sources() -> None:
     ]
 
 
-@pytest.mark.parametrize("response", ["not json", '{"candidates": [{"summary": "missing"}]}'])
-def test_distiller_returns_empty_on_invalid_llm_output(response: str) -> None:
-    llm = _FakeLLMClient(response=response)
+def test_distiller_does_not_repair_invalid_business_schema(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.memory.memory_distiller_service",
+    )
+    invalid = _draft(
+        memory_type="RESEARCH_KNOWLEDGE",
+        semantic_type="reusable_research_knowledge",
+        summary="invalid schema candidate",
+        stability="high",
+        persistability="high",
+    )
+    llm = _FakeLLMClient(
+        response=json.dumps({"candidates": [invalid]}, ensure_ascii=False),
+    )
 
-    candidates = asyncio.run(MemoryDistillerService(llm).distill(_context()))
+    with pytest.raises(ValidationError):
+        asyncio.run(MemoryDistillerService(llm).distill(_context()))
 
-    assert candidates == []
+    assert len(llm.prompts) == 1
+    events = [getattr(record, "event", None) for record in caplog.records]
+    assert "memory_distillation_failed" in events
+    assert not any(
+        event and event.startswith("memory_distillation_schema_repair_")
+        for event in events
+    )
 
 
-def test_distiller_returns_empty_when_llm_fails() -> None:
+def test_distiller_does_not_schema_repair_invalid_json() -> None:
+    llm = _FakeLLMClient(response="not json")
+
+    with pytest.raises(ValueError, match="not valid JSON"):
+        asyncio.run(MemoryDistillerService(llm).distill(_context()))
+
+    assert len(llm.prompts) == 1
+
+
+def test_distiller_does_not_schema_repair_provider_failure() -> None:
     llm = _FakeLLMClient(error=RuntimeError("llm unavailable"))
 
-    candidates = asyncio.run(MemoryDistillerService(llm).distill(_context()))
+    with pytest.raises(RuntimeError, match="llm unavailable"):
+        asyncio.run(MemoryDistillerService(llm).distill(_context()))
 
-    assert candidates == []
+    assert len(llm.prompts) == 1
 
 
 def test_distiller_returns_empty_when_no_candidate_is_proposed() -> None:
