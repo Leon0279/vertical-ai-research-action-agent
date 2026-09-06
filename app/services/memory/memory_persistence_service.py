@@ -6,7 +6,6 @@ import json
 import logging
 from time import perf_counter
 from datetime import UTC, datetime
-from typing import Any
 from uuid import uuid4
 
 from app.adapters.memory.contracts.action_memory_store_protocol import ActionMemoryStoreProtocol
@@ -20,17 +19,21 @@ from app.adapters.memory.contracts.project_profile_memory_store_protocol import 
 from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
     ResearchKnowledgeMemoryStoreProtocol,
 )
-from app.common.utils.json_utils import is_json_serializable
 from app.domain.enums import MemoryType, TaskType
 from app.domain.models import (
+    ActionExecutionCandidateDetails,
     ActionMemoryRecord,
+    DecisionCandidateDetails,
     DecisionMemoryRecord,
     ExecutionContext,
     MemoryCandidate,
     MemoryPersistenceItemResult,
     MemoryPersistenceResult,
+    PreferencePolicyCandidateDetails,
     PreferencePolicyMemoryRecord,
+    ProjectProfileCandidateDetails,
     ProjectProfileMemoryRecord,
+    ResearchKnowledgeCandidateDetails,
     ResearchKnowledgeUnitRecord,
     SemanticResolutionResult,
     SourceReference,
@@ -55,9 +58,6 @@ _StructuredRecord = (
 
 class MemoryPersistenceService(MemoryPersistenceProtocol):
     """将 memory candidates 按类型写入对应的 typed memory adapter。"""
-
-    _ACTION_STATUS_VALUES = {"todo", "in_progress", "blocked", "done", "cancelled"}
-    _RECORD_STATUS_VALUES = {"active", "archived", "pruned", "superseded"}
 
     def __init__(
         self,
@@ -102,6 +102,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                     )
                     continue
 
+                # TODO （optional） project / decision / action 类型的candidate如果有多条，可能会对db进行重复的检索。
                 existing_records = await self._lookup_existing_records(context, candidate)
                 resolution = await self._semantic_resolver.resolve(candidate, existing_records)
                 action = self._decide_persistence_action(
@@ -197,8 +198,6 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 errors[index] = "candidate project scope 与当前 ExecutionContext 不一致。"
             elif candidate.memory_type == MemoryType.RESEARCH_KNOWLEDGE and not candidate.source_references:
                 errors[index] = "research knowledge candidate 至少需要一个 SourceReference。"
-            elif not is_json_serializable(candidate.payload):
-                errors[index] = "candidate payload 不是 JSON-safe。"
             elif self._is_obviously_raw(candidate):
                 errors[index] = "candidate 看起来是 raw/debug output，不允许直接持久化。"
         return errors
@@ -249,14 +248,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 memory_type=candidate.memory_type,
             )
         if candidate.memory_type == MemoryType.RESEARCH_KNOWLEDGE:
-            knowledge_id = self._payload_text(candidate, "knowledge_id")
-            if knowledge_id:
-                record = await self._research_knowledge_store.get_knowledge_unit(
-                    owner_user_id=user_id,
-                    knowledge_id=knowledge_id,
-                )
-                if record and record.status == "active" and record.is_canonical:
-                    return [record]
+            # TODO 这里dedupe是根据candidate.summary来算的，所以粒度很细，所以应该捞不出什么数据，除非是一模一样的unit。
             dedupe_key = memory_candidate_dedupe_key(candidate)
             record = await self._research_knowledge_store.find_active_by_dedupe_key(
                 owner_user_id=user_id,
@@ -290,7 +282,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
             if candidate.memory_type == MemoryType.PROJECT_PROFILE:
                 return "replace" if existing_records else "create"
             if candidate.memory_type == MemoryType.RESEARCH_KNOWLEDGE:
-                return "create" if not self._payload_text(candidate, "knowledge_id") else "update"
+                return "create"
             return "no_write"
         if not existing_records:
             return "create"
@@ -301,8 +293,6 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         if candidate.memory_type in {MemoryType.PREFERENCE, MemoryType.RESEARCH_POLICY}:
             return "replace"
         if candidate.memory_type == MemoryType.RESEARCH_KNOWLEDGE:
-            if self._payload_text(candidate, "knowledge_id"):
-                return "update"
             return "no_write"
         if candidate.memory_type == MemoryType.ACTION_EXECUTION:
             return "no_write"
@@ -326,17 +316,20 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         active_record = existing_records[0] if existing_records else None
 
         if candidate.memory_type == MemoryType.PROJECT_PROFILE:
+            details = candidate.details
+            if not isinstance(details, ProjectProfileCandidateDetails):
+                raise TypeError("PROJECT_PROFILE candidate has mismatched details.")
             return ProjectProfileMemoryRecord(
-                project_profile_id=self._record_id(candidate, "project_profile_id"),
+                project_profile_id=self._new_record_id(),
                 project_id=project_id or "",
                 user_id=user_id,
-                project_name=self._payload_text(candidate, "project_name"),
-                project_goal=self._payload_text(candidate, "project_goal") or candidate.summary,
-                project_background=self._payload_text(candidate, "project_background"),
-                domain=self._payload_text(candidate, "domain"),
-                current_stage=self._payload_text(candidate, "current_stage"),
-                constraints=self._payload_strings(candidate, "constraints"),
-                important_context=self._payload_text(candidate, "important_context") or candidate.summary,
+                project_name=details.project_name,
+                project_goal=details.project_goal or candidate.summary,
+                project_background=details.project_background,
+                domain=details.domain,
+                current_stage=details.current_stage,
+                constraints=list(details.constraints),
+                important_context=details.important_context or candidate.summary,
                 record_status="active",
                 confidence=candidate.confidence,
                 supersedes_profile_id=(
@@ -352,19 +345,22 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
             )
 
         if candidate.memory_type == MemoryType.DECISION:
+            details = candidate.details
+            if not isinstance(details, DecisionCandidateDetails):
+                raise TypeError("DECISION candidate has mismatched details.")
             return DecisionMemoryRecord(
-                decision_id=self._record_id(candidate, "decision_id"),
+                decision_id=self._new_record_id(),
                 user_id=user_id,
                 project_id=project_id or "",
-                decision_title=self._payload_text(candidate, "decision_title") or candidate.summary,
-                decision_question=self._payload_text(candidate, "decision_question"),
-                chosen_option=self._payload_text(candidate, "chosen_option") or candidate.summary,
-                alternatives=self._payload_strings(candidate, "alternatives"),
-                rationale=self._payload_text(candidate, "rationale") or candidate.summary,
-                tradeoffs=self._payload_strings(candidate, "tradeoffs"),
-                decision_state=self._payload_text(candidate, "decision_state") or "accepted",
+                decision_title=details.decision_title or candidate.summary,
+                decision_question=details.decision_question,
+                chosen_option=details.chosen_option or candidate.summary,
+                alternatives=list(details.alternatives),
+                rationale=details.rationale or candidate.summary,
+                tradeoffs=list(details.tradeoffs),
+                decision_state=details.decision_state or "accepted",
                 record_status="active",
-                impact_scope=self._payload_text(candidate, "impact_scope"),
+                impact_scope=details.impact_scope,
                 confidence=candidate.confidence,
                 decided_at=now,
                 supersedes_decision_id=(
@@ -380,27 +376,30 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
             )
 
         if candidate.memory_type == MemoryType.ACTION_EXECUTION:
+            details = candidate.details
+            if not isinstance(details, ActionExecutionCandidateDetails):
+                raise TypeError("ACTION_EXECUTION candidate has mismatched details.")
             matching_action = self._matching_action(candidate, existing_records)
             action_id = (
                 matching_action.action_id
                 if action == "status_transition" and matching_action
-                else self._record_id(candidate, "action_id")
+                else self._new_record_id()
             )
-            action_status = self._payload_text(candidate, "action_status") or "todo"
+            action_status = details.action_status or "todo"
             return ActionMemoryRecord(
                 action_id=action_id,
                 user_id=user_id,
                 project_id=project_id or "",
-                parent_decision_id=self._payload_text(candidate, "parent_decision_id"),
-                action_title=self._payload_text(candidate, "action_title") or candidate.summary,
-                action_description=self._payload_text(candidate, "action_description") or candidate.summary,
+                parent_decision_id=None,
+                action_title=details.action_title or candidate.summary,
+                action_description=details.action_description or candidate.summary,
                 action_status=action_status,
-                priority=self._payload_text(candidate, "priority"),
-                owner=self._payload_text(candidate, "owner"),
-                due_at=self._payload_value(candidate, "due_at"),
-                blocking_reason=self._payload_text(candidate, "blocking_reason"),
-                result_summary=self._payload_text(candidate, "result_summary"),
-                completed_at=self._payload_value(candidate, "completed_at"),
+                priority=details.priority,
+                owner=details.owner,
+                due_at=details.due_at,
+                blocking_reason=details.blocking_reason,
+                result_summary=details.result_summary,
+                completed_at=details.completed_at,
                 record_status="active" if action_status not in {"done", "cancelled"} else "archived",
                 confidence=candidate.confidence,
                 created_at=now,
@@ -411,20 +410,23 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
             )
 
         if candidate.memory_type in {MemoryType.PREFERENCE, MemoryType.RESEARCH_POLICY}:
+            details = candidate.details
+            if not isinstance(details, PreferencePolicyCandidateDetails):
+                raise TypeError("PREFERENCE/RESEARCH_POLICY candidate has mismatched details.")
             owner_scope_type = "project" if project_id else "user"
             return PreferencePolicyMemoryRecord(
-                policy_id=self._record_id(candidate, "policy_id"),
+                policy_id=self._new_record_id(),
                 user_id=user_id,
                 project_id=project_id,
                 owner_scope_type=owner_scope_type,
                 owner_scope_value=project_id or user_id,
-                target_scope_type=self._payload_text(candidate, "target_scope_type"),
-                target_scope_value=self._payload_text(candidate, "target_scope_value"),
-                policy_type=self._payload_text(candidate, "policy_type") or candidate.semantic_type or "preference",
-                policy_text=self._payload_text(candidate, "policy_text") or candidate.summary,
-                conditions=self._payload_dict(candidate, "conditions"),
-                priority=self._payload_value(candidate, "priority"),
-                enforcement_level=self._payload_text(candidate, "enforcement_level"),
+                target_scope_type=details.target_scope_type,
+                target_scope_value=details.target_scope_value,
+                policy_type=details.policy_type or candidate.semantic_type or "preference",
+                policy_text=details.policy_text or candidate.summary,
+                conditions=dict(details.conditions),
+                priority=details.priority,
+                enforcement_level=details.enforcement_level,
                 record_status="active",
                 confidence=candidate.confidence,
                 supersedes_policy_id=(
@@ -440,9 +442,10 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
             )
 
         if candidate.memory_type == MemoryType.RESEARCH_KNOWLEDGE:
-            knowledge_id = self._record_id(candidate, "knowledge_id")
-            if action == "update" and isinstance(active_record, ResearchKnowledgeUnitRecord):
-                knowledge_id = active_record.knowledge_id
+            details = candidate.details
+            if not isinstance(details, ResearchKnowledgeCandidateDetails):
+                raise TypeError("RESEARCH_KNOWLEDGE candidate has mismatched details.")
+            knowledge_id = self._new_record_id()
             visibility_scope = "project" if project_id else "user"
             return ResearchKnowledgeUnitRecord(
                 knowledge_id=knowledge_id,
@@ -450,10 +453,10 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 project_scope_id=project_id,
                 visibility_scope=visibility_scope,
                 visibility_scope_effective=visibility_scope,
-                title=self._payload_text(candidate, "title") or candidate.summary,
+                title=details.title or candidate.summary,
                 summary=candidate.summary,
-                knowledge_type=self._payload_text(candidate, "knowledge_type") or candidate.semantic_type or "research_knowledge",
-                topic_tags=self._payload_strings(candidate, "topic_tags"),
+                knowledge_type=details.knowledge_type or candidate.semantic_type or "research_knowledge",
+                topic_tags=list(details.topic_tags),
                 confidence=candidate.confidence,
                 source_refs=list(candidate.source_references),
                 source_type=(candidate.source_references[0].source_type if candidate.source_references else None),
@@ -463,17 +466,18 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 status="active",
                 created_at=now,
                 updated_at=now,
-                freshness_sensitivity=self._payload_text(candidate, "freshness_sensitivity"),
-                freshness_status=self._payload_text(candidate, "freshness_status"),
-                staleness_reason=self._payload_text(candidate, "staleness_reason"),
+                freshness_sensitivity=details.freshness_sensitivity,
+                freshness_status=None,
+                staleness_reason=None,
                 dedupe_key=memory_candidate_dedupe_key(candidate),
                 canonical_knowledge_id=knowledge_id,
                 is_canonical=True,
                 merged_into_id=None,
-                embedding_text=self._payload_text(candidate, "embedding_text") or f"{candidate.summary}",
-                embedding_vector=self._payload_value(candidate, "embedding_vector"),
-                embedding_model=self._payload_text(candidate, "embedding_model"),
-                embedding_version=self._payload_text(candidate, "embedding_version"),
+                # TODO 暂时没有embedding，以后可以补一下
+                embedding_text=candidate.summary,
+                embedding_vector=None,
+                embedding_model=None,
+                embedding_version=None,
             )
 
         raise ValueError(f"Unsupported memory type: {candidate.memory_type}")
@@ -585,34 +589,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 return None
 
     @staticmethod
-    def _payload_value(candidate: MemoryCandidate, key: str) -> Any:
-        return candidate.payload.get(key)
-
-    @staticmethod
-    def _payload_text(candidate: MemoryCandidate, key: str) -> str | None:
-        value = candidate.payload.get(key)
-        if isinstance(value, str):
-            stripped = value.strip()
-            return stripped or None
-        return None
-
-    @staticmethod
-    def _payload_strings(candidate: MemoryCandidate, key: str) -> list[str]:
-        value = candidate.payload.get(key)
-        if not isinstance(value, list):
-            return []
-        return [item.strip() for item in value if isinstance(item, str) and item.strip()]
-
-    @staticmethod
-    def _payload_dict(candidate: MemoryCandidate, key: str) -> dict[str, Any]:
-        value = candidate.payload.get(key)
-        return dict(value) if isinstance(value, dict) else {}
-
-    @staticmethod
-    def _record_id(candidate: MemoryCandidate, key: str) -> str:
-        value = candidate.payload.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+    def _new_record_id() -> str:
         return f"mem-{uuid4().hex}"
 
     @staticmethod
@@ -675,14 +652,16 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         candidate: MemoryCandidate,
         existing_records: list[_StructuredRecord],
     ) -> ActionMemoryRecord | None:
-        action_id = candidate.payload.get("action_id")
-        action_title = candidate.payload.get("action_title")
-        normalized_title = " ".join(action_title.casefold().split()) if isinstance(action_title, str) else None
+        details = candidate.details
+        if not isinstance(details, ActionExecutionCandidateDetails):
+            return None
+        action_title = details.action_title
+        normalized_title = (
+            " ".join(action_title.casefold().split()) if action_title else None
+        )
         for record in existing_records:
             if not isinstance(record, ActionMemoryRecord):
                 continue
-            if isinstance(action_id, str) and record.action_id == action_id:
-                return record
             if normalized_title and record.action_title:
                 if normalized_title == " ".join(record.action_title.casefold().split()):
                     return record

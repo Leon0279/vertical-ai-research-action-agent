@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
+# TODO 将SemanticResolutionRelation变成枚举
 SemanticResolutionRelation = Literal[
     "no_existing_record",
     "duplicate",

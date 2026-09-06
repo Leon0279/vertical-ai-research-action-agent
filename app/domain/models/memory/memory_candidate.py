@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.enums.memory_type import MemoryType
+from app.domain.models.memory.memory_candidate_details import (
+    MemoryCandidateDetails,
+    memory_candidate_details_match_type,
+    parse_memory_candidate_details,
+)
 from app.domain.models.source import SourceReference
 
 
@@ -17,6 +22,8 @@ class MemoryCandidate(BaseModel):
     因此它描述候选的语义、稳定性、范围和 provenance，但不承载 record_id、supersede
     关系或最终的 persistence action。
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     memory_type: MemoryType = Field(
         description=(
@@ -35,13 +42,11 @@ class MemoryCandidate(BaseModel):
             "或完整 LLM prompt。"
         ),
     )
-    payload: dict[str, Any] = Field(
-        default_factory=dict,
+    details: MemoryCandidateDetails = Field(
         description=(
-            "可选字段，默认空 dict。该 memory type 的扩展结构化内容。当前可承载例如 decision 的"
-            "task_type、rationale、alternatives，action 的 status/priority/dependencies，project profile 的"
-            "stage/constraints，或 research knowledge 的 topic/applicability 等字段。该 dict 只承载"
-            "memory-type-specific 信息；candidate 的标准 metadata 由 persistence service 单独写入并优先于同名 key。"
+            "必填字段。与 memory_type 严格对应的 typed business details。每种 details 只允许少量"
+            "memory-type-specific 字段，所有字段均可省略；不得包含 record ID、dedupe、embedding、"
+            "scope ownership、provenance、canonical/supersession 或 lifecycle 治理字段。"
         ),
     )
     confidence: float | None = Field(
@@ -108,3 +113,27 @@ class MemoryCandidate(BaseModel):
             "RuntimeContext.session_id 透传，便于区分 session provenance 和 long-term memory 本身的生命周期。"
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_details_for_memory_type(cls, value: Any) -> Any:
+        """Select the details model from memory_type before union validation."""
+
+        if not isinstance(value, dict):
+            return value
+        if "memory_type" not in value or "details" not in value:
+            return value
+        normalized = dict(value)
+        normalized["details"] = parse_memory_candidate_details(
+            normalized["memory_type"],
+            normalized["details"],
+        )
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_details_type(self) -> "MemoryCandidate":
+        """Reject details that do not belong to this candidate's memory type."""
+
+        if not memory_candidate_details_match_type(self.memory_type, self.details):
+            raise ValueError("details model does not match memory_type")
+        return self

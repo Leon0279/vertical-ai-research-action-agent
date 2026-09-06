@@ -7,12 +7,20 @@ import logging
 from time import perf_counter
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.common.utils.json_utils import is_json_serializable
 from app.domain.enums.memory_type import MemoryType
-from app.domain.models import ExecutionContext, MemoryCandidate, SourceReference
+from app.domain.models import (
+    ExecutionContext,
+    MemoryCandidate,
+    MemoryCandidateDetails,
+    SourceReference,
+)
+from app.domain.models.memory.memory_candidate_details import (
+    memory_candidate_details_match_type,
+    parse_memory_candidate_details,
+)
 from app.services._confidence import confidence_to_score
 from app.services.memory.contracts.memory_distiller_protocol import MemoryDistillerProtocol
 
@@ -37,14 +45,34 @@ class _LLMMemoryCandidateDraft(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    memory_type: str = Field(min_length=1, description="必填字段。LLM 提议的目标 MemoryType 字符串，后续由系统验证并转换为枚举。")
+    memory_type: MemoryType = Field(description="必填字段。LLM 提议的目标 MemoryType。")
     semantic_type: str = Field(min_length=1, description="必填字段。candidate 的稳定语义分类，用于校验其与 memory_type 是否匹配。")
     summary: str = Field(min_length=1, description="必填字段。适合长期保存的简短 candidate 摘要，不得复制原始回答或调试信息。")
-    payload: dict[str, Any] = Field(default_factory=dict, description="可选字段，默认空字典。仅包含 memory-type-specific 的 JSON-safe 补充信息。")
+    details: MemoryCandidateDetails = Field(description="必填字段。仅包含与 memory_type 匹配的受约束业务字段；没有依据时使用空对象。")
     confidence: Literal["low", "medium", "high"] = Field(description="必填字段。LLM 对 candidate 内容可靠性的离散评估。")
     stability: Literal["tentative", "stable"] = Field(description="必填字段。candidate 是否已经足够稳定、适合跨 session 保存。")
     persistability: Literal["durable", "temporary", "uncertain"] = Field(description="必填字段。LLM 对该内容是否适合长期持久化的初步判断。")
     source_reference_indexes: list[int] = Field(default_factory=list, description="可选字段，默认空列表。candidate 依赖的输入 SourceReference 索引；系统会忽略越界或无效索引。")
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_details_for_memory_type(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        if "memory_type" not in value or "details" not in value:
+            return value
+        normalized = dict(value)
+        normalized["details"] = parse_memory_candidate_details(
+            normalized["memory_type"],
+            normalized["details"],
+        )
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_details_type(self) -> "_LLMMemoryCandidateDraft":
+        if not memory_candidate_details_match_type(self.memory_type, self.details):
+            raise ValueError("details model does not match memory_type")
+        return self
 
 
 class _LLMMemoryDistillationPayload(BaseModel):
@@ -208,8 +236,6 @@ class MemoryDistillerService(MemoryDistillerProtocol):
                 continue
             if self._is_obviously_transient(draft.summary):
                 continue
-            if not is_json_serializable(draft.payload):
-                continue
             screened.append(draft.model_copy(update={"summary": draft.summary.strip()}))
         return screened
 
@@ -221,12 +247,10 @@ class MemoryDistillerService(MemoryDistillerProtocol):
 
         resolved: list[_LLMMemoryCandidateDraft] = []
         for draft in drafts:
-            if draft.memory_type not in self._MEMORY_TYPES:
-                continue
             allowed_memory_types = self._SEMANTIC_TO_MEMORY_TYPES.get(draft.semantic_type)
             if not allowed_memory_types:
                 continue
-            if MemoryType(draft.memory_type) not in allowed_memory_types:
+            if draft.memory_type not in allowed_memory_types:
                 continue
             resolved.append(draft)
         return resolved
@@ -248,9 +272,9 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             ]
             normalized.append(
                 MemoryCandidate(
-                    memory_type=MemoryType(draft.memory_type),
+                    memory_type=draft.memory_type,
                     summary=draft.summary.strip(),
-                    payload=draft.payload,
+                    details=draft.details,
                     confidence=confidence_to_score(draft.confidence) or 0.0,
                     stability=draft.stability,
                     project_scope_id=inputs.task_context["project_scope_id"],
@@ -293,6 +317,7 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         memory_types = ", ".join(sorted(self._MEMORY_TYPES))
         semantic_types = ", ".join(sorted(self._SEMANTIC_TO_MEMORY_TYPES))
         schema_contract = self._schema_contract()
+        typed_details_examples = self._typed_details_examples()
         valid_example = self._valid_research_knowledge_example()
         return (
             "你正在执行一次无状态的长期记忆候选提取任务。你只能依据本提示中的说明和输入 JSON 工作，"
@@ -302,16 +327,19 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             f"允许的 memory_type：{memory_types}。\n"
             f"允许的 semantic_type：{semantic_types}。\n\n"
             f"严格输出契约：\n{schema_contract}\n\n"
+            f"details 的简短 typed 示例（只展示字段归属，不要求填满）：\n{typed_details_examples}\n\n"
             f"合法的 RESEARCH_KNOWLEDGE 示例：\n{valid_example}\n\n"
             "判断要求：\n"
             "1. 只有具备长期复用价值、语义相对稳定的内容才输出。\n"
             "2. 可以综合 final recommendation、findings、action items、项目背景和 supporting summaries，"
             "但不要机械地把每个字段复制成 candidate。\n"
             "3. source_reference_indexes 只能引用输入 JSON source_references 中已有的 index，不能编造来源。\n"
-            "4. payload 只能包含简短、JSON-safe、与 memory type 相关的扩展字段。\n"
-            "5. 没有值得长期保存的内容时，返回空 candidates 列表。\n\n"
+            "4. details 只填写输入中有明确依据的字段；不要为了完整而补齐字段，不知道的字段必须省略。\n"
+            "5. details 不得包含 record ID、dedupe_key、embedding、user/project/scope ownership、provenance、"
+            "canonical、supersession、record status 或其它 lifecycle 治理字段。\n"
+            "6. 没有值得长期保存的内容时，返回空 candidates 列表。\n\n"
             "只输出 JSON，且顶层只能包含 candidates。每条 candidate 必须包含："
-            "memory_type、semantic_type、summary、payload、confidence、stability、persistability、"
+            "memory_type、semantic_type、summary、details、confidence、stability、persistability、"
             "source_reference_indexes。\n\n"
             "输入 JSON：\n"
             f"{input_json}"
@@ -332,7 +360,41 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             "- source_reference_indexes 必须是整数数组，并且只能引用输入中存在的 index。\n"
             "- semantic_type 与 memory_type 的合法对应关系："
             + json.dumps(semantic_mapping, ensure_ascii=False, sort_keys=True)
-            + "。"
+            + "。\n"
+            "- 各 memory_type 的 details 只允许以下字段（所有字段都可省略）：\n"
+            "  PROJECT_PROFILE: project_name, project_goal, project_background, domain, current_stage, constraints, important_context。\n"
+            "  DECISION: decision_title, decision_question, chosen_option, alternatives, rationale, tradeoffs, decision_state, impact_scope。\n"
+            "  ACTION_EXECUTION: action_title, action_description, action_status, priority, owner, due_at, blocking_reason, result_summary, completed_at。\n"
+            "  PREFERENCE / RESEARCH_POLICY: target_scope_type, target_scope_value, policy_type, policy_text, conditions, priority, enforcement_level。\n"
+            "  RESEARCH_KNOWLEDGE: title, knowledge_type, topic_tags, freshness_sensitivity。\n"
+            "  TRACKING_WATCHLIST: 不允许业务字段，details 必须是空对象。\n"
+            "- decision_state 只能是 proposed、accepted、reconsidering、rejected。\n"
+            "- action_status 只能是 todo、in_progress、blocked、done、cancelled。\n"
+            "- target_scope_type 只能是 task_type 或 memory_type，且必须和 target_scope_value 同时出现或同时省略。\n"
+            "- enforcement_level 只能是 soft、default、strict；freshness_sensitivity 只能是 low、medium、high。"
+        )
+
+    @staticmethod
+    def _typed_details_examples() -> str:
+        return json.dumps(
+            {
+                "PROJECT_PROFILE": {"project_goal": "建立稳定评测基线"},
+                "DECISION": {"chosen_option": "先建设离线评测集"},
+                "ACTION_EXECUTION": {
+                    "action_title": "建立离线评测集",
+                    "action_status": "todo",
+                },
+                "PREFERENCE_OR_RESEARCH_POLICY": {
+                    "policy_text": "结论必须附带来源"
+                },
+                "RESEARCH_KNOWLEDGE": {
+                    "knowledge_type": "concept",
+                    "topic_tags": ["RAG"],
+                },
+                "TRACKING_WATCHLIST": {},
+            },
+            ensure_ascii=False,
+            indent=2,
         )
 
     @staticmethod
@@ -344,7 +406,11 @@ class MemoryDistillerService(MemoryDistillerProtocol):
                         "memory_type": "RESEARCH_KNOWLEDGE",
                         "semantic_type": "reusable_research_knowledge",
                         "summary": "一条有来源支持、适合跨 session 复用的研究结论。",
-                        "payload": {"topic_tags": ["example"]},
+                        "details": {
+                            "title": "检索增强生成的作用",
+                            "knowledge_type": "concept",
+                            "topic_tags": ["RAG"],
+                        },
                         "confidence": "high",
                         "stability": "stable",
                         "persistability": "durable",
@@ -386,10 +452,9 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         second: MemoryCandidate,
     ) -> MemoryCandidate:
         preferred, secondary = self._preferred_candidate(first, second)
-        merged_payload = {**secondary.payload, **preferred.payload}
         return preferred.model_copy(
             update={
-                "payload": merged_payload,
+                "details": preferred.details,
                 "source_references": self._deduplicate_source_references(
                     [*preferred.source_references, *secondary.source_references]
                 ),

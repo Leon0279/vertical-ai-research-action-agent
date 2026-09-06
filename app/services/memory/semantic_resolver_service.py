@@ -6,11 +6,16 @@ from typing import Any
 
 from app.domain.enums import MemoryType
 from app.domain.models import (
+    ActionExecutionCandidateDetails,
     ActionMemoryRecord,
+    DecisionCandidateDetails,
     DecisionMemoryRecord,
     MemoryCandidate,
+    PreferencePolicyCandidateDetails,
     PreferencePolicyMemoryRecord,
+    ProjectProfileCandidateDetails,
     ProjectProfileMemoryRecord,
+    ResearchKnowledgeCandidateDetails,
     ResearchKnowledgeUnitRecord,
     SemanticResolutionResult,
 )
@@ -79,9 +84,15 @@ class SemanticResolverService(SemanticResolverProtocol):
         )
         if record is None:
             return self._unrelated(record_ids, "没有找到 project profile typed record。")
-        candidate_values = self._candidate_values(
-            candidate,
-            ("project_goal", "project_background", "current_stage", "constraints", "important_context"),
+        details = candidate.details
+        if not isinstance(details, ProjectProfileCandidateDetails):
+            return self._unrelated(record_ids, "project profile candidate details 类型不匹配。")
+        candidate_values = self._normalize_values(
+            details.project_goal or candidate.summary,
+            details.project_background,
+            details.current_stage,
+            details.constraints,
+            details.important_context or candidate.summary,
         )
         record_values = self._record_values(
             record,
@@ -97,14 +108,16 @@ class SemanticResolverService(SemanticResolverProtocol):
         record_ids: list[str],
     ) -> SemanticResolutionResult:
         decision_records = [item for item in records if isinstance(item, DecisionMemoryRecord)]
-        candidate_id = self._payload_text(candidate, "decision_id")
-        question = self._payload_text(candidate, "decision_question")
+        details = candidate.details
+        if not isinstance(details, DecisionCandidateDetails):
+            return self._unrelated(record_ids, "decision candidate details 类型不匹配。")
+        question = details.decision_question
         matched = next(
             (
                 record
                 for record in decision_records
-                if (candidate_id and record.decision_id == candidate_id)
-                or (question and self._normalize(record.decision_question) == self._normalize(question))
+                if question
+                and self._normalize(record.decision_question) == self._normalize(question)
             ),
             None,
         )
@@ -125,11 +138,15 @@ class SemanticResolverService(SemanticResolverProtocol):
                 None,
             )
         if matched is None:
-            return self._unrelated(record_ids, "没有找到相同 decision id 或 decision question。")
+            return self._unrelated(record_ids, "没有找到相同 decision question 或 summary。")
 
-        candidate_values = self._candidate_values(
-            candidate,
-            ("decision_question", "chosen_option", "decision_state", "rationale", "alternatives", "tradeoffs"),
+        candidate_values = self._normalize_values(
+            details.decision_question,
+            details.chosen_option or candidate.summary,
+            details.decision_state or "accepted",
+            details.rationale or candidate.summary,
+            details.alternatives,
+            details.tradeoffs,
         )
         record_values = self._record_values(
             matched,
@@ -148,7 +165,7 @@ class SemanticResolverService(SemanticResolverProtocol):
         elif (
             question
             and self._normalize(matched.decision_question) == self._normalize(question)
-            and self._normalize(self._payload_text(candidate, "chosen_option"))
+            and self._normalize(details.chosen_option)
             != self._normalize(matched.chosen_option)
         ):
             relation = "conflict"
@@ -163,30 +180,36 @@ class SemanticResolverService(SemanticResolverProtocol):
         record_ids: list[str],
     ) -> SemanticResolutionResult:
         action_records = [item for item in records if isinstance(item, ActionMemoryRecord)]
-        candidate_id = self._payload_text(candidate, "action_id")
-        candidate_title = self._normalize(self._payload_text(candidate, "action_title"))
+        details = candidate.details
+        if not isinstance(details, ActionExecutionCandidateDetails):
+            return self._unrelated(record_ids, "action candidate details 类型不匹配。")
+        candidate_title = self._normalize(details.action_title)
         matched = next(
             (
                 record
                 for record in action_records
-                if (candidate_id and record.action_id == candidate_id)
-                or (candidate_title and candidate_title == self._normalize(record.action_title))
+                if candidate_title
+                and candidate_title == self._normalize(record.action_title)
             ),
             None,
         )
         if matched is None:
-            return self._unrelated(record_ids, "没有找到相同 action id 或 action title。")
+            return self._unrelated(record_ids, "没有找到相同 action title。")
 
-        candidate_values = self._candidate_values(
-            candidate,
-            ("action_title", "action_description", "priority", "owner", "blocking_reason", "result_summary"),
+        candidate_values = self._normalize_values(
+            details.action_title or candidate.summary,
+            details.action_description or candidate.summary,
+            details.priority,
+            details.owner,
+            details.blocking_reason,
+            details.result_summary,
         )
         record_values = self._record_values(
             matched,
             ("action_title", "action_description", "priority", "owner", "blocking_reason", "result_summary"),
         )
         if candidate_values == record_values and (
-            self._normalize(self._payload_text(candidate, "action_status"))
+            self._normalize(details.action_status or "todo")
             == self._normalize(matched.action_status)
         ):
             relation = "duplicate"
@@ -203,30 +226,32 @@ class SemanticResolverService(SemanticResolverProtocol):
         record_ids: list[str],
     ) -> SemanticResolutionResult:
         policy_records = [item for item in records if isinstance(item, PreferencePolicyMemoryRecord)]
-        policy_id = self._payload_text(candidate, "policy_id")
-        policy_type = self._payload_text(candidate, "policy_type")
-        target_scope_type = self._payload_text(candidate, "target_scope_type")
-        target_scope_value = self._payload_text(candidate, "target_scope_value")
+        details = candidate.details
+        if not isinstance(details, PreferencePolicyCandidateDetails):
+            return self._unrelated(record_ids, "preference/policy candidate details 类型不匹配。")
+        policy_type = details.policy_type or candidate.semantic_type or "preference"
+        target_scope_type = details.target_scope_type
+        target_scope_value = details.target_scope_value
         matched = next(
             (
                 record
                 for record in policy_records
-                if (policy_id and record.policy_id == policy_id)
-                or (
-                    policy_type
-                    and self._normalize(record.policy_type) == self._normalize(policy_type)
-                    and self._normalize(record.target_scope_type) == self._normalize(target_scope_type)
-                    and self._normalize(record.target_scope_value) == self._normalize(target_scope_value)
-                )
+                if policy_type
+                and self._normalize(record.policy_type) == self._normalize(policy_type)
+                and self._normalize(record.target_scope_type) == self._normalize(target_scope_type)
+                and self._normalize(record.target_scope_value) == self._normalize(target_scope_value)
             ),
             None,
         )
         if matched is None:
-            return self._unrelated(record_ids, "没有找到相同 policy id 或 policy scope。")
+            return self._unrelated(record_ids, "没有找到相同 policy type 和 target scope。")
 
-        candidate_values = self._candidate_values(
-            candidate,
-            ("policy_type", "policy_text", "conditions", "target_scope_type", "target_scope_value"),
+        candidate_values = self._normalize_values(
+            policy_type,
+            details.policy_text or candidate.summary,
+            details.conditions,
+            target_scope_type,
+            target_scope_value,
         )
         record_values = self._record_values(
             matched,
@@ -242,28 +267,29 @@ class SemanticResolverService(SemanticResolverProtocol):
         record_ids: list[str],
     ) -> SemanticResolutionResult:
         knowledge_records = [item for item in records if isinstance(item, ResearchKnowledgeUnitRecord)]
-        knowledge_id = self._payload_text(candidate, "knowledge_id")
-        dedupe_key = self._payload_text(candidate, "dedupe_key") or memory_candidate_dedupe_key(candidate)
+        details = candidate.details
+        if not isinstance(details, ResearchKnowledgeCandidateDetails):
+            return self._unrelated(record_ids, "research knowledge candidate details 类型不匹配。")
+        dedupe_key = memory_candidate_dedupe_key(candidate)
         matched = next(
             (
                 record
                 for record in knowledge_records
-                if (knowledge_id and record.knowledge_id == knowledge_id)
-                or (record.dedupe_key and record.dedupe_key == dedupe_key)
+                if record.dedupe_key and record.dedupe_key == dedupe_key
             ),
             None,
         )
         if matched is None:
-            return self._unrelated(record_ids, "没有找到相同 knowledge id 或 dedupe key。")
+            return self._unrelated(record_ids, "没有找到相同的系统 dedupe key。")
 
-        candidate_values = self._candidate_values(candidate, ("title", "summary", "knowledge_type", "topic_tags"))
+        candidate_values = self._normalize_values(
+            details.title or candidate.summary,
+            candidate.summary,
+            details.knowledge_type or candidate.semantic_type or "research_knowledge",
+            details.topic_tags,
+        )
         record_values = self._record_values(matched, ("title", "summary", "knowledge_type", "topic_tags"))
-        if candidate_values == record_values:
-            relation = "duplicate"
-        elif knowledge_id and matched.knowledge_id == knowledge_id:
-            relation = "same_entity_changed"
-        else:
-            relation = "conflict"
+        relation = "duplicate" if candidate_values == record_values else "conflict"
         return self._matched(matched, relation, f"research knowledge identity matched，字段比较结果为 {relation}。")
 
     @staticmethod
@@ -310,8 +336,8 @@ class SemanticResolverService(SemanticResolverProtocol):
         return None
 
     @classmethod
-    def _candidate_values(cls, candidate: MemoryCandidate, fields: tuple[str, ...]) -> tuple[object, ...]:
-        return tuple(cls._normalize_value(candidate.payload.get(field)) for field in fields)
+    def _normalize_values(cls, *values: object) -> tuple[object, ...]:
+        return tuple(cls._normalize_value(value) for value in values)
 
     @classmethod
     def _record_values(cls, record: StructuredMemoryRecord, fields: tuple[str, ...]) -> tuple[object, ...]:
@@ -332,8 +358,3 @@ class SemanticResolverService(SemanticResolverProtocol):
         if not isinstance(value, str):
             return ""
         return " ".join(value.strip().casefold().split())
-
-    @staticmethod
-    def _payload_text(candidate: MemoryCandidate, key: str) -> str | None:
-        value = candidate.payload.get(key)
-        return value if isinstance(value, str) and value.strip() else None

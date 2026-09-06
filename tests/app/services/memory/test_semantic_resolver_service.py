@@ -4,9 +4,12 @@ import asyncio
 
 from app.domain.enums.memory_type import MemoryType
 from app.domain.models import (
+    ActionExecutionCandidateDetails,
     ActionMemoryRecord,
+    DecisionCandidateDetails,
     DecisionMemoryRecord,
     MemoryCandidate,
+    ProjectProfileCandidateDetails,
     ProjectProfileMemoryRecord,
     SemanticResolutionResult,
 )
@@ -17,6 +20,7 @@ def test_empty_records_return_no_existing_record() -> None:
     candidate = MemoryCandidate(
         memory_type=MemoryType.DECISION,
         summary="保留离线评测集方案。",
+        details=DecisionCandidateDetails(),
     )
 
     result = asyncio.run(SemanticResolverService().resolve(candidate, []))
@@ -29,7 +33,9 @@ def test_duplicate_decision_is_detected_without_mutating_inputs() -> None:
     candidate = MemoryCandidate(
         memory_type=MemoryType.DECISION,
         summary="保留离线评测集方案。",
-        payload={"chosen_option": "保留离线评测集方案。"},
+        details=DecisionCandidateDetails(
+            chosen_option="保留离线评测集方案。",
+        ),
     )
     record = DecisionMemoryRecord(
         decision_id="decision-1",
@@ -52,11 +58,11 @@ def test_action_status_change_is_state_transition() -> None:
     candidate = MemoryCandidate(
         memory_type=MemoryType.ACTION_EXECUTION,
         summary="发布评测报告",
-        payload={
-            "action_title": "发布评测报告",
-            "action_description": "发布评测报告",
-            "action_status": "done",
-        },
+        details=ActionExecutionCandidateDetails(
+            action_title="发布评测报告",
+            action_description="发布评测报告",
+            action_status="done",
+        ),
     )
     record = ActionMemoryRecord(
         action_id="action-1",
@@ -78,7 +84,7 @@ def test_project_profile_change_is_same_entity_changed() -> None:
     candidate = MemoryCandidate(
         memory_type=MemoryType.PROJECT_PROFILE,
         summary="新目标",
-        payload={"project_goal": "新目标"},
+        details=ProjectProfileCandidateDetails(project_goal="新目标"),
     )
     record = ProjectProfileMemoryRecord(
         project_profile_id="profile-1",
