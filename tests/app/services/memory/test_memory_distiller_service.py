@@ -214,6 +214,10 @@ def test_distillation_prompt_is_stateless_and_contains_grounding_inputs() -> Non
     assert '"memory_type": "RESEARCH_KNOWLEDGE"' in prompt
     assert "details 只填写输入中有明确依据的字段" in prompt
     assert "不要为了完整而补齐字段" in prompt
+    assert "candidates 必须彼此语义独立且不重复" in prompt
+    assert "不得仅通过更换措辞重复输出" in prompt
+    assert "应合并为一条 candidate" in prompt
+    assert "不要跨类型重复保存" in prompt
     assert "project_profile_id" not in prompt
     assert "decision_id" not in prompt
     assert "dedupe_key" in prompt
@@ -286,34 +290,33 @@ def test_distiller_ignores_out_of_range_source_indexes() -> None:
     assert [item.source_id for item in candidates[0].source_references] == ["docs-1"]
 
 
-def test_distiller_deduplicates_candidates_and_merges_sources() -> None:
+def test_distiller_preserves_llm_candidate_order_without_batch_resolution() -> None:
     llm = _llm(
         [
-            _draft(source_reference_indexes=[0]),
             _draft(
+                summary="暂定先建立小规模评测集。",
                 source_reference_indexes=[1],
                 details={
-                    "rationale": "次优候选不应覆盖首选 details。",
+                    "rationale": "需要先验证评测成本。",
                     "alternatives": ["查询改写"],
                 },
                 stability="tentative",
                 confidence="medium",
             ),
+            _draft(source_reference_indexes=[0]),
         ]
     )
 
     candidates = asyncio.run(MemoryDistillerService(llm).distill(_context()))
 
-    assert len(candidates) == 1
-    assert candidates[0].stability == "stable"
-    assert candidates[0].confidence == 0.8
-    assert candidates[0].details == DecisionCandidateDetails(
-        rationale="当前项目缺少量化基线。"
-    )
-    assert [item.source_id for item in candidates[0].source_references] == [
-        "docs-1",
-        "2501.12345",
+    assert [candidate.summary for candidate in candidates] == [
+        "暂定先建立小规模评测集。",
+        "优先建设离线评测集。",
     ]
+    assert [candidate.stability for candidate in candidates] == ["tentative", "stable"]
+    assert [
+        candidate.source_references[0].source_id for candidate in candidates
+    ] == ["2501.12345", "docs-1"]
 
 
 @pytest.mark.parametrize(

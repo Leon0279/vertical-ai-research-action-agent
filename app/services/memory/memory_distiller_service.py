@@ -111,8 +111,7 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             drafts = await self._extract_candidate_drafts(inputs)
             screened = self._screen_candidates(drafts)
             typed = self._resolve_candidate_types(screened)
-            normalized = self._normalize_candidates(typed, inputs)
-            candidates = self._deduplicate_and_order(normalized)
+            candidates = self._normalize_candidates(typed, inputs)
         except Exception:
             # The pipeline owns the best-effort boundary and must be able to distinguish
             # distillation failure from a valid empty candidate list.
@@ -287,29 +286,6 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             )
         return normalized
 
-    def _deduplicate_and_order(
-        self,
-        candidates: list[MemoryCandidate],
-    ) -> list[MemoryCandidate]:
-        """按语义摘要去重，合并 provenance，并优先返回更稳定的 candidate。"""
-
-        unique: dict[str, MemoryCandidate] = {}
-        for candidate in candidates:
-            key = self._candidate_key(candidate)
-            existing = unique.get(key)
-            if existing is None:
-                unique[key] = candidate
-            else:
-                unique[key] = self._merge_candidates(existing, candidate)
-
-        return sorted(
-            unique.values(),
-            key=lambda candidate: (
-                0 if candidate.stability == "stable" else 1,
-                -(candidate.confidence or 0.0),
-            ),
-        )
-
     def _build_distillation_prompt(self, inputs: _MemoryDistillationInput) -> str:
         """构造面向无状态 LLM 的中文 memory distillation prompt。"""
 
@@ -333,11 +309,18 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             "1. 只有具备长期复用价值、语义相对稳定的内容才输出。\n"
             "2. 可以综合 final recommendation、findings、action items、项目背景和 supporting summaries，"
             "但不要机械地把每个字段复制成 candidate。\n"
-            "3. source_reference_indexes 只能引用输入 JSON source_references 中已有的 index，不能编造来源。\n"
-            "4. details 只填写输入中有明确依据的字段；不要为了完整而补齐字段，不知道的字段必须省略。\n"
-            "5. details 不得包含 record ID、dedupe_key、embedding、user/project/scope ownership、provenance、"
+            "3. candidates 必须彼此语义独立且不重复；同一事实、决定、行动或知识点不得仅通过更换措辞重复输出。\n"
+            "4. 如果多个输入字段或多个来源支持同一个 candidate，应合并为一条 candidate，并在 "
+            "source_reference_indexes 中列出全部相关来源。\n"
+            "5. 如果相近内容具有不同的长期用途或生命周期，例如一个是决定、另一个是行动状态，可以分别输出，"
+            "但必须通过 semantic_type 和 details 清楚体现差异。\n"
+            "6. 同一内容可能属于多个 memory_type 时，应选择对未来复用最直接、最具体的类型，不要跨类型重复保存。\n"
+            "7. source_reference_indexes 只能引用输入 JSON source_references 中已有的 index，不能编造来源。\n"
+            "8. details 只填写输入中有明确依据的字段；不要为了完整而补齐字段，不知道的字段必须省略。\n"
+            "9. details 不得包含 record ID、dedupe_key、embedding、user/project/scope ownership、provenance、"
             "canonical、supersession、record status 或其它 lifecycle 治理字段。\n"
-            "6. 没有值得长期保存的内容时，返回空 candidates 列表。\n\n"
+            "10. 输出前检查 candidates，移除重复或仅有措辞差异的条目。\n"
+            "11. 没有值得长期保存的内容时，返回空 candidates 列表。\n\n"
             "只输出 JSON，且顶层只能包含 candidates。每条 candidate 必须包含："
             "memory_type、semantic_type、summary、details、confidence、stability、persistability、"
             "source_reference_indexes。\n\n"
@@ -440,35 +423,6 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         lowered = summary.casefold()
         markers = ("raw tool output", "raw payload", "debug trace", "stack trace", "llm prompt")
         return any(marker in lowered for marker in markers)
-
-    @staticmethod
-    def _candidate_key(candidate: MemoryCandidate) -> str:
-        normalized_summary = " ".join(candidate.summary.casefold().split())
-        return f"{candidate.memory_type.value}:{candidate.semantic_type}:{normalized_summary}"
-
-    def _merge_candidates(
-        self,
-        first: MemoryCandidate,
-        second: MemoryCandidate,
-    ) -> MemoryCandidate:
-        preferred, secondary = self._preferred_candidate(first, second)
-        return preferred.model_copy(
-            update={
-                "details": preferred.details,
-                "source_references": self._deduplicate_source_references(
-                    [*preferred.source_references, *secondary.source_references]
-                ),
-            }
-        )
-
-    @staticmethod
-    def _preferred_candidate(
-        first: MemoryCandidate,
-        second: MemoryCandidate,
-    ) -> tuple[MemoryCandidate, MemoryCandidate]:
-        first_rank = (first.stability == "stable", first.confidence or 0.0)
-        second_rank = (second.stability == "stable", second.confidence or 0.0)
-        return (first, second) if first_rank >= second_rank else (second, first)
 
     @staticmethod
     def _deduplicate_source_references(
