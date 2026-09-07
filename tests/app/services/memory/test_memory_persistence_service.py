@@ -205,6 +205,7 @@ def test_duplicate_decision_is_no_write() -> None:
     assert result.written_count == 0
     assert result.no_write_count == 1
     assert result.items[0].action == "no_write"
+    assert result.items[0].affected_existing_record_ids == ["decision-1"]
     assert store.writes == []
 
 
@@ -288,6 +289,47 @@ def test_decision_change_appends_system_generated_superseding_record() -> None:
     assert store.writes[0].supersedes_decision_id == "decision-1"
 
 
+def test_decision_change_supersedes_the_semantically_matched_record() -> None:
+    unrelated = DecisionMemoryRecord(
+        decision_id="decision-unrelated",
+        user_id="user-1",
+        project_id="project-1",
+        decision_question="前端使用哪个框架？",
+        chosen_option="React",
+        decision_state="accepted",
+        record_status="active",
+    )
+    matched = DecisionMemoryRecord(
+        decision_id="decision-matched",
+        user_id="user-1",
+        project_id="project-1",
+        decision_question="先优化哪一层？",
+        chosen_option="先优化查询改写。",
+        decision_state="accepted",
+        record_status="active",
+    )
+    store = _DecisionStore([unrelated, matched])
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.DECISION,
+        summary="先建立离线评测集。",
+        details=DecisionCandidateDetails(
+            decision_question="先优化哪一层？",
+            chosen_option="先建立离线评测集。",
+            decision_state="accepted",
+        ),
+        stability="stable",
+        project_scope_id="project-1",
+    )
+
+    result = asyncio.run(
+        _service(decision_store=store).persist(_context(), [candidate])
+    )
+
+    assert result.items[0].action == "append_supersede"
+    assert result.items[0].affected_existing_record_ids == ["decision-matched"]
+    assert store.writes[0].supersedes_decision_id == "decision-matched"
+
+
 def test_action_status_transition_reuses_lookup_record_id() -> None:
     existing = ActionMemoryRecord(
         action_id="action-1",
@@ -358,6 +400,56 @@ def test_policy_change_replaces_with_system_generated_id() -> None:
     assert store.writes[0].policy_id.startswith("mem-")
     assert store.writes[0].policy_id != "policy-1"
     assert store.writes[0].supersedes_policy_id == "policy-1"
+
+
+def test_policy_change_replaces_the_semantically_matched_record() -> None:
+    unrelated = PreferencePolicyMemoryRecord(
+        policy_id="policy-unrelated",
+        user_id="user-1",
+        project_id="project-1",
+        owner_scope_type="project",
+        owner_scope_value="project-1",
+        target_scope_type="task_type",
+        target_scope_value="COMPARISON",
+        policy_type="format_rule",
+        policy_text="使用表格回答。",
+        record_status="active",
+    )
+    matched = PreferencePolicyMemoryRecord(
+        policy_id="policy-matched",
+        user_id="user-1",
+        project_id="project-1",
+        owner_scope_type="project",
+        owner_scope_value="project-1",
+        target_scope_type="task_type",
+        target_scope_value="RESEARCH",
+        policy_type="format_rule",
+        policy_text="使用简短回答。",
+        record_status="active",
+    )
+    store = _PolicyStore([unrelated, matched])
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.RESEARCH_POLICY,
+        summary="结论必须包含引用。",
+        details=PreferencePolicyCandidateDetails(
+            target_scope_type="task_type",
+            target_scope_value="RESEARCH",
+            policy_type="format_rule",
+            policy_text="结论必须包含引用。",
+            enforcement_level="strict",
+        ),
+        stability="stable",
+        project_scope_id="project-1",
+        semantic_type="stable_preference",
+    )
+
+    result = asyncio.run(
+        _service(policy_store=store).persist(_context(), [candidate])
+    )
+
+    assert result.items[0].action == "replace"
+    assert result.items[0].affected_existing_record_ids == ["policy-matched"]
+    assert store.writes[0].supersedes_policy_id == "policy-matched"
 
 
 def test_research_knowledge_create_uses_system_governance_fields() -> None:

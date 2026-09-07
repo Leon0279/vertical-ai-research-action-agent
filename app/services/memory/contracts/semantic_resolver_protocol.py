@@ -40,6 +40,7 @@ class SemanticResolverProtocol(Protocol):
             existing_records (list[StructuredMemoryRecord]): 已查询出的同类型、同范围 typed 长期记忆记录列表。
 
         Returns:
-            SemanticResolutionResult: 描述候选与已有记录关系、主匹配记录、受影响记录及规则判断理由的解析结果。
+            SemanticResolutionResult: 描述候选与唯一匹配记录之间的关系和规则判断原因；
+                没有匹配对象时返回 no_match，最终持久化动作仍由 persistence service 决定。
         """
         ...

@@ -35,10 +35,7 @@ from app.domain.models.memory.research_knowledge_unit_record import (
 from app.domain.models.memory.research_knowledge_candidate_details import (
     ResearchKnowledgeCandidateDetails,
 )
-from app.domain.models.memory.semantic_resolution_result import (
-    SemanticResolutionRelation,
-    SemanticResolutionResult,
-)
+from app.domain.models.memory.semantic_resolution_result import SemanticResolutionResult
 from app.domain.models.memory.session_memory import SessionMemory
 from app.domain.models.memory.session_turn_summary import SessionTurnSummary
 from app.domain.models.memory.tracking_watchlist_candidate_details import (
@@ -63,7 +60,6 @@ __all__ = [
     "ResearchKnowledgeRecallResult",
     "ResearchKnowledgeUnitRecord",
     "ResearchKnowledgeCandidateDetails",
-    "SemanticResolutionRelation",
     "SemanticResolutionResult",
     "SessionMemory",
     "SessionTurnSummary",

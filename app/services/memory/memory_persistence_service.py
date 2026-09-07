@@ -19,7 +19,7 @@ from app.adapters.memory.contracts.project_profile_memory_store_protocol import 
 from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
     ResearchKnowledgeMemoryStoreProtocol,
 )
-from app.domain.enums import MemoryType, TaskType
+from app.domain.enums import MemoryType, SemanticRelation, TaskType
 from app.domain.models import (
     ActionExecutionCandidateDetails,
     ActionMemoryRecord,
@@ -105,17 +105,34 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 # TODO （optional） project / decision / action 类型的candidate如果有多条，可能会对db进行重复的检索。
                 existing_records = await self._lookup_existing_records(context, candidate)
                 resolution = await self._semantic_resolver.resolve(candidate, existing_records)
+                matched_record = self._matched_existing_record(
+                    existing_records,
+                    resolution.matched_record_id,
+                )
                 action = self._decide_persistence_action(
                     candidate,
                     existing_records,
                     resolution,
                 )
+                if (
+                    matched_record is None
+                    and action == "replace"
+                    and candidate.memory_type == MemoryType.PROJECT_PROFILE
+                ):
+                    matched_record = next(
+                        (
+                            record
+                            for record in existing_records
+                            if isinstance(record, ProjectProfileMemoryRecord)
+                        ),
+                        None,
+                    )
                 if action == "no_write":
                     items.append(
                         self._no_write_result(
                             candidate,
                             self._no_write_reason(resolution),
-                            existing_records=existing_records,
+                            matched_record=matched_record,
                         )
                     )
                     continue
@@ -124,7 +141,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                     context,
                     candidate,
                     action,
-                    existing_records,
+                    matched_record,
                 )
                 await self._execute_write(candidate, record, action)
                 items.append(
@@ -132,7 +149,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                         candidate,
                         record,
                         action,
-                        existing_records=existing_records,
+                        matched_record=matched_record,
                     )
                 )
             except Exception as exc:
@@ -265,27 +282,21 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
     ) -> str:
         """使用确定性规则决定本次 candidate 的持久化动作。"""
 
-        if resolution.relation == "no_existing_record":
+        if resolution.relation == SemanticRelation.NO_MATCH:
+            if candidate.memory_type == MemoryType.PROJECT_PROFILE and existing_records:
+                return "replace"
             return "create"
-        if resolution.relation == "duplicate":
+        if resolution.relation == SemanticRelation.DUPLICATE:
             return "no_write"
-        if resolution.relation == "state_transition":
+        if resolution.relation == SemanticRelation.STATE_TRANSITION:
             return "status_transition" if candidate.memory_type == MemoryType.ACTION_EXECUTION else "no_write"
-        if resolution.relation == "unrelated":
-            if candidate.memory_type in {
-                MemoryType.DECISION,
-                MemoryType.ACTION_EXECUTION,
-                MemoryType.PREFERENCE,
-                MemoryType.RESEARCH_POLICY,
-            }:
-                return "create"
-            if candidate.memory_type == MemoryType.PROJECT_PROFILE:
-                return "replace" if existing_records else "create"
-            if candidate.memory_type == MemoryType.RESEARCH_KNOWLEDGE:
-                return "create"
-            return "no_write"
         if not existing_records:
             return "create"
+        if resolution.relation not in {
+            SemanticRelation.CHANGED,
+            SemanticRelation.CONFLICT,
+        }:
+            return "no_write"
         if candidate.memory_type == MemoryType.PROJECT_PROFILE:
             return "replace"
         if candidate.memory_type == MemoryType.DECISION:
@@ -303,7 +314,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         context: ExecutionContext,
         candidate: MemoryCandidate,
         action: str,
-        existing_records: list[_StructuredRecord],
+        matched_record: _StructuredRecord | None,
     ) -> _StructuredRecord:
         """将 candidate 映射为具体 memory type 的 typed durable record。"""
 
@@ -313,7 +324,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         run_id = candidate.derived_from_run_id or context.runtime_context.request_id
         project_id = candidate.project_scope_id or context.running_state.project_scope_id
         source_refs = self._source_handles(candidate.source_references)
-        active_record = existing_records[0] if existing_records else None
+        active_record = matched_record
 
         if candidate.memory_type == MemoryType.PROJECT_PROFILE:
             details = candidate.details
@@ -379,7 +390,11 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
             details = candidate.details
             if not isinstance(details, ActionExecutionCandidateDetails):
                 raise TypeError("ACTION_EXECUTION candidate has mismatched details.")
-            matching_action = self._matching_action(candidate, existing_records)
+            matching_action = (
+                matched_record
+                if isinstance(matched_record, ActionMemoryRecord)
+                else None
+            )
             action_id = (
                 matching_action.action_id
                 if action == "status_transition" and matching_action
@@ -510,22 +525,20 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         record: _StructuredRecord | None,
         action: str,
         *,
-        existing_records: list[_StructuredRecord] | None = None,
+        matched_record: _StructuredRecord | None = None,
     ) -> MemoryPersistenceItemResult:
         """构造单个 candidate 的 post-write result。"""
 
-        existing_records = existing_records or []
+        matched_record_id = self._record_identifier(matched_record)
         return MemoryPersistenceItemResult(
             memory_type=candidate.memory_type,
             action=action,  # type: ignore[arg-type]
             status="written" if record else "failed",
             project_scope_id=candidate.project_scope_id,
             written_record_id=self._record_identifier(record),
-            affected_existing_record_ids=[
-                record_id
-                for record_id in (self._record_identifier(item) for item in existing_records)
-                if record_id
-            ],
+            affected_existing_record_ids=(
+                [matched_record_id] if matched_record_id else []
+            ),
             supersession_applied=action in {"replace", "append_supersede"},
             status_transition_applied=action == "status_transition",
         )
@@ -535,21 +548,17 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         candidate: MemoryCandidate,
         reason: str,
         *,
-        existing_records: list[_StructuredRecord] | None = None,
+        matched_record: _StructuredRecord | None = None,
     ) -> MemoryPersistenceItemResult:
+        matched_record_id = self._record_identifier(matched_record)
         return MemoryPersistenceItemResult(
             memory_type=candidate.memory_type,
             action="no_write",
             status="no_write",
             project_scope_id=candidate.project_scope_id,
-            affected_existing_record_ids=[
-                record_id
-                for record_id in (
-                    self._record_identifier(record)
-                    for record in existing_records or []
-                )
-                if record_id
-            ],
+            affected_existing_record_ids=(
+                [matched_record_id] if matched_record_id else []
+            ),
             no_write_reason=reason,
         )
 
@@ -568,7 +577,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         self,
         resolution: SemanticResolutionResult,
     ) -> str:
-        return resolution.rationale
+        return resolution.reason
 
     @staticmethod
     def _is_obviously_raw(candidate: MemoryCandidate) -> bool:
@@ -647,22 +656,17 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 return " ".join(value.casefold().split())
         return ""
 
-    @staticmethod
-    def _matching_action(
-        candidate: MemoryCandidate,
+    def _matched_existing_record(
+        self,
         existing_records: list[_StructuredRecord],
-    ) -> ActionMemoryRecord | None:
-        details = candidate.details
-        if not isinstance(details, ActionExecutionCandidateDetails):
+        matched_record_id: str | None,
+    ) -> _StructuredRecord | None:
+        if matched_record_id is None:
             return None
-        action_title = details.action_title
-        normalized_title = (
-            " ".join(action_title.casefold().split()) if action_title else None
-        )
         for record in existing_records:
-            if not isinstance(record, ActionMemoryRecord):
-                continue
-            if normalized_title and record.action_title:
-                if normalized_title == " ".join(record.action_title.casefold().split()):
-                    return record
-        return None
+            if self._record_identifier(record) == matched_record_id:
+                return record
+        raise ValueError(
+            "Semantic resolver returned a matched_record_id that is not present "
+            "in existing_records."
+        )

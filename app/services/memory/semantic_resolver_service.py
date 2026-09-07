@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.domain.enums import MemoryType
+from app.domain.enums import MemoryType, SemanticRelation
 from app.domain.models import (
     ActionExecutionCandidateDetails,
     ActionMemoryRecord,
@@ -38,55 +38,47 @@ class SemanticResolverService(SemanticResolverProtocol):
 
         if not existing_records:
             return SemanticResolutionResult(
-                relation="no_existing_record",
-                rationale="当前 scope 下没有可比较的 active record。",
+                relation=SemanticRelation.NO_MATCH,
+                reason="当前 scope 下没有可比较的 active record。",
             )
 
         records = [record for record in existing_records if self._is_supported_record(record)]
-        record_ids = [
-            record_id
-            for record_id in (self._record_id(record) for record in records)
-            if record_id
-        ]
         if not records:
             return SemanticResolutionResult(
-                relation="unrelated",
-                matched_record_ids=[],
-                rationale="已有记录不属于当前 resolver 支持的 typed memory record。",
+                relation=SemanticRelation.NO_MATCH,
+                reason="已有记录不属于当前 resolver 支持的 typed memory record。",
             )
 
         if candidate.memory_type == MemoryType.PROJECT_PROFILE:
-            return self._resolve_project_profile(candidate, records, record_ids)
+            return self._resolve_project_profile(candidate, records)
         if candidate.memory_type == MemoryType.DECISION:
-            return self._resolve_decision(candidate, records, record_ids)
+            return self._resolve_decision(candidate, records)
         if candidate.memory_type == MemoryType.ACTION_EXECUTION:
-            return self._resolve_action(candidate, records, record_ids)
+            return self._resolve_action(candidate, records)
         if candidate.memory_type in {MemoryType.PREFERENCE, MemoryType.RESEARCH_POLICY}:
-            return self._resolve_policy(candidate, records, record_ids)
+            return self._resolve_policy(candidate, records)
         if candidate.memory_type == MemoryType.RESEARCH_KNOWLEDGE:
-            return self._resolve_knowledge(candidate, records, record_ids)
+            return self._resolve_knowledge(candidate, records)
 
         return SemanticResolutionResult(
-            relation="unrelated",
-            matched_record_ids=record_ids,
-            rationale="当前 memory type 没有可用的语义匹配规则。",
+            relation=SemanticRelation.NO_MATCH,
+            reason="当前 memory type 没有可用的语义匹配规则。",
         )
 
     def _resolve_project_profile(
         self,
         candidate: MemoryCandidate,
         records: list[StructuredMemoryRecord],
-        record_ids: list[str],
     ) -> SemanticResolutionResult:
         record = next(
             (item for item in records if isinstance(item, ProjectProfileMemoryRecord)),
             None,
         )
         if record is None:
-            return self._unrelated(record_ids, "没有找到 project profile typed record。")
+            return self._no_match("没有找到 project profile typed record。")
         details = candidate.details
         if not isinstance(details, ProjectProfileCandidateDetails):
-            return self._unrelated(record_ids, "project profile candidate details 类型不匹配。")
+            return self._no_match("project profile candidate details 类型不匹配。")
         candidate_values = self._normalize_values(
             details.project_goal or candidate.summary,
             details.project_background,
@@ -98,19 +90,26 @@ class SemanticResolverService(SemanticResolverProtocol):
             record,
             ("project_goal", "project_background", "current_stage", "constraints", "important_context"),
         )
-        relation = "duplicate" if candidate_values == record_values else "same_entity_changed"
-        return self._matched(record, relation, f"当前 project scope 只有一个 active profile，字段比较结果为 {relation}。")
+        relation = (
+            SemanticRelation.DUPLICATE
+            if candidate_values == record_values
+            else SemanticRelation.CHANGED
+        )
+        return self._matched(
+            record,
+            relation,
+            f"当前 project scope 只有一个 active profile，字段比较结果为 {relation.value}。",
+        )
 
     def _resolve_decision(
         self,
         candidate: MemoryCandidate,
         records: list[StructuredMemoryRecord],
-        record_ids: list[str],
     ) -> SemanticResolutionResult:
         decision_records = [item for item in records if isinstance(item, DecisionMemoryRecord)]
         details = candidate.details
         if not isinstance(details, DecisionCandidateDetails):
-            return self._unrelated(record_ids, "decision candidate details 类型不匹配。")
+            return self._no_match("decision candidate details 类型不匹配。")
         question = details.decision_question
         matched = next(
             (
@@ -138,7 +137,7 @@ class SemanticResolverService(SemanticResolverProtocol):
                 None,
             )
         if matched is None:
-            return self._unrelated(record_ids, "没有找到相同 decision question 或 summary。")
+            return self._no_match("没有找到相同 decision question 或 summary。")
 
         candidate_values = self._normalize_values(
             details.decision_question,
@@ -161,28 +160,31 @@ class SemanticResolverService(SemanticResolverProtocol):
                 self._normalize(matched.rationale),
             }
         ):
-            relation = "duplicate"
+            relation = SemanticRelation.DUPLICATE
         elif (
             question
             and self._normalize(matched.decision_question) == self._normalize(question)
             and self._normalize(details.chosen_option)
             != self._normalize(matched.chosen_option)
         ):
-            relation = "conflict"
+            relation = SemanticRelation.CONFLICT
         else:
-            relation = "same_entity_changed"
-        return self._matched(matched, relation, f"decision identity matched，字段比较结果为 {relation}。")
+            relation = SemanticRelation.CHANGED
+        return self._matched(
+            matched,
+            relation,
+            f"decision identity matched，字段比较结果为 {relation.value}。",
+        )
 
     def _resolve_action(
         self,
         candidate: MemoryCandidate,
         records: list[StructuredMemoryRecord],
-        record_ids: list[str],
     ) -> SemanticResolutionResult:
         action_records = [item for item in records if isinstance(item, ActionMemoryRecord)]
         details = candidate.details
         if not isinstance(details, ActionExecutionCandidateDetails):
-            return self._unrelated(record_ids, "action candidate details 类型不匹配。")
+            return self._no_match("action candidate details 类型不匹配。")
         candidate_title = self._normalize(details.action_title)
         matched = next(
             (
@@ -194,7 +196,7 @@ class SemanticResolverService(SemanticResolverProtocol):
             None,
         )
         if matched is None:
-            return self._unrelated(record_ids, "没有找到相同 action title。")
+            return self._no_match("没有找到相同 action title。")
 
         candidate_values = self._normalize_values(
             details.action_title or candidate.summary,
@@ -212,23 +214,26 @@ class SemanticResolverService(SemanticResolverProtocol):
             self._normalize(details.action_status or "todo")
             == self._normalize(matched.action_status)
         ):
-            relation = "duplicate"
+            relation = SemanticRelation.DUPLICATE
         elif candidate_values == record_values:
-            relation = "state_transition"
+            relation = SemanticRelation.STATE_TRANSITION
         else:
-            relation = "same_entity_changed"
-        return self._matched(matched, relation, f"action identity matched，字段比较结果为 {relation}。")
+            relation = SemanticRelation.CHANGED
+        return self._matched(
+            matched,
+            relation,
+            f"action identity matched，字段比较结果为 {relation.value}。",
+        )
 
     def _resolve_policy(
         self,
         candidate: MemoryCandidate,
         records: list[StructuredMemoryRecord],
-        record_ids: list[str],
     ) -> SemanticResolutionResult:
         policy_records = [item for item in records if isinstance(item, PreferencePolicyMemoryRecord)]
         details = candidate.details
         if not isinstance(details, PreferencePolicyCandidateDetails):
-            return self._unrelated(record_ids, "preference/policy candidate details 类型不匹配。")
+            return self._no_match("preference/policy candidate details 类型不匹配。")
         policy_type = details.policy_type or candidate.semantic_type or "preference"
         target_scope_type = details.target_scope_type
         target_scope_value = details.target_scope_value
@@ -244,7 +249,7 @@ class SemanticResolverService(SemanticResolverProtocol):
             None,
         )
         if matched is None:
-            return self._unrelated(record_ids, "没有找到相同 policy type 和 target scope。")
+            return self._no_match("没有找到相同 policy type 和 target scope。")
 
         candidate_values = self._normalize_values(
             policy_type,
@@ -257,19 +262,26 @@ class SemanticResolverService(SemanticResolverProtocol):
             matched,
             ("policy_type", "policy_text", "conditions", "target_scope_type", "target_scope_value"),
         )
-        relation = "duplicate" if candidate_values == record_values else "same_entity_changed"
-        return self._matched(matched, relation, f"policy identity matched，字段比较结果为 {relation}。")
+        relation = (
+            SemanticRelation.DUPLICATE
+            if candidate_values == record_values
+            else SemanticRelation.CHANGED
+        )
+        return self._matched(
+            matched,
+            relation,
+            f"policy identity matched，字段比较结果为 {relation.value}。",
+        )
 
     def _resolve_knowledge(
         self,
         candidate: MemoryCandidate,
         records: list[StructuredMemoryRecord],
-        record_ids: list[str],
     ) -> SemanticResolutionResult:
         knowledge_records = [item for item in records if isinstance(item, ResearchKnowledgeUnitRecord)]
         details = candidate.details
         if not isinstance(details, ResearchKnowledgeCandidateDetails):
-            return self._unrelated(record_ids, "research knowledge candidate details 类型不匹配。")
+            return self._no_match("research knowledge candidate details 类型不匹配。")
         dedupe_key = memory_candidate_dedupe_key(candidate)
         matched = next(
             (
@@ -280,7 +292,7 @@ class SemanticResolverService(SemanticResolverProtocol):
             None,
         )
         if matched is None:
-            return self._unrelated(record_ids, "没有找到相同的系统 dedupe key。")
+            return self._no_match("没有找到相同的系统 dedupe key。")
 
         candidate_values = self._normalize_values(
             details.title or candidate.summary,
@@ -289,29 +301,35 @@ class SemanticResolverService(SemanticResolverProtocol):
             details.topic_tags,
         )
         record_values = self._record_values(matched, ("title", "summary", "knowledge_type", "topic_tags"))
-        relation = "duplicate" if candidate_values == record_values else "conflict"
-        return self._matched(matched, relation, f"research knowledge identity matched，字段比较结果为 {relation}。")
+        relation = (
+            SemanticRelation.DUPLICATE
+            if candidate_values == record_values
+            else SemanticRelation.CONFLICT
+        )
+        return self._matched(
+            matched,
+            relation,
+            f"research knowledge identity matched，字段比较结果为 {relation.value}。",
+        )
 
     @staticmethod
     def _matched(
         record: StructuredMemoryRecord,
-        relation: str,
-        rationale: str,
+        relation: SemanticRelation,
+        reason: str,
     ) -> SemanticResolutionResult:
         record_id = SemanticResolverService._record_id(record)
         return SemanticResolutionResult(
-            relation=relation,  # type: ignore[arg-type]
-            matched_record_ids=[record_id] if record_id else [],
-            primary_record_id=record_id,
-            rationale=rationale,
+            relation=relation,
+            matched_record_id=record_id,
+            reason=reason,
         )
 
     @staticmethod
-    def _unrelated(record_ids: list[str], rationale: str) -> SemanticResolutionResult:
+    def _no_match(reason: str) -> SemanticResolutionResult:
         return SemanticResolutionResult(
-            relation="unrelated",
-            matched_record_ids=record_ids,
-            rationale=rationale,
+            relation=SemanticRelation.NO_MATCH,
+            reason=reason,
         )
 
     @staticmethod
