@@ -265,13 +265,13 @@ def test_distiller_resolves_supported_semantic_types(
     assert isinstance(candidates[0].details, details_type)
 
 
-def test_distiller_filters_invalid_or_non_durable_drafts() -> None:
+def test_distiller_filters_invalid_or_inadmissible_drafts() -> None:
     llm = _llm(
         [
             _draft(semantic_type="stable_decision", memory_type="ACTION_EXECUTION"),
             _draft(persistability="temporary"),
-            _draft(confidence="low", stability="tentative"),
-            _draft(summary="这是 raw tool output，不应持久化。"),
+            _draft(confidence="medium", stability="tentative"),
+            _draft(confidence="low", stability="stable"),
             _draft(summary="合法候选。"),
         ]
     )
@@ -300,7 +300,7 @@ def test_distiller_preserves_llm_candidate_order_without_batch_resolution() -> N
                     "rationale": "需要先验证评测成本。",
                     "alternatives": ["查询改写"],
                 },
-                stability="tentative",
+                stability="stable",
                 confidence="medium",
             ),
             _draft(source_reference_indexes=[0]),
@@ -313,7 +313,7 @@ def test_distiller_preserves_llm_candidate_order_without_batch_resolution() -> N
         "暂定先建立小规模评测集。",
         "优先建设离线评测集。",
     ]
-    assert [candidate.stability for candidate in candidates] == ["tentative", "stable"]
+    assert [candidate.confidence for candidate in candidates] == [0.5, 0.8]
     assert [
         candidate.source_references[0].source_id for candidate in candidates
     ] == ["2501.12345", "docs-1"]

@@ -223,7 +223,7 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         self,
         drafts: list[_LLMMemoryCandidateDraft],
     ) -> list[_LLMMemoryCandidateDraft]:
-        """用规则过滤空、临时、低置信度或明显不适合持久化的 draft。"""
+        """用确定性规则保留达到长期持久化准入标准的 draft。"""
 
         screened: list[_LLMMemoryCandidateDraft] = []
         for draft in drafts:
@@ -231,9 +231,9 @@ class MemoryDistillerService(MemoryDistillerProtocol):
                 continue
             if draft.persistability != "durable":
                 continue
-            if draft.stability == "tentative" and draft.confidence == "low":
+            if draft.stability != "stable":
                 continue
-            if self._is_obviously_transient(draft.summary):
+            if draft.confidence == "low":
                 continue
             screened.append(draft.model_copy(update={"summary": draft.summary.strip()}))
         return screened
@@ -419,12 +419,6 @@ class MemoryDistillerService(MemoryDistillerProtocol):
         ]
 
     @staticmethod
-    def _is_obviously_transient(summary: str) -> bool:
-        lowered = summary.casefold()
-        markers = ("raw tool output", "raw payload", "debug trace", "stack trace", "llm prompt")
-        return any(marker in lowered for marker in markers)
-
-    @staticmethod
     def _deduplicate_source_references(
         references: list[SourceReference],
     ) -> list[SourceReference]:
@@ -445,12 +439,3 @@ class MemoryDistillerService(MemoryDistillerProtocol):
                 result.append(reference)
                 seen.add(key)
         return result
-
-    def _stability_from_state(self, context: ExecutionContext) -> str:
-        """Return the conservative persistence stability for the current recommendation."""
-
-        state = context.running_state
-        if state.confidence and state.confidence.lower() == "high":
-            if not state.caveats and not state.open_questions:
-                return "stable"
-        return "tentative"
