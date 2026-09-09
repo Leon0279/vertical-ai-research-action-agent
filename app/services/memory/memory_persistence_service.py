@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import logging
-from time import perf_counter
 from datetime import UTC, datetime
+from time import perf_counter
 from uuid import uuid4
 
+from app.adapters.embedding.contracts.embedding_client_protocol import EmbeddingClientProtocol
 from app.adapters.memory.contracts.action_memory_store_protocol import ActionMemoryStoreProtocol
 from app.adapters.memory.contracts.decision_memory_store_protocol import DecisionMemoryStoreProtocol
 from app.adapters.memory.contracts.preference_policy_memory_store_protocol import (
@@ -25,6 +26,7 @@ from app.domain.models import (
     ActionMemoryRecord,
     DecisionCandidateDetails,
     DecisionMemoryRecord,
+    EmbeddingResult,
     ExecutionContext,
     MemoryCandidate,
     MemoryPersistenceItemResult,
@@ -34,6 +36,7 @@ from app.domain.models import (
     ProjectProfileCandidateDetails,
     ProjectProfileMemoryRecord,
     ResearchKnowledgeCandidateDetails,
+    ResearchKnowledgeRecallQuery,
     ResearchKnowledgeUnitRecord,
     SemanticResolutionResult,
     SourceReference,
@@ -59,6 +62,8 @@ _StructuredRecord = (
 class MemoryPersistenceService(MemoryPersistenceProtocol):
     """将 memory candidates 按类型写入对应的 typed memory adapter。"""
 
+    _RESEARCH_KNOWLEDGE_RECALL_LIMIT = 5
+
     def __init__(
         self,
         *,
@@ -68,6 +73,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         preference_policy_store: PreferencePolicyMemoryStoreProtocol,
         research_knowledge_store: ResearchKnowledgeMemoryStoreProtocol,
         semantic_resolver: SemanticResolverProtocol,
+        embedding_client: EmbeddingClientProtocol,
     ) -> None:
         self._project_profile_store = project_profile_store
         self._decision_store = decision_store
@@ -75,6 +81,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         self._preference_policy_store = preference_policy_store
         self._research_knowledge_store = research_knowledge_store
         self._semantic_resolver = semantic_resolver
+        self._embedding_client = embedding_client
 
     async def persist(
         self,
@@ -103,7 +110,10 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                     continue
 
                 # TODO （optional） project / decision / action 类型的candidate如果有多条，可能会对db进行重复的检索。
-                existing_records = await self._lookup_existing_records(context, candidate)
+                existing_records, candidate_embedding = await self._lookup_existing_records(
+                    context,
+                    candidate,
+                )
                 resolution = await self._semantic_resolver.resolve(candidate, existing_records)
                 matched_record = self._matched_existing_record(
                     existing_records,
@@ -142,6 +152,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                     candidate,
                     action,
                     matched_record,
+                    research_knowledge_embedding=candidate_embedding,
                 )
                 await self._execute_write(candidate, record, action)
                 items.append(
@@ -235,8 +246,8 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         self,
         context: ExecutionContext,
         candidate: MemoryCandidate,
-    ) -> list[_StructuredRecord]:
-        """只查询当前 user/project scope 下的 active typed records。"""
+    ) -> tuple[list[_StructuredRecord], EmbeddingResult | None]:
+        """查询当前 scope 下的 active records，并返回可复用的 candidate embedding。"""
 
         user_id = context.runtime_context.user_id
         project_id = context.running_state.project_scope_id
@@ -245,34 +256,59 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 user_id=user_id,
                 project_id=project_id or "",
             )
-            return [profile] if profile else []
+            return ([profile] if profile else []), None
         if candidate.memory_type == MemoryType.DECISION:
-            return await self._decision_store.list_active_decisions(
-                user_id=user_id,
-                project_id=project_id or "",
+            return (
+                await self._decision_store.list_active_decisions(
+                    user_id=user_id,
+                    project_id=project_id or "",
+                ),
+                None,
             )
         if candidate.memory_type == MemoryType.ACTION_EXECUTION:
-            return await self._action_store.list_active_actions(
-                user_id=user_id,
-                project_id=project_id or "",
+            return (
+                await self._action_store.list_active_actions(
+                    user_id=user_id,
+                    project_id=project_id or "",
+                ),
+                None,
             )
         if candidate.memory_type in {MemoryType.PREFERENCE, MemoryType.RESEARCH_POLICY}:
             task_type = self._task_type(context.running_state.task_type)
-            return await self._preference_policy_store.list_applicable_policies(
-                user_id=user_id,
-                project_id=project_id,
-                task_type=task_type,
-                memory_type=candidate.memory_type,
+            return (
+                await self._preference_policy_store.list_applicable_policies(
+                    user_id=user_id,
+                    project_id=project_id,
+                    task_type=task_type,
+                    memory_type=candidate.memory_type,
+                ),
+                None,
             )
         if candidate.memory_type == MemoryType.RESEARCH_KNOWLEDGE:
-            # TODO 这里dedupe是根据candidate.summary来算的，所以粒度很细，所以应该捞不出什么数据，除非是一模一样的unit。
-            dedupe_key = memory_candidate_dedupe_key(candidate)
-            record = await self._research_knowledge_store.find_active_by_dedupe_key(
-                owner_user_id=user_id,
-                dedupe_key=dedupe_key,
+            embedding = await self._embedding_client.embed_text(
+                self._research_knowledge_embedding_text(candidate)
             )
-            return [record] if record else []
-        return []
+            recall_results = await self._research_knowledge_store.recall_knowledge_units(
+                ResearchKnowledgeRecallQuery(
+                    owner_user_id=user_id,
+                    query_embedding=embedding.embedding,
+                    allowed_visibility_scopes=(
+                        ["user", "project"] if project_id else ["user"]
+                    ),
+                    project_scope_id=project_id,
+                    limit=self._RESEARCH_KNOWLEDGE_RECALL_LIMIT,
+                )
+            )
+            records: list[_StructuredRecord] = []
+            seen_knowledge_ids: set[str] = set()
+            for recall_result in recall_results[: self._RESEARCH_KNOWLEDGE_RECALL_LIMIT]:
+                record = recall_result.unit
+                if record.knowledge_id in seen_knowledge_ids:
+                    continue
+                seen_knowledge_ids.add(record.knowledge_id)
+                records.append(record)
+            return records, embedding
+        return [], None
 
     def _decide_persistence_action(
         self,
@@ -315,6 +351,8 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
         candidate: MemoryCandidate,
         action: str,
         matched_record: _StructuredRecord | None,
+        *,
+        research_knowledge_embedding: EmbeddingResult | None = None,
     ) -> _StructuredRecord:
         """将 candidate 映射为具体 memory type 的 typed durable record。"""
 
@@ -460,8 +498,11 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
             details = candidate.details
             if not isinstance(details, ResearchKnowledgeCandidateDetails):
                 raise TypeError("RESEARCH_KNOWLEDGE candidate has mismatched details.")
+            if research_knowledge_embedding is None:
+                raise ValueError("RESEARCH_KNOWLEDGE write requires a candidate embedding.")
             knowledge_id = self._new_record_id()
             visibility_scope = "project" if project_id else "user"
+            embedding_text = self._research_knowledge_embedding_text(candidate)
             return ResearchKnowledgeUnitRecord(
                 knowledge_id=knowledge_id,
                 owner_user_id=user_id,
@@ -488,10 +529,9 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 canonical_knowledge_id=knowledge_id,
                 is_canonical=True,
                 merged_into_id=None,
-                # TODO 暂时没有embedding，以后可以补一下
-                embedding_text=candidate.summary,
-                embedding_vector=None,
-                embedding_model=None,
+                embedding_text=embedding_text,
+                embedding_vector=list(research_knowledge_embedding.embedding),
+                embedding_model=research_knowledge_embedding.model,
                 embedding_version=None,
             )
 
@@ -600,6 +640,14 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
     @staticmethod
     def _new_record_id() -> str:
         return f"mem-{uuid4().hex}"
+
+    @staticmethod
+    def _research_knowledge_embedding_text(candidate: MemoryCandidate) -> str:
+        details = candidate.details
+        if not isinstance(details, ResearchKnowledgeCandidateDetails):
+            raise TypeError("RESEARCH_KNOWLEDGE candidate has mismatched details.")
+        title = details.title or candidate.summary
+        return f"{title.strip()}\n{candidate.summary.strip()}"
 
     @staticmethod
     def _record_identifier(record: _StructuredRecord | None) -> str | None:

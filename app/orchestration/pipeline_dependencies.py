@@ -119,7 +119,9 @@ def build_default_dependencies() -> PipelineDependencies:
     preference_policy_store = PostgresPreferencePolicyMemoryStore()
     research_knowledge_store = PostgresResearchKnowledgeMemoryStore()
     embedding_client = ZhipuEmbeddingClient()
-    semantic_resolver = SemanticResolverService()
+    semantic_resolver = SemanticResolverService(
+        llm_client=ZhipuLLMClient(),
+    )
 
     docs_search_family_service = DocsSearchFamilyService(
         LlmsTxtDocsSearchTool(LlmsTxtDocsSearchClient())
@@ -195,6 +197,7 @@ def build_default_dependencies() -> PipelineDependencies:
             preference_policy_store=preference_policy_store,
             research_knowledge_store=research_knowledge_store,
             semantic_resolver=semantic_resolver,
+            embedding_client=embedding_client,
         ),
         session_continuity_manager=SessionContinuityManagerService(session_store=session_store),
         response_assembler=ResponseAssemblerService(),

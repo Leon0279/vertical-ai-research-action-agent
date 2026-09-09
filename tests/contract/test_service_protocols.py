@@ -459,7 +459,9 @@ def test_memory_service_interfaces_instantiable() -> None:
         research_knowledge_store=research_knowledge_store,
         embedding_client=embedding_client,
     )
-    semantic_resolver = SemanticResolverService()
+    semantic_resolver = SemanticResolverService(
+        llm_client=StubLLMClient(),
+    )
     memory_persistence = MemoryPersistenceService(
         project_profile_store=project_profile_store,
         decision_store=decision_store,
@@ -467,6 +469,7 @@ def test_memory_service_interfaces_instantiable() -> None:
         preference_policy_store=preference_policy_store,
         research_knowledge_store=research_knowledge_store,
         semantic_resolver=semantic_resolver,
+        embedding_client=embedding_client,
     )
     continuity_manager = SessionContinuityManagerService(session_store=session_store)
     response_assembler = ResponseAssemblerService()

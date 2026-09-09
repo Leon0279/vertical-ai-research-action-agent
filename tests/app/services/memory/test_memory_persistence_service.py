@@ -1,7 +1,9 @@
 """Tests for typed memory candidate persistence."""
 
 import asyncio
+import json
 import logging
+from typing import Any
 
 from app.domain.enums.memory_type import MemoryType
 from app.domain.models import (
@@ -9,6 +11,7 @@ from app.domain.models import (
     ActionMemoryRecord,
     DecisionCandidateDetails,
     DecisionMemoryRecord,
+    EmbeddingResult,
     ExecutionContext,
     MemoryCandidate,
     PreferencePolicyCandidateDetails,
@@ -16,6 +19,7 @@ from app.domain.models import (
     ProjectProfileCandidateDetails,
     ProjectProfileMemoryRecord,
     ResearchKnowledgeCandidateDetails,
+    ResearchKnowledgeRecallResult,
     ResearchKnowledgeUnitRecord,
     RuntimeContext,
     RunningState,
@@ -25,6 +29,88 @@ from app.domain.models import (
 from app.services.memory._keys import memory_candidate_dedupe_key
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
 from app.services.memory.semantic_resolver_service import SemanticResolverService
+
+
+class _FakeLLMClient:
+    def __init__(
+        self,
+        response: dict[str, Any] | None = None,
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        self.response = response
+        self.error = error
+        self.prompts: list[str] = []
+
+    async def generate_json_object(self, prompt: str) -> dict[str, Any]:
+        self.prompts.append(prompt)
+        if self.error:
+            raise self.error
+        if self.response is not None:
+            return dict(self.response)
+        prompt_input = json.loads(prompt.split("输入 JSON：\n", 1)[1])
+        candidate = prompt_input["candidate"]
+        records = prompt_input["existing_records"]
+        if not records:
+            return {
+                "relation": "no_match",
+                "matched_record_id": None,
+                "reason": "没有匹配记录。",
+            }
+
+        if candidate["memory_type"] == "DECISION":
+            details = candidate["details"]
+            question = details.get("decision_question")
+            matched = next(
+                (
+                    record
+                    for record in records
+                    if question and record.get("decision_question") == question
+                ),
+                records[0],
+            )
+            summary = candidate["summary"]
+            relation = (
+                "duplicate"
+                if summary
+                in {
+                    matched.get("decision_title"),
+                    matched.get("chosen_option"),
+                    matched.get("rationale"),
+                }
+                else "conflict"
+            )
+        else:
+            matched = records[0]
+            relation = "changed"
+        return {
+            "relation": relation,
+            "matched_record_id": matched["record_id"],
+            "reason": "测试 LLM 的语义判断。",
+        }
+
+    async def generate_text(self, prompt: str) -> str:
+        raise AssertionError(f"generate_text should not be called: {prompt[:80]}")
+
+
+class _FakeEmbeddingClient:
+    def __init__(self, *, error: Exception | None = None) -> None:
+        self.error = error
+        self.texts: list[str] = []
+
+    async def embed_text(self, text: str) -> EmbeddingResult:
+        self.texts.append(text)
+        if self.error:
+            raise self.error
+        return EmbeddingResult(
+            text_index=0,
+            embedding=[0.1, 0.2, 0.3],
+            model="test-embedding",
+            dimensions=3,
+        )
+
+    async def embed_texts(self, texts: list[str]) -> list[EmbeddingResult]:
+        return [await self.embed_text(text) for text in texts]
 
 
 class _ProjectStore:
@@ -90,6 +176,8 @@ class _KnowledgeStore:
     def __init__(self, unit: ResearchKnowledgeUnitRecord | None = None) -> None:
         self.unit = unit
         self.writes: list[ResearchKnowledgeUnitRecord] = []
+        self.find_by_dedupe_key_calls = 0
+        self.recall_queries: list[Any] = []
 
     async def get_knowledge_unit(self, *, owner_user_id: str, knowledge_id: str):
         _ = owner_user_id, knowledge_id
@@ -97,14 +185,22 @@ class _KnowledgeStore:
 
     async def find_active_by_dedupe_key(self, *, owner_user_id: str, dedupe_key: str):
         _ = owner_user_id, dedupe_key
+        self.find_by_dedupe_key_calls += 1
         return self.unit
 
     async def upsert_knowledge_unit(self, unit: ResearchKnowledgeUnitRecord) -> None:
         self.writes.append(unit)
 
     async def recall_knowledge_units(self, query):
-        _ = query
-        return []
+        self.recall_queries.append(query)
+        if self.unit is None:
+            return []
+        return [
+            ResearchKnowledgeRecallResult(
+                unit=self.unit,
+                relevance_score=0.91,
+            )
+        ]
 
 
 def _context(project_scope_id: str | None = "project-1") -> ExecutionContext:
@@ -128,6 +224,8 @@ def _service(
     action_store: _ActionStore | None = None,
     policy_store: _PolicyStore | None = None,
     knowledge_store: _KnowledgeStore | None = None,
+    llm_client: _FakeLLMClient | None = None,
+    embedding_client: _FakeEmbeddingClient | None = None,
 ) -> MemoryPersistenceService:
     return MemoryPersistenceService(
         project_profile_store=project_store or _ProjectStore(),
@@ -135,7 +233,10 @@ def _service(
         action_store=action_store or _ActionStore(),
         preference_policy_store=policy_store or _PolicyStore(),
         research_knowledge_store=knowledge_store or _KnowledgeStore(),
-        semantic_resolver=SemanticResolverService(),
+        semantic_resolver=SemanticResolverService(
+            llm_client=llm_client or _FakeLLMClient(),
+        ),
+        embedding_client=embedding_client or _FakeEmbeddingClient(),
     )
 
 
@@ -287,6 +388,40 @@ def test_decision_change_appends_system_generated_superseding_record() -> None:
     assert store.writes[0].decision_id.startswith("mem-")
     assert store.writes[0].decision_id != "decision-1"
     assert store.writes[0].supersedes_decision_id == "decision-1"
+
+
+def test_semantic_resolver_failure_is_isolated_to_current_candidate() -> None:
+    existing = DecisionMemoryRecord(
+        decision_id="decision-1",
+        user_id="user-1",
+        project_id="project-1",
+        decision_question="先优化哪一层？",
+        chosen_option="先优化查询改写。",
+        record_status="active",
+    )
+    store = _DecisionStore([existing])
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.DECISION,
+        summary="先建立离线评测集。",
+        details=DecisionCandidateDetails(
+            decision_question="先优化哪一层？",
+            chosen_option="先建立离线评测集。",
+        ),
+        stability="stable",
+        project_scope_id="project-1",
+    )
+
+    result = asyncio.run(
+        _service(
+            decision_store=store,
+            llm_client=_FakeLLMClient(error=RuntimeError("llm unavailable")),
+        ).persist(_context(), [candidate])
+    )
+
+    assert result.failed_count == 1
+    assert result.items[0].action == "failed"
+    assert "llm unavailable" in (result.items[0].error_info or "")
+    assert store.writes == []
 
 
 def test_decision_change_supersedes_the_semantically_matched_record() -> None:
@@ -454,6 +589,7 @@ def test_policy_change_replaces_the_semantically_matched_record() -> None:
 
 def test_research_knowledge_create_uses_system_governance_fields() -> None:
     store = _KnowledgeStore()
+    embedding_client = _FakeEmbeddingClient()
     source = SourceReference(
         source_type="paper",
         source_id="2501.12345",
@@ -476,7 +612,10 @@ def test_research_knowledge_create_uses_system_governance_fields() -> None:
     )
 
     result = asyncio.run(
-        _service(knowledge_store=store).persist(_context(None), [candidate])
+        _service(
+            knowledge_store=store,
+            embedding_client=embedding_client,
+        ).persist(_context(None), [candidate])
     )
 
     assert result.items[0].action == "create"
@@ -484,10 +623,16 @@ def test_research_knowledge_create_uses_system_governance_fields() -> None:
     assert unit.knowledge_id.startswith("mem-")
     assert unit.dedupe_key == memory_candidate_dedupe_key(candidate)
     assert unit.canonical_knowledge_id == unit.knowledge_id
-    assert unit.embedding_text == candidate.summary
-    assert unit.embedding_vector is None
-    assert unit.embedding_model is None
+    assert unit.embedding_text == f"RAG 的核心机制\n{candidate.summary}"
+    assert unit.embedding_vector == [0.1, 0.2, 0.3]
+    assert unit.embedding_model == "test-embedding"
     assert unit.freshness_status is None
+    assert embedding_client.texts == [unit.embedding_text]
+    assert len(store.recall_queries) == 1
+    assert store.recall_queries[0].owner_user_id == "user-1"
+    assert store.recall_queries[0].allowed_visibility_scopes == ["user"]
+    assert store.recall_queries[0].limit == 5
+    assert store.find_by_dedupe_key_calls == 0
 
 
 def test_exact_research_knowledge_duplicate_is_no_write() -> None:
@@ -522,13 +667,110 @@ def test_exact_research_knowledge_duplicate_is_no_write() -> None:
         dedupe_key=memory_candidate_dedupe_key(candidate),
     )
     store = _KnowledgeStore(existing)
+    embedding_client = _FakeEmbeddingClient()
+    llm_client = _FakeLLMClient()
 
     result = asyncio.run(
-        _service(knowledge_store=store).persist(_context(None), [candidate])
+        _service(
+            knowledge_store=store,
+            embedding_client=embedding_client,
+            llm_client=llm_client,
+        ).persist(_context(None), [candidate])
     )
 
     assert result.items[0].action == "no_write"
     assert store.writes == []
+    assert len(embedding_client.texts) == 1
+    assert len(store.recall_queries) == 1
+    assert store.find_by_dedupe_key_calls == 0
+    assert llm_client.prompts == []
+
+
+def test_similar_changed_research_knowledge_remains_no_write() -> None:
+    source = SourceReference(
+        source_type="paper",
+        source_id="2501.12345",
+        source_id_type="arxiv_id",
+    )
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.RESEARCH_KNOWLEDGE,
+        summary="RAG 在生成前检索相关材料，并将材料加入模型上下文。",
+        details=ResearchKnowledgeCandidateDetails(
+            title="RAG 的基本工作方式",
+            knowledge_type="concept",
+            topic_tags=["RAG"],
+        ),
+        stability="stable",
+        semantic_type="reusable_research_knowledge",
+        source_references=[source],
+    )
+    existing = ResearchKnowledgeUnitRecord(
+        knowledge_id="knowledge-1",
+        owner_user_id="user-1",
+        visibility_scope="user",
+        visibility_scope_effective="user",
+        title="检索增强生成",
+        summary="RAG 使用检索结果辅助回答。",
+        knowledge_type="concept",
+        topic_tags=["retrieval"],
+        source_refs=[source],
+        status="active",
+    )
+    store = _KnowledgeStore(existing)
+    llm_client = _FakeLLMClient(
+        {
+            "relation": "changed",
+            "matched_record_id": "knowledge-1",
+            "reason": "candidate 是同一知识点的兼容补充。",
+        }
+    )
+
+    result = asyncio.run(
+        _service(
+            knowledge_store=store,
+            llm_client=llm_client,
+        ).persist(_context(None), [candidate])
+    )
+
+    assert result.items[0].action == "no_write"
+    assert result.items[0].affected_existing_record_ids == ["knowledge-1"]
+    assert store.writes == []
+    assert len(llm_client.prompts) == 1
+
+
+def test_research_knowledge_embedding_failure_is_isolated() -> None:
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.RESEARCH_KNOWLEDGE,
+        summary="可复用的研究知识。",
+        details=ResearchKnowledgeCandidateDetails(title="研究知识"),
+        stability="stable",
+        source_references=[
+            SourceReference(
+                source_type="paper",
+                source_id="paper-1",
+                source_id_type="paper_id",
+            )
+        ],
+    )
+    store = _KnowledgeStore()
+    llm_client = _FakeLLMClient()
+
+    result = asyncio.run(
+        _service(
+            knowledge_store=store,
+            llm_client=llm_client,
+            embedding_client=_FakeEmbeddingClient(
+                error=RuntimeError("embedding unavailable")
+            ),
+        ).persist(_context(None), [candidate])
+    )
+
+    assert result.failed_count == 1
+    assert result.items[0].action == "failed"
+    assert "embedding unavailable" in (result.items[0].error_info or "")
+    assert store.recall_queries == []
+    assert store.writes == []
+    assert llm_client.prompts == []
 
 
 def test_summary_is_used_when_optional_details_are_empty() -> None:
