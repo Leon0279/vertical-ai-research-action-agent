@@ -22,6 +22,7 @@ from app.adapters.memory.contracts.project_profile_memory_store_protocol import 
 from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
     ResearchKnowledgeMemoryStoreProtocol,
 )
+from app.common.utils.ids import generate_project_profile_id
 from app.domain.enums import MemoryType, SemanticRelation, TaskType
 from app.domain.models import (
     ActionExecutionCandidateDetails,
@@ -438,7 +439,7 @@ class MemoryPersistenceService(MemoryPersistenceProtocol):
                 source_refs,
             )
             return ProjectProfileMemoryRecord(
-                project_profile_id=self._new_record_id(),
+                project_profile_id=generate_project_profile_id(),
                 project_id=project_id or "",
                 user_id=user_id,
                 project_name=self._text_patch(

@@ -368,7 +368,7 @@ def test_project_profile_replaces_existing_profile() -> None:
 
     assert result.items[0].action == "replace"
     assert store.writes[0].supersedes_profile_id == "profile-1"
-    assert store.writes[0].project_profile_id.startswith("mem-")
+    assert store.writes[0].project_profile_id.startswith("project-profile-")
     assert store.writes[0].project_profile_id != "profile-1"
     assert store.writes[0].project_name == "检索评测项目"
     assert store.writes[0].project_background == "已有背景"
