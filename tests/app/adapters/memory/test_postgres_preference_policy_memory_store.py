@@ -286,8 +286,16 @@ def test_upsert_policy_supersedes_previous_policy_when_requested() -> None:
     first_query, first_args = connection.execute_calls[0]
     second_query, second_args = connection.execute_calls[1]
     assert "record_status = 'superseded'" in first_query
+    assert "user_id = $4" in first_query
+    assert "owner_scope_type = $5" in first_query
+    assert "project_id IS NOT DISTINCT FROM $6" in first_query
     assert first_args[0] == "policy-1"
     assert first_args[2] == "policy-0"
+    assert first_args[3:] == (
+        "user-1",
+        "project",
+        "project-1",
+    )
     assert "ON CONFLICT (policy_id)" in second_query
     assert second_args[14] == "policy-0"
 

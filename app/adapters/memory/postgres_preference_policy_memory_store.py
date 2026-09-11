@@ -76,6 +76,9 @@ Persist preference/policy memory records in PostgreSQL."""
                             stored_policy.policy_id,
                             stored_policy.updated_at,
                             stored_policy.supersedes_policy_id,
+                            stored_policy.user_id,
+                            stored_policy.owner_scope_type,
+                            stored_policy.project_id,
                         )
                     await connection.execute(upsert_query, *params)
         except Exception as exc:
@@ -204,6 +207,9 @@ SET
     superseded_by_policy_id = $1,
     updated_at = $2
 WHERE policy_id = $3
+  AND user_id = $4
+  AND owner_scope_type = $5
+  AND project_id IS NOT DISTINCT FROM $6
 """
 
     def _build_upsert_policy_query(self) -> str:

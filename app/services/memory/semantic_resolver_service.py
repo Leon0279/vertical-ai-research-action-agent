@@ -23,6 +23,7 @@ from app.domain.models import (
     ResearchKnowledgeUnitRecord,
     SemanticResolutionResult,
 )
+from app.services.memory._action_state import is_legal_action_status_transition
 from app.services.memory.contracts.semantic_resolver_protocol import (
     SemanticResolverProtocol,
     StructuredMemoryRecord,
@@ -87,30 +88,16 @@ class SemanticResolverService(SemanticResolverProtocol):
         if not isinstance(details, ProjectProfileCandidateDetails):
             return self._no_match("project profile candidate details 类型不匹配。")
 
-        candidate_values = self._normalize_values(
-            details.project_name,
-            details.project_goal or candidate.summary,
-            details.project_background,
-            details.domain,
-            details.current_stage,
-            details.constraints,
-            details.important_context or candidate.summary,
-        )
-        record_values = self._record_values(
-            record,
-            (
-                "project_name",
-                "project_goal",
-                "project_background",
-                "domain",
-                "current_stage",
-                "constraints",
-                "important_context",
-            ),
-        )
+        candidate_values = self._non_empty_model_values(details)
+        if not candidate_values:
+            return self._matched(
+                record,
+                SemanticRelation.DUPLICATE,
+                "project profile candidate 没有提供可应用的非空业务字段。",
+            )
         relation = (
             SemanticRelation.DUPLICATE
-            if candidate_values == record_values
+            if self._record_matches_patch(record, candidate_values)
             else SemanticRelation.CHANGED
         )
         return self._matched(
@@ -131,23 +118,13 @@ class SemanticResolverService(SemanticResolverProtocol):
         if not decision_records:
             return self._no_match("没有找到 decision typed record。")
 
+        candidate_values = self._non_empty_model_values(details)
         exact = next(
             (
                 record
                 for record in decision_records
-                if self._decision_values(candidate, details) == self._record_values(
-                    record,
-                    (
-                        "decision_title",
-                        "decision_question",
-                        "chosen_option",
-                        "alternatives",
-                        "rationale",
-                        "tradeoffs",
-                        "decision_state",
-                        "impact_scope",
-                    ),
-                )
+                if candidate_values
+                and self._record_matches_patch(record, candidate_values)
             ),
             None,
         )
@@ -196,29 +173,38 @@ class SemanticResolverService(SemanticResolverProtocol):
             None,
         )
         if exact_identity is not None:
-            candidate_values = self._action_values(candidate, details)
-            record_values = self._record_values(
-                exact_identity,
-                (
-                    "action_title",
-                    "action_description",
-                    "priority",
-                    "owner",
-                    "due_at",
-                    "blocking_reason",
-                    "result_summary",
-                    "completed_at",
-                ),
+            candidate_values = self._non_empty_model_values(
+                details,
+                excluded_fields={"action_status"},
             )
-            candidate_status = self._normalize(details.action_status or "todo")
+            candidate_status = (
+                self._normalize(details.action_status)
+                if details.action_status is not None
+                else None
+            )
             record_status = self._normalize(exact_identity.action_status)
-            if candidate_values == record_values and candidate_status == record_status:
+            core_fields_match = self._record_matches_patch(
+                exact_identity,
+                candidate_values,
+            )
+            if core_fields_match and (
+                candidate_status is None or candidate_status == record_status
+            ):
                 return self._matched(
                     exact_identity,
                     SemanticRelation.DUPLICATE,
-                    "action identity、核心内容和状态完全一致。",
+                    "action 的已提供业务字段与现有记录一致，且没有显式状态变化。",
                 )
-            if candidate_values == record_values and candidate_status != record_status:
+            if core_fields_match and candidate_status is not None:
+                if not is_legal_action_status_transition(
+                    record_status,
+                    candidate_status,
+                ):
+                    return self._matched(
+                        exact_identity,
+                        SemanticRelation.CONFLICT,
+                        f"action 状态迁移不合法：{record_status} -> {candidate_status}。",
+                    )
                 return self._matched(
                     exact_identity,
                     SemanticRelation.STATE_TRANSITION,
@@ -244,10 +230,20 @@ class SemanticResolverService(SemanticResolverProtocol):
             matched = self._record_by_id(action_records, result.matched_record_id)
             if not isinstance(matched, ActionMemoryRecord):
                 raise ValueError("LLM state_transition 没有匹配有效的 action record。")
-            if self._normalize(details.action_status or "todo") == self._normalize(
-                matched.action_status
-            ):
-                raise ValueError("LLM state_transition 要求 candidate 与已有 action 状态不同。")
+            if details.action_status is None:
+                return self._matched(
+                    matched,
+                    SemanticRelation.CONFLICT,
+                    "LLM 提议状态迁移，但 candidate 没有显式提供 action_status。",
+                )
+            current_status = self._normalize(matched.action_status)
+            next_status = self._normalize(details.action_status)
+            if not is_legal_action_status_transition(current_status, next_status):
+                return self._matched(
+                    matched,
+                    SemanticRelation.CONFLICT,
+                    f"LLM 提议了不合法的 action 状态迁移：{current_status} -> {next_status}。",
+                )
         return result
 
     async def _resolve_policy(
@@ -274,24 +270,15 @@ class SemanticResolverService(SemanticResolverProtocol):
         if not eligible_records:
             return self._no_match("没有找到相同 policy type、target scope 和 project scope 的记录。")
 
-        candidate_values = self._policy_values(candidate, details, policy_type)
+        candidate_values = self._non_empty_model_values(details)
+        candidate_values["policy_type"] = policy_type
+        if not self._has_non_empty_value(candidate_values.get("policy_text")):
+            candidate_values["policy_text"] = candidate.summary
         exact = next(
             (
                 record
                 for record in eligible_records
-                if candidate_values
-                == self._record_values(
-                    record,
-                    (
-                        "policy_type",
-                        "policy_text",
-                        "conditions",
-                        "target_scope_type",
-                        "target_scope_value",
-                        "priority",
-                        "enforcement_level",
-                    ),
-                )
+                if self._record_matches_patch(record, candidate_values)
             ),
             None,
         )
@@ -529,57 +516,6 @@ class SemanticResolverService(SemanticResolverProtocol):
         }
 
     @classmethod
-    def _decision_values(
-        cls,
-        candidate: MemoryCandidate,
-        details: DecisionCandidateDetails,
-    ) -> tuple[object, ...]:
-        return cls._normalize_values(
-            details.decision_title,
-            details.decision_question,
-            details.chosen_option or candidate.summary,
-            details.alternatives,
-            details.rationale,
-            details.tradeoffs,
-            details.decision_state,
-            details.impact_scope,
-        )
-
-    @classmethod
-    def _action_values(
-        cls,
-        candidate: MemoryCandidate,
-        details: ActionExecutionCandidateDetails,
-    ) -> tuple[object, ...]:
-        return cls._normalize_values(
-            details.action_title or candidate.summary,
-            details.action_description or candidate.summary,
-            details.priority,
-            details.owner,
-            details.due_at,
-            details.blocking_reason,
-            details.result_summary,
-            details.completed_at,
-        )
-
-    @classmethod
-    def _policy_values(
-        cls,
-        candidate: MemoryCandidate,
-        details: PreferencePolicyCandidateDetails,
-        policy_type: str,
-    ) -> tuple[object, ...]:
-        return cls._normalize_values(
-            policy_type,
-            details.policy_text or candidate.summary,
-            details.conditions,
-            details.target_scope_type,
-            details.target_scope_value,
-            details.priority,
-            details.enforcement_level,
-        )
-
-    @classmethod
     def _knowledge_values(
         cls,
         candidate: MemoryCandidate,
@@ -599,8 +535,47 @@ class SemanticResolverService(SemanticResolverProtocol):
         record: PreferencePolicyMemoryRecord,
     ) -> bool:
         if candidate.project_scope_id:
-            return record.project_id == candidate.project_scope_id
-        return record.project_id is None
+            return (
+                record.owner_scope_type == "project"
+                and record.project_id == candidate.project_scope_id
+            )
+        return record.owner_scope_type == "user" and record.project_id is None
+
+    @classmethod
+    def _non_empty_model_values(
+        cls,
+        model: BaseModel,
+        *,
+        excluded_fields: set[str] | None = None,
+    ) -> dict[str, Any]:
+        excluded = excluded_fields or set()
+        return {
+            field_name: value
+            for field_name, value in model.model_dump().items()
+            if field_name not in excluded and cls._has_non_empty_value(value)
+        }
+
+    @classmethod
+    def _record_matches_patch(
+        cls,
+        record: StructuredMemoryRecord,
+        patch: dict[str, Any],
+    ) -> bool:
+        return all(
+            cls._normalize_value(getattr(record, field_name, None))
+            == cls._normalize_value(value)
+            for field_name, value in patch.items()
+        )
+
+    @staticmethod
+    def _has_non_empty_value(value: Any) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, dict, tuple, set)):
+            return bool(value)
+        return True
 
     @classmethod
     def _record_by_id(

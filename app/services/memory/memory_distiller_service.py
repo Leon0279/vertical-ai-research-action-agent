@@ -10,7 +10,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.domain.enums.memory_type import MemoryType
+from app.domain.enums import MemoryType, TaskType
 from app.domain.models import (
     ExecutionContext,
     MemoryCandidate,
@@ -335,6 +335,8 @@ class MemoryDistillerService(MemoryDistillerProtocol):
                 self._SEMANTIC_TO_MEMORY_TYPES.items()
             )
         }
+        task_type_values = [task_type.value for task_type in TaskType]
+        memory_type_values = [memory_type.value for memory_type in MemoryType]
         return (
             '- 顶层必须是 {"candidates": [...]}，不得包含其它字段。\n'
             "- confidence 只能是：low、medium、high。\n"
@@ -354,6 +356,12 @@ class MemoryDistillerService(MemoryDistillerProtocol):
             "- decision_state 只能是 proposed、accepted、reconsidering、rejected。\n"
             "- action_status 只能是 todo、in_progress、blocked、done、cancelled。\n"
             "- target_scope_type 只能是 task_type 或 memory_type，且必须和 target_scope_value 同时出现或同时省略。\n"
+            "- target_scope_type 为 task_type 时，target_scope_value 只能是："
+            + json.dumps(task_type_values, ensure_ascii=False)
+            + "。\n"
+            "- target_scope_type 为 memory_type 时，target_scope_value 只能是："
+            + json.dumps(memory_type_values, ensure_ascii=False)
+            + "。\n"
             "- enforcement_level 只能是 soft、default、strict；freshness_sensitivity 只能是 low、medium、high。"
         )
 

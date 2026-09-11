@@ -3,9 +3,10 @@
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
-from app.domain.enums.memory_type import MemoryType
+from app.domain.enums import MemoryType, SemanticRelation
 from app.domain.models import (
     ActionExecutionCandidateDetails,
     ActionMemoryRecord,
@@ -23,6 +24,7 @@ from app.domain.models import (
     ResearchKnowledgeUnitRecord,
     RuntimeContext,
     RunningState,
+    SemanticResolutionResult,
     SourceReference,
     TrackingWatchlistCandidateDetails,
 )
@@ -163,9 +165,10 @@ class _PolicyStore:
     ) -> None:
         self.policies = policies or []
         self.writes: list[PreferencePolicyMemoryRecord] = []
+        self.lookup_kwargs: list[dict[str, Any]] = []
 
     async def list_applicable_policies(self, **kwargs):
-        _ = kwargs
+        self.lookup_kwargs.append(kwargs)
         return self.policies
 
     async def upsert_policy(self, policy: PreferencePolicyMemoryRecord) -> None:
@@ -203,6 +206,15 @@ class _KnowledgeStore:
         ]
 
 
+class _StaticSemanticResolver:
+    def __init__(self, result: SemanticResolutionResult) -> None:
+        self.result = result
+
+    async def resolve(self, candidate, existing_records):
+        _ = candidate, existing_records
+        return self.result
+
+
 def _context(project_scope_id: str | None = "project-1") -> ExecutionContext:
     return ExecutionContext(
         running_state=RunningState(
@@ -226,6 +238,7 @@ def _service(
     knowledge_store: _KnowledgeStore | None = None,
     llm_client: _FakeLLMClient | None = None,
     embedding_client: _FakeEmbeddingClient | None = None,
+    semantic_resolver: _StaticSemanticResolver | None = None,
 ) -> MemoryPersistenceService:
     return MemoryPersistenceService(
         project_profile_store=project_store or _ProjectStore(),
@@ -233,9 +246,8 @@ def _service(
         action_store=action_store or _ActionStore(),
         preference_policy_store=policy_store or _PolicyStore(),
         research_knowledge_store=knowledge_store or _KnowledgeStore(),
-        semantic_resolver=SemanticResolverService(
-            llm_client=llm_client or _FakeLLMClient(),
-        ),
+        semantic_resolver=semantic_resolver
+        or SemanticResolverService(llm_client=llm_client or _FakeLLMClient()),
         embedding_client=embedding_client or _FakeEmbeddingClient(),
     )
 
@@ -337,8 +349,12 @@ def test_project_profile_replaces_existing_profile() -> None:
         project_profile_id="profile-1",
         project_id="project-1",
         user_id="user-1",
+        project_name="检索评测项目",
         project_goal="旧目标",
+        project_background="已有背景",
+        constraints=["保持 API 兼容"],
         record_status="active",
+        source_refs=["source-old"],
     )
     store = _ProjectStore(existing)
     candidate = MemoryCandidate(
@@ -354,6 +370,10 @@ def test_project_profile_replaces_existing_profile() -> None:
     assert store.writes[0].supersedes_profile_id == "profile-1"
     assert store.writes[0].project_profile_id.startswith("mem-")
     assert store.writes[0].project_profile_id != "profile-1"
+    assert store.writes[0].project_name == "检索评测项目"
+    assert store.writes[0].project_background == "已有背景"
+    assert store.writes[0].constraints == ["保持 API 兼容"]
+    assert store.writes[0].source_refs == ["source-old"]
 
 
 def test_decision_change_appends_system_generated_superseding_record() -> None:
@@ -364,8 +384,12 @@ def test_decision_change_appends_system_generated_superseding_record() -> None:
         decision_question="先优化哪一层？",
         chosen_option="先优化查询改写。",
         rationale="先优化查询改写。",
+        alternatives=["优化查询改写", "建设离线评测集"],
+        tradeoffs=["建设评测集需要额外时间"],
         decision_state="accepted",
+        impact_scope="retrieval-stack",
         record_status="active",
+        source_refs=["source-old"],
     )
     store = _DecisionStore([existing])
     candidate = MemoryCandidate(
@@ -381,13 +405,26 @@ def test_decision_change_appends_system_generated_superseding_record() -> None:
     )
 
     result = asyncio.run(
-        _service(decision_store=store).persist(_context(), [candidate])
+        _service(
+            decision_store=store,
+            llm_client=_FakeLLMClient(
+                {
+                    "relation": "changed",
+                    "matched_record_id": "decision-1",
+                    "reason": "candidate 是同一决策的新版本。",
+                }
+            ),
+        ).persist(_context(), [candidate])
     )
 
     assert result.items[0].action == "append_supersede"
     assert store.writes[0].decision_id.startswith("mem-")
     assert store.writes[0].decision_id != "decision-1"
     assert store.writes[0].supersedes_decision_id == "decision-1"
+    assert store.writes[0].alternatives == ["优化查询改写", "建设离线评测集"]
+    assert store.writes[0].tradeoffs == ["建设评测集需要额外时间"]
+    assert store.writes[0].impact_scope == "retrieval-stack"
+    assert store.writes[0].source_refs == ["source-old"]
 
 
 def test_semantic_resolver_failure_is_isolated_to_current_candidate() -> None:
@@ -457,7 +494,16 @@ def test_decision_change_supersedes_the_semantically_matched_record() -> None:
     )
 
     result = asyncio.run(
-        _service(decision_store=store).persist(_context(), [candidate])
+        _service(
+            decision_store=store,
+            llm_client=_FakeLLMClient(
+                {
+                    "relation": "changed",
+                    "matched_record_id": "decision-matched",
+                    "reason": "candidate 是同一决策的新版本。",
+                }
+            ),
+        ).persist(_context(), [candidate])
     )
 
     assert result.items[0].action == "append_supersede"
@@ -466,6 +512,66 @@ def test_decision_change_supersedes_the_semantically_matched_record() -> None:
 
 
 def test_action_status_transition_reuses_lookup_record_id() -> None:
+    created_at = datetime(2025, 1, 1, tzinfo=UTC)
+    due_at = datetime(2025, 2, 1, tzinfo=UTC)
+    existing = ActionMemoryRecord(
+        action_id="action-1",
+        user_id="user-1",
+        project_id="project-1",
+        parent_decision_id="decision-1",
+        action_title="发布评测报告",
+        action_description="发布评测报告",
+        action_status="in_progress",
+        priority="high",
+        owner="research-team",
+        due_at=due_at,
+        record_status="active",
+        embedding_text="发布评测报告",
+        embedding_model="test-embedding",
+        embedding_version="v1",
+        created_at=created_at,
+        source_refs=["source-old"],
+    )
+    store = _ActionStore([existing])
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.ACTION_EXECUTION,
+        summary="发布评测报告",
+        details=ActionExecutionCandidateDetails(
+            action_title="发布评测报告",
+            action_description="发布评测报告",
+            action_status="done",
+        ),
+        stability="stable",
+        project_scope_id="project-1",
+        source_references=[
+            SourceReference(
+                source_type="document",
+                source_url="https://docs.example/new",
+            )
+        ],
+    )
+
+    result = asyncio.run(
+        _service(action_store=store).persist(_context(), [candidate])
+    )
+
+    assert result.items[0].action == "status_transition"
+    assert store.writes[0].action_id == "action-1"
+    assert store.writes[0].action_status == "done"
+    assert store.writes[0].parent_decision_id == "decision-1"
+    assert store.writes[0].priority == "high"
+    assert store.writes[0].owner == "research-team"
+    assert store.writes[0].due_at == due_at
+    assert store.writes[0].created_at == created_at
+    assert store.writes[0].embedding_model == "test-embedding"
+    assert store.writes[0].completed_at is not None
+    assert store.writes[0].source_refs == [
+        "source-old",
+        "https://docs.example/new",
+    ]
+
+
+def test_action_without_explicit_status_does_not_reset_to_todo() -> None:
     existing = ActionMemoryRecord(
         action_id="action-1",
         user_id="user-1",
@@ -482,7 +588,112 @@ def test_action_status_transition_reuses_lookup_record_id() -> None:
         details=ActionExecutionCandidateDetails(
             action_title="发布评测报告",
             action_description="发布评测报告",
-            action_status="done",
+        ),
+        stability="stable",
+        project_scope_id="project-1",
+    )
+
+    result = asyncio.run(
+        _service(action_store=store).persist(_context(), [candidate])
+    )
+
+    assert result.items[0].action == "no_write"
+    assert result.items[0].affected_existing_record_ids == ["action-1"]
+    assert store.writes == []
+
+
+def test_illegal_action_status_regression_is_no_write() -> None:
+    existing = ActionMemoryRecord(
+        action_id="action-1",
+        user_id="user-1",
+        project_id="project-1",
+        action_title="发布评测报告",
+        action_description="发布评测报告",
+        action_status="in_progress",
+        record_status="active",
+    )
+    store = _ActionStore([existing])
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.ACTION_EXECUTION,
+        summary="发布评测报告",
+        details=ActionExecutionCandidateDetails(
+            action_title="发布评测报告",
+            action_description="发布评测报告",
+            action_status="todo",
+        ),
+        stability="stable",
+        project_scope_id="project-1",
+    )
+
+    result = asyncio.run(
+        _service(action_store=store).persist(_context(), [candidate])
+    )
+
+    assert result.items[0].action == "no_write"
+    assert "in_progress -> todo" in (result.items[0].no_write_reason or "")
+    assert store.writes == []
+
+
+def test_persistence_rejects_illegal_transition_proposed_by_resolver() -> None:
+    existing = ActionMemoryRecord(
+        action_id="action-1",
+        user_id="user-1",
+        project_id="project-1",
+        action_title="发布评测报告",
+        action_description="发布评测报告",
+        action_status="in_progress",
+        record_status="active",
+    )
+    store = _ActionStore([existing])
+    resolver = _StaticSemanticResolver(
+        SemanticResolutionResult(
+            relation=SemanticRelation.STATE_TRANSITION,
+            matched_record_id="action-1",
+            reason="测试 resolver 提议状态迁移。",
+        )
+    )
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.ACTION_EXECUTION,
+        summary="发布评测报告",
+        details=ActionExecutionCandidateDetails(
+            action_title="发布评测报告",
+            action_status="todo",
+        ),
+        stability="stable",
+        project_scope_id="project-1",
+    )
+
+    result = asyncio.run(
+        _service(
+            action_store=store,
+            semantic_resolver=resolver,
+        ).persist(_context(), [candidate])
+    )
+
+    assert result.items[0].action == "no_write"
+    assert "in_progress -> todo" in (result.items[0].no_write_reason or "")
+    assert store.writes == []
+
+
+def test_action_leaving_blocked_clears_blocking_reason() -> None:
+    existing = ActionMemoryRecord(
+        action_id="action-1",
+        user_id="user-1",
+        project_id="project-1",
+        action_title="发布评测报告",
+        action_description="发布评测报告",
+        action_status="blocked",
+        blocking_reason="等待数据权限",
+        record_status="active",
+    )
+    store = _ActionStore([existing])
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.ACTION_EXECUTION,
+        summary="发布评测报告",
+        details=ActionExecutionCandidateDetails(
+            action_title="发布评测报告",
+            action_description="发布评测报告",
+            action_status="in_progress",
         ),
         stability="stable",
         project_scope_id="project-1",
@@ -493,9 +704,47 @@ def test_action_status_transition_reuses_lookup_record_id() -> None:
     )
 
     assert result.items[0].action == "status_transition"
-    assert store.writes[0].action_id == "action-1"
-    assert store.writes[0].action_status == "done"
-    assert store.writes[0].parent_decision_id is None
+    assert store.writes[0].action_status == "in_progress"
+    assert store.writes[0].blocking_reason is None
+    assert store.writes[0].record_status == "active"
+
+
+def test_conflicting_decision_is_no_write() -> None:
+    existing = DecisionMemoryRecord(
+        decision_id="decision-1",
+        user_id="user-1",
+        project_id="project-1",
+        decision_question="采用哪种评测集？",
+        chosen_option="离线评测集",
+        record_status="active",
+    )
+    store = _DecisionStore([existing])
+    resolver = _StaticSemanticResolver(
+        SemanticResolutionResult(
+            relation=SemanticRelation.CONFLICT,
+            matched_record_id="decision-1",
+            reason="同一决策问题的选择互相冲突。",
+        )
+    )
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.DECISION,
+        summary="改用在线评测集。",
+        details=DecisionCandidateDetails(chosen_option="在线评测集"),
+        stability="stable",
+        project_scope_id="project-1",
+    )
+
+    result = asyncio.run(
+        _service(
+            decision_store=store,
+            semantic_resolver=resolver,
+        ).persist(_context(), [candidate])
+    )
+
+    assert result.items[0].action == "no_write"
+    assert result.items[0].affected_existing_record_ids == ["decision-1"]
+    assert result.items[0].no_write_reason == "同一决策问题的选择互相冲突。"
+    assert store.writes == []
 
 
 def test_policy_change_replaces_with_system_generated_id() -> None:
@@ -506,10 +755,14 @@ def test_policy_change_replaces_with_system_generated_id() -> None:
         owner_scope_type="project",
         owner_scope_value="project-1",
         target_scope_type="task_type",
-        target_scope_value="RESEARCH",
+        target_scope_value="TOPIC_EXPLORATION",
         policy_type="format_rule",
         policy_text="使用简短回答。",
+        conditions={"audience": "engineering"},
+        priority=8,
+        enforcement_level="default",
         record_status="active",
+        source_refs=["source-old"],
     )
     store = _PolicyStore([existing])
     candidate = MemoryCandidate(
@@ -517,7 +770,7 @@ def test_policy_change_replaces_with_system_generated_id() -> None:
         summary="结论必须包含引用。",
         details=PreferencePolicyCandidateDetails(
             target_scope_type="task_type",
-            target_scope_value="RESEARCH",
+            target_scope_value="TOPIC_EXPLORATION",
             policy_type="format_rule",
             policy_text="结论必须包含引用。",
             enforcement_level="strict",
@@ -535,6 +788,12 @@ def test_policy_change_replaces_with_system_generated_id() -> None:
     assert store.writes[0].policy_id.startswith("mem-")
     assert store.writes[0].policy_id != "policy-1"
     assert store.writes[0].supersedes_policy_id == "policy-1"
+    assert store.writes[0].conditions == {"audience": "engineering"}
+    assert store.writes[0].priority == 8
+    assert store.writes[0].enforcement_level == "strict"
+    assert store.writes[0].source_refs == ["source-old"]
+    assert store.lookup_kwargs[0]["task_type"].value == "TOPIC_EXPLORATION"
+    assert store.lookup_kwargs[0]["memory_type"] is None
 
 
 def test_policy_change_replaces_the_semantically_matched_record() -> None:
@@ -557,7 +816,7 @@ def test_policy_change_replaces_the_semantically_matched_record() -> None:
         owner_scope_type="project",
         owner_scope_value="project-1",
         target_scope_type="task_type",
-        target_scope_value="RESEARCH",
+        target_scope_value="TOPIC_EXPLORATION",
         policy_type="format_rule",
         policy_text="使用简短回答。",
         record_status="active",
@@ -568,7 +827,7 @@ def test_policy_change_replaces_the_semantically_matched_record() -> None:
         summary="结论必须包含引用。",
         details=PreferencePolicyCandidateDetails(
             target_scope_type="task_type",
-            target_scope_value="RESEARCH",
+            target_scope_value="TOPIC_EXPLORATION",
             policy_type="format_rule",
             policy_text="结论必须包含引用。",
             enforcement_level="strict",
@@ -585,6 +844,71 @@ def test_policy_change_replaces_the_semantically_matched_record() -> None:
     assert result.items[0].action == "replace"
     assert result.items[0].affected_existing_record_ids == ["policy-matched"]
     assert store.writes[0].supersedes_policy_id == "policy-matched"
+
+
+def test_policy_lookup_uses_candidate_memory_target_scope() -> None:
+    store = _PolicyStore()
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.RESEARCH_POLICY,
+        summary="Decision memory 必须保留来源。",
+        details=PreferencePolicyCandidateDetails(
+            target_scope_type="memory_type",
+            target_scope_value="DECISION",
+            policy_type="provenance_rule",
+            policy_text="Decision memory 必须保留来源。",
+        ),
+        stability="stable",
+        project_scope_id="project-1",
+        semantic_type="stable_preference",
+    )
+
+    asyncio.run(_service(policy_store=store).persist(_context(), [candidate]))
+
+    assert store.lookup_kwargs[0]["task_type"] is None
+    assert store.lookup_kwargs[0]["memory_type"] == MemoryType.DECISION
+
+
+def test_invalid_policy_target_scope_is_no_write_before_lookup() -> None:
+    store = _PolicyStore()
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.RESEARCH_POLICY,
+        summary="未知范围规则。",
+        details=PreferencePolicyCandidateDetails(
+            target_scope_type="task_type",
+            target_scope_value="RESEARCH",
+            policy_type="format_rule",
+            policy_text="未知范围规则。",
+        ),
+        stability="stable",
+        project_scope_id="project-1",
+        semantic_type="stable_preference",
+    )
+
+    result = asyncio.run(
+        _service(policy_store=store).persist(_context(), [candidate])
+    )
+
+    assert result.items[0].action == "no_write"
+    assert "TaskType" in (result.items[0].no_write_reason or "")
+    assert store.lookup_kwargs == []
+    assert store.writes == []
+
+
+def test_result_uses_effective_project_scope_from_context() -> None:
+    store = _DecisionStore()
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.DECISION,
+        summary="采用 typed details。",
+        details=DecisionCandidateDetails(chosen_option="采用 typed details。"),
+        stability="stable",
+    )
+
+    result = asyncio.run(
+        _service(decision_store=store).persist(_context(), [candidate])
+    )
+
+    assert result.items[0].project_scope_id == "project-1"
+    assert store.writes[0].project_id == "project-1"
 
 
 def test_research_knowledge_create_uses_system_governance_fields() -> None:

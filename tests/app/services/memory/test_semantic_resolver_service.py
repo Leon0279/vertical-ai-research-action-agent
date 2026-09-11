@@ -129,6 +129,118 @@ def test_action_status_change_is_rule_based_state_transition() -> None:
     assert llm.prompts == []
 
 
+def test_action_without_status_is_not_interpreted_as_todo_transition() -> None:
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.ACTION_EXECUTION,
+        summary="发布评测报告",
+        details=ActionExecutionCandidateDetails(
+            action_title="发布评测报告",
+            action_description="发布评测报告",
+        ),
+    )
+    record = ActionMemoryRecord(
+        action_id="action-1",
+        user_id="user-1",
+        project_id="project-1",
+        action_title="发布评测报告",
+        action_description="发布评测报告",
+        action_status="in_progress",
+        record_status="active",
+    )
+    service, llm = _service()
+
+    result = asyncio.run(service.resolve(candidate, [record]))
+
+    assert result.relation == SemanticRelation.DUPLICATE
+    assert result.matched_record_id == "action-1"
+    assert llm.prompts == []
+
+
+@pytest.mark.parametrize(
+    ("current_status", "next_status"),
+    [
+        ("todo", "in_progress"),
+        ("todo", "blocked"),
+        ("todo", "done"),
+        ("todo", "cancelled"),
+        ("in_progress", "blocked"),
+        ("in_progress", "done"),
+        ("in_progress", "cancelled"),
+        ("blocked", "in_progress"),
+        ("blocked", "done"),
+        ("blocked", "cancelled"),
+    ],
+)
+def test_forward_action_status_transitions_are_accepted(
+    current_status: str,
+    next_status: str,
+) -> None:
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.ACTION_EXECUTION,
+        summary="发布评测报告",
+        details=ActionExecutionCandidateDetails(
+            action_title="发布评测报告",
+            action_description="发布评测报告",
+            action_status=next_status,
+        ),
+    )
+    record = ActionMemoryRecord(
+        action_id="action-1",
+        user_id="user-1",
+        project_id="project-1",
+        action_title="发布评测报告",
+        action_description="发布评测报告",
+        action_status=current_status,
+        record_status="active",
+    )
+    service, llm = _service()
+
+    result = asyncio.run(service.resolve(candidate, [record]))
+
+    assert result.relation == SemanticRelation.STATE_TRANSITION
+    assert llm.prompts == []
+
+
+@pytest.mark.parametrize(
+    ("current_status", "next_status"),
+    [
+        ("in_progress", "todo"),
+        ("blocked", "todo"),
+        ("done", "in_progress"),
+        ("cancelled", "todo"),
+    ],
+)
+def test_illegal_action_status_transitions_are_conflicts(
+    current_status: str,
+    next_status: str,
+) -> None:
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.ACTION_EXECUTION,
+        summary="发布评测报告",
+        details=ActionExecutionCandidateDetails(
+            action_title="发布评测报告",
+            action_description="发布评测报告",
+            action_status=next_status,
+        ),
+    )
+    record = ActionMemoryRecord(
+        action_id="action-1",
+        user_id="user-1",
+        project_id="project-1",
+        action_title="发布评测报告",
+        action_description="发布评测报告",
+        action_status=current_status,
+        record_status="active",
+    )
+    service, llm = _service()
+
+    result = asyncio.run(service.resolve(candidate, [record]))
+
+    assert result.relation == SemanticRelation.CONFLICT
+    assert f"{current_status} -> {next_status}" in result.reason
+    assert llm.prompts == []
+
+
 def test_project_profile_change_is_rule_based() -> None:
     candidate = MemoryCandidate(
         memory_type=MemoryType.PROJECT_PROFILE,
@@ -148,6 +260,30 @@ def test_project_profile_change_is_rule_based() -> None:
 
     assert result.relation == SemanticRelation.CHANGED
     assert result.matched_record_id == "profile-1"
+    assert llm.prompts == []
+
+
+def test_project_profile_ignores_omitted_fields_during_duplicate_check() -> None:
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.PROJECT_PROFILE,
+        summary="进入验证阶段",
+        details=ProjectProfileCandidateDetails(current_stage="validation"),
+    )
+    record = ProjectProfileMemoryRecord(
+        project_profile_id="profile-1",
+        project_id="project-1",
+        user_id="user-1",
+        project_name="检索评测项目",
+        project_goal="建立稳定评测基线",
+        current_stage="validation",
+        constraints=["保持 API 兼容"],
+        record_status="active",
+    )
+    service, llm = _service()
+
+    result = asyncio.run(service.resolve(candidate, [record]))
+
+    assert result.relation == SemanticRelation.DUPLICATE
     assert llm.prompts == []
 
 
@@ -227,7 +363,7 @@ def test_policy_filters_type_and_scope_before_calling_llm() -> None:
         summary="结论必须包含引用。",
         details=PreferencePolicyCandidateDetails(
             target_scope_type="task_type",
-            target_scope_value="RESEARCH",
+            target_scope_value="TOPIC_EXPLORATION",
             policy_type="format_rule",
             policy_text="结论必须包含引用。",
         ),
@@ -250,7 +386,7 @@ def test_policy_filters_type_and_scope_before_calling_llm() -> None:
         project_id="project-1",
         owner_scope_type="project",
         target_scope_type="task_type",
-        target_scope_value="RESEARCH",
+        target_scope_value="TOPIC_EXPLORATION",
         policy_type="format_rule",
         policy_text="引用重要来源。",
         record_status="active",
@@ -268,6 +404,33 @@ def test_policy_filters_type_and_scope_before_calling_llm() -> None:
     assert result.relation == SemanticRelation.CHANGED
     assert "policy-matched" in llm.prompts[0]
     assert "policy-unrelated" not in llm.prompts[0]
+
+
+def test_user_policy_candidate_never_matches_global_policy() -> None:
+    candidate = MemoryCandidate(
+        memory_type=MemoryType.RESEARCH_POLICY,
+        summary="结论必须包含引用。",
+        details=PreferencePolicyCandidateDetails(
+            policy_type="format_rule",
+            policy_text="结论必须包含引用。",
+        ),
+    )
+    global_policy = PreferencePolicyMemoryRecord(
+        policy_id="policy-global",
+        user_id="system",
+        owner_scope_type="global",
+        owner_scope_value="system",
+        policy_type="format_rule",
+        policy_text="结论必须包含引用。",
+        record_status="active",
+    )
+    service, llm = _service()
+
+    result = asyncio.run(service.resolve(candidate, [global_policy]))
+
+    assert result.relation == SemanticRelation.NO_MATCH
+    assert result.matched_record_id is None
+    assert llm.prompts == []
 
 
 def test_exact_research_knowledge_duplicate_does_not_call_llm() -> None:
