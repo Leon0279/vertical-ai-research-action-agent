@@ -17,6 +17,30 @@ def test_run_route_exists() -> None:
     assert "POST" in methods
 
 
+def test_create_project_route_exists() -> None:
+    matches = [route for route in app.routes if route.path == "/v1/projects"]
+    assert len(matches) == 1
+    methods = matches[0].methods or set()
+    assert "POST" in methods
+
+
+def test_create_project_openapi_describes_success_and_errors() -> None:
+    operation = app.openapi()["paths"]["/v1/projects"]["post"]
+
+    assert set(operation["responses"]) >= {"201", "422", "500", "503"}
+    request_schema = operation["requestBody"]["content"]["application/json"]["schema"]
+    assert request_schema["$ref"].endswith("/CreateProjectRequest")
+
+    schemas = app.openapi()["components"]["schemas"]
+    create_schema = schemas["CreateProjectRequest"]
+    assert set(create_schema["required"]) == {
+        "user_id",
+        "project_name",
+        "project_description",
+    }
+    assert "project_id" not in create_schema["properties"]
+
+
 def test_run_request_openapi_describes_iteration_budget() -> None:
     request_schema = app.openapi()["components"]["schemas"]["AgentRunRequest"]
     iteration_budget_schema = request_schema["properties"]["iteration_budget"]

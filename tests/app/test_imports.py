@@ -17,6 +17,8 @@ from app.adapters.memory.redis_session_memory_store import RedisSessionMemorySto
 from app.adapters.memory.redis_session_memory_store_config import RedisSessionMemoryStoreConfig
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 from app.orchestration.research_action_pipeline import ResearchActionPipeline, build_default_pipeline
+from app.services.project import ProjectService
+from app.services.project.contracts import ProjectServiceProtocol
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
 from app.services.planner.contracts.task_interpreter_protocol import TaskInterpreterProtocol
 
@@ -28,6 +30,11 @@ def test_app_importable() -> None:
 def test_pipeline_importable() -> None:
     pipeline = build_default_pipeline()
     assert isinstance(pipeline, ResearchActionPipeline)
+
+
+def test_project_service_importable() -> None:
+    assert ProjectService.__name__ == "ProjectService"
+    assert ProjectServiceProtocol.__name__ == "ProjectServiceProtocol"
 
 
 def test_pipeline_exposes_private_stage_methods() -> None:

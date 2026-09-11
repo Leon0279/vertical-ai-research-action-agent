@@ -93,6 +93,19 @@ Persist project profile memory records in PostgreSQL."""
                 "Failed to upsert project profile."
             ) from exc
 
+    async def create_profile(self, profile: ProjectProfileMemoryRecord) -> None:
+        stored_profile = self._record_for_storage(profile)
+        params = self._record_params(stored_profile)
+
+        try:
+            pool = await self._ensure_pool()
+            async with pool.acquire() as connection:
+                await connection.execute(self._build_create_profile_query(), *params)
+        except Exception as exc:
+            raise PostgresProjectProfileMemoryStoreError(
+                "Failed to create project profile."
+            ) from exc
+
     @property
     def _table_ref(self) -> str:
         return postgres_table_ref(self._config.schema_name, self._config.table_name)
@@ -165,7 +178,7 @@ WHERE user_id = $3
   AND project_profile_id = $5
 """
 
-    def _build_upsert_profile_query(self) -> str:
+    def _build_profile_insert_query(self) -> str:
         return f"""
 INSERT INTO {self._table_ref} (
     project_profile_id,
@@ -195,6 +208,13 @@ VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12,
     $13, $14, $15, $16, $17, $18, $19, $20, $21, $22::jsonb
 )
+"""
+
+    def _build_create_profile_query(self) -> str:
+        return self._build_profile_insert_query()
+
+    def _build_upsert_profile_query(self) -> str:
+        return self._build_profile_insert_query() + f"""
 ON CONFLICT (project_profile_id) DO UPDATE
 SET
     project_id = EXCLUDED.project_id,

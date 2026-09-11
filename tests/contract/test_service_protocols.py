@@ -158,6 +158,8 @@ from app.services.planner.contracts.task_interpreter_protocol import TaskInterpr
 from app.services.planner.decomposition_planner_service import DecompositionPlannerService
 from app.services.planner.task_interpreter_service import TaskInterpreterService
 from app.services.planner.workflow_router_service import WorkflowRouterService
+from app.services.project.contracts.project_service_protocol import ProjectServiceProtocol
+from app.services.project.project_service import ProjectService
 from app.services.tool_execution_layer.contracts.family_selection_service_protocol import (
     FamilySelectionServiceProtocol,
 )
@@ -273,6 +275,17 @@ def test_adapter_protocol_conformance() -> None:
 def test_service_protocol_conformance() -> None:
     assert isinstance(TaskInterpreterService(), TaskInterpreterProtocol)
     assert isinstance(DecompositionPlannerService(), DecompositionPlannerProtocol)
+    assert isinstance(
+        ProjectService(
+            project_profile_store=PostgresProjectProfileMemoryStore(
+                config=PostgresProjectProfileMemoryStoreConfig(
+                    dsn="postgresql://example.test/db"
+                ),
+                pool=object(),
+            )
+        ),
+        ProjectServiceProtocol,
+    )
     assert isinstance(
         ResearchExecutorService(
             llm_client=StubLLMClient(),

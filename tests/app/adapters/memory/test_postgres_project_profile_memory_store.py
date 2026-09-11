@@ -233,6 +233,35 @@ def test_upsert_profile_executes_supersede_and_upsert() -> None:
     assert json.loads(second_args[21]) == ["source-1", "source-2"]
 
 
+def test_create_profile_executes_insert_without_supersede_or_upsert() -> None:
+    connection = FakeConnection()
+    store = PostgresProjectProfileMemoryStore(
+        config=_config(),
+        pool=FakePool(connection),
+    )
+
+    asyncio.run(store.create_profile(_record()))
+
+    assert len(connection.execute_calls) == 1
+    query, args = connection.execute_calls[0]
+    assert "INSERT INTO" in query
+    assert "ON CONFLICT" not in query
+    assert "record_status = 'superseded'" not in query
+    assert args[0] == "profile-1"
+    assert args[1] == "project-1"
+    assert args[2] == "user-1"
+
+
+def test_create_profile_wraps_execute_errors() -> None:
+    store = PostgresProjectProfileMemoryStore(
+        config=_config(),
+        pool=FakePool(FakeConnection(execute_error=RuntimeError("write failed"))),
+    )
+
+    with pytest.raises(PostgresProjectProfileMemoryStoreError, match="Failed to create"):
+        asyncio.run(store.create_profile(_record()))
+
+
 def test_upsert_profile_updates_superseded_target_when_requested() -> None:
     connection = FakeConnection()
     store = PostgresProjectProfileMemoryStore(

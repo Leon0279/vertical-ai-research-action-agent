@@ -29,6 +29,17 @@ Protocol for the project_profile_memory table adapter."""
             ProjectProfileMemoryRecord | None: 当前 active 项目档案；没有记录时返回 None。
         """
 
+    async def create_profile(self, profile: ProjectProfileMemoryRecord) -> None:
+        """以 create-only 语义插入首个项目档案版本。
+
+        Args:
+            profile (ProjectProfileMemoryRecord): 新项目的首个完整 active Project Profile；标识应由上层预先生成。
+
+        Returns:
+            None: 插入成功后无返回值；主键、active scope 冲突或底层存储异常由实现向调用方抛出。
+        """
+        ...
+
     async def upsert_profile(self, profile: ProjectProfileMemoryRecord) -> None:
         """新增或更新一条 typed 项目档案记忆记录。
 
