@@ -213,6 +213,49 @@ def test_load_active_profile_wraps_fetch_errors() -> None:
         asyncio.run(store.load_active_profile(user_id="user-1", project_id="project-1"))
 
 
+def test_list_active_project_ids_preserves_query_order() -> None:
+    connection = FakeConnection(
+        rows=[
+            {"project_id": "project-newer"},
+            {"project_id": "project-older"},
+        ]
+    )
+    store = PostgresProjectProfileMemoryStore(
+        config=_config(),
+        pool=FakePool(connection),
+    )
+
+    project_ids = asyncio.run(store.list_active_project_ids(user_id="user-1"))
+
+    assert project_ids == ["project-newer", "project-older"]
+    query, args = connection.fetch_calls[0]
+    assert "record_status = 'active'" in query
+    assert "ORDER BY updated_at DESC, project_id ASC" in query
+    assert args == ("user-1",)
+
+
+def test_list_active_project_ids_returns_empty_list() -> None:
+    store = PostgresProjectProfileMemoryStore(
+        config=_config(),
+        pool=FakePool(FakeConnection()),
+    )
+
+    assert asyncio.run(store.list_active_project_ids(user_id="user-1")) == []
+
+
+def test_list_active_project_ids_wraps_fetch_errors() -> None:
+    store = PostgresProjectProfileMemoryStore(
+        config=_config(),
+        pool=FakePool(FakeConnection(fetch_error=RuntimeError("db failed"))),
+    )
+
+    with pytest.raises(
+        PostgresProjectProfileMemoryStoreError,
+        match="Failed to list active project ids",
+    ):
+        asyncio.run(store.list_active_project_ids(user_id="user-1"))
+
+
 def test_upsert_profile_executes_supersede_and_upsert() -> None:
     connection = FakeConnection()
     store = PostgresProjectProfileMemoryStore(

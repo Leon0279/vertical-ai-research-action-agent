@@ -87,7 +87,12 @@ from app.domain.models.paper_content_fetch import (
 )
 from app.domain.models.planning.execution_plan import ExecutionPlan
 from app.domain.models.planning.plan_step import PlanStep
-from app.domain.models.project import ProjectCreationInput, ProjectCreationResult
+from app.domain.models.project import (
+    ProjectCreationInput,
+    ProjectCreationResult,
+    ProjectDetailsResult,
+    ProjectIdListResult,
+)
 from app.domain.models.retrieval import (
     NormalizedRetrievalItem,
     RecentRetrievalAttempt,
@@ -192,6 +197,8 @@ __all__ = [
     "ProjectProfileCandidateDetails",
     "ProjectCreationInput",
     "ProjectCreationResult",
+    "ProjectDetailsResult",
+    "ProjectIdListResult",
     "RequestCompletionEvaluationRequest",
     "RequestCompletionEvaluationResult",
     "ResearchKnowledgeRecallQuery",

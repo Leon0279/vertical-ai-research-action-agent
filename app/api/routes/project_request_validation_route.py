@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from starlette.responses import JSONResponse, Response
 
-from app.api.schemas.create_project_error_response import CreateProjectErrorResponse
+from app.api.schemas.project_error_response import ProjectErrorResponse
 
 
 class ProjectRequestValidationRoute(APIRoute):
@@ -22,7 +22,7 @@ class ProjectRequestValidationRoute(APIRoute):
             try:
                 return await original_route_handler(request)
             except RequestValidationError as exc:
-                response = CreateProjectErrorResponse(
+                response = ProjectErrorResponse(
                     error_code="INVALID_PROJECT_REQUEST",
                     error_reason=self._validation_error_reason(exc),
                 )
@@ -43,4 +43,4 @@ class ProjectRequestValidationRoute(APIRoute):
             message = str(item.get("msg", "输入不合法"))
             reasons.append(f"{location or 'request'}: {message}")
         detail = "；".join(reasons) or "请求内容不合法"
-        return f"项目创建请求不合法：{detail}。"
+        return f"项目请求不合法：{detail}。"

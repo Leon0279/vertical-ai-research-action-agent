@@ -18,10 +18,29 @@ def test_run_route_exists() -> None:
 
 
 def test_create_project_route_exists() -> None:
-    matches = [route for route in app.routes if route.path == "/v1/projects"]
+    matches = [
+        route
+        for route in app.routes
+        if route.path == "/v1/projects" and "POST" in (route.methods or set())
+    ]
     assert len(matches) == 1
-    methods = matches[0].methods or set()
-    assert "POST" in methods
+
+
+def test_project_query_routes_exist() -> None:
+    list_matches = [
+        route
+        for route in app.routes
+        if route.path == "/v1/projects" and "GET" in (route.methods or set())
+    ]
+    detail_matches = [
+        route
+        for route in app.routes
+        if route.path == "/v1/projects/{project_id}"
+        and "GET" in (route.methods or set())
+    ]
+
+    assert len(list_matches) == 1
+    assert len(detail_matches) == 1
 
 
 def test_create_project_openapi_describes_success_and_errors() -> None:

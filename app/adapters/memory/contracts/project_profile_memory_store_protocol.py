@@ -28,6 +28,22 @@ Protocol for the project_profile_memory table adapter."""
         Returns:
             ProjectProfileMemoryRecord | None: 当前 active 项目档案；没有记录时返回 None。
         """
+        ...
+
+    async def list_active_project_ids(
+        self,
+        *,
+        user_id: str,
+    ) -> list[str]:
+        """读取指定用户当前拥有 active Project Profile 的项目标识。
+
+        Args:
+            user_id (str): 所属用户标识，用于隔离项目档案查询范围。
+
+        Returns:
+            list[str]: 按 active 档案最近更新时间倒序排列的稳定项目标识；没有项目时返回空列表。
+        """
+        ...
 
     async def create_profile(self, profile: ProjectProfileMemoryRecord) -> None:
         """以 create-only 语义插入首个项目档案版本。
@@ -49,3 +65,4 @@ Protocol for the project_profile_memory table adapter."""
         Returns:
             None: 写入成功后无返回值；底层存储异常由实现向调用方抛出。
         """
+        ...

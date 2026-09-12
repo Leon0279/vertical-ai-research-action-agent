@@ -59,6 +59,23 @@ Persist project profile memory records in PostgreSQL."""
 
         return self._row_to_record(rows[0])
 
+    async def list_active_project_ids(
+        self,
+        *,
+        user_id: str,
+    ) -> list[str]:
+        pool = await self._ensure_pool()
+        query = self._build_list_active_project_ids_query()
+
+        try:
+            async with pool.acquire() as connection:
+                rows = await connection.fetch(query, user_id)
+            return [str(row["project_id"]) for row in rows]
+        except Exception as exc:
+            raise PostgresProjectProfileMemoryStoreError(
+                "Failed to list active project ids."
+            ) from exc
+
     async def upsert_profile(self, profile: ProjectProfileMemoryRecord) -> None:
         pool = await self._ensure_pool()
         stored_profile = self._record_for_storage(profile)
@@ -151,6 +168,16 @@ WHERE user_id = $1
   AND project_id = $2
   AND record_status = 'active'
 ORDER BY updated_at DESC
+"""
+
+    def _build_list_active_project_ids_query(self) -> str:
+        return f"""
+SELECT
+    project_id
+FROM {self._table_ref}
+WHERE user_id = $1
+  AND record_status = 'active'
+ORDER BY updated_at DESC, project_id ASC
 """
 
     def _build_supersede_active_profiles_query(self) -> str:
