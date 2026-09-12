@@ -921,9 +921,12 @@ input_budget_pressure
 推荐枚举值：
 
 - `strong_enough`
+- `moderate_support`
 - `weak_support`
 - `conflicting_support`
 - `insufficient_support`
+
+其中，`moderate_support` 表示已有实质支撑，但尚未达到可以仅凭支撑充分而收束研究的程度；只有 `strong_enough` 表示支撑已足够。
 
 **字段：`support_notes`**
 
@@ -1040,7 +1043,7 @@ gap identification 的输入不是 raw evidence，而是上一小节已经形成
 例如：
 
 - 如果 `coverage_status = not_covered`，则当前可能存在 coverage-related gap
-- 如果 `support_strength = weak_support`，则当前可能存在 support-related gap
+- 如果 `support_strength = moderate_support` 或 `weak_support`，则当前可能存在 support-related gap
 - 如果 `support_strength = conflicting_support`，则当前可能存在 ambiguity 或 conflict-related gap
 - 如果 `finding_maturity = tentative` 或 `partially_stable`，则当前可能存在 readiness-related gap
 
@@ -1609,6 +1612,7 @@ assessment_summary
 推荐枚举值：
 
 - `strong_enough`
+- `moderate_support`
 - `weak_support`
 - `conflicting_support`
 - `insufficient_support`

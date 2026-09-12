@@ -214,7 +214,9 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             "- coverage_summary\n\n"
             "允许取值：\n"
             "- coverage_status: covered | partially_covered | not_covered\n"
-            "- support_strength: strong_enough | weak_support | conflicting_support | insufficient_support\n"
+            "- support_strength: strong_enough | moderate_support | weak_support | conflicting_support | "
+            "insufficient_support\n"
+            "  moderate_support 表示已有实质支撑但尚未充分；只有 strong_enough 表示支撑已足以收束。\n"
             "- finding_maturity: tentative | partially_stable | stable | blocked\n"
             "- gap_scope: objective_level | sub_question_level | comparison_level | candidate_level | "
             "dimension_level | finding_level | recommendation_readiness_level\n"
@@ -228,11 +230,13 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             "comparison_evidence | fresh_status_evidence | decision_supporting_evidence | none\n"
             "- freshness_requirement: normal | fresh_preferred | fresh_required | none\n"
             "- minimum_support_requirement: any_relevant_signal | moderate_support | strong_support | none\n\n"
+            "support_strength 描述当前实际支撑强度，minimum_support_requirement 描述下一步证据的最低要求；"
+            "两者中的 moderate_support 含义相关，但字段职责不同。\n\n"
             "期望 JSON 形状：\n"
             "{\n"
             '  "assessment": {\n'
             '    "coverage_status": "partially_covered",\n'
-            '    "support_strength": "weak_support",\n'
+            '    "support_strength": "moderate_support",\n'
             '    "finding_maturity": "tentative",\n'
             '    "assessment_summary": "一句到三句中文摘要，说明当前研究状态。"\n'
             "  },\n"

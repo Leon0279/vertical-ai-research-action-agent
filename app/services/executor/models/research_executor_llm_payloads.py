@@ -30,7 +30,13 @@ Service-private schema for the LLM's current-state assessment."""
     model_config = ConfigDict(extra="forbid")
 
     coverage_status: ResearchCoverageStatus = Field(min_length=1, description="必填字段。当前研究目标的证据覆盖状态。")
-    support_strength: ResearchSupportStrength = Field(min_length=1, description="必填字段。当前证据对已形成判断的支撑强度。")
+    support_strength: ResearchSupportStrength = Field(
+        min_length=1,
+        description=(
+            "必填字段。当前证据对已形成判断的支撑强度；moderate_support 表示已有实质支撑，"
+            "但尚未达到 strong_enough。"
+        ),
+    )
     finding_maturity: ResearchFindingMaturity = Field(min_length=1, description="必填字段。当前中间发现的稳定成熟程度。")
     assessment_summary: str = Field(min_length=1, description="必填字段。本轮研究状态评估的简短总结。")
 

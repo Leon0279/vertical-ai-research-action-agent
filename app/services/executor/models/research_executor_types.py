@@ -18,6 +18,7 @@ ResearchActionMode = Literal[
 ResearchCoverageStatus = EvidenceCoverageStatus
 ResearchSupportStrength = Literal[
     "strong_enough",
+    "moderate_support",
     "weak_support",
     "conflicting_support",
     "insufficient_support",

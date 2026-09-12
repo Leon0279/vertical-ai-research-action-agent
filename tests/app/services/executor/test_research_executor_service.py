@@ -1792,6 +1792,51 @@ def test_research_executor_accepts_json_object_assessment_output() -> None:
     assert service.captured_states[0].identified_gaps[0].gap_summary == "structured gap"
 
 
+def test_research_executor_accepts_moderate_support_and_continues_acquisition() -> None:
+    payload = json.dumps(
+        _valid_assessment_payload(
+            support_strength="moderate_support",
+            finding_maturity="stable",
+        ),
+        ensure_ascii=False,
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(responses=[payload])
+    )
+
+    asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Continue research when support is only moderate.",
+                available_families=[FamilyName.DOCS_SEARCH],
+            )
+        )
+    )
+
+    assessment = service.captured_states[0].current_assessment
+    assert assessment is not None
+    assert assessment.support_strength == "moderate_support"
+    iteration = service.action_states[0].require_current_iteration()
+    assert iteration.action_mode == "external_acquisition"
+
+
+def test_research_executor_rejects_unknown_support_strength() -> None:
+    payload = json.dumps(
+        _valid_assessment_payload(support_strength="mediumish_support"),
+        ensure_ascii=False,
+    )
+    service = _research_executor(
+        llm_client=_FakeLLMClient(responses=[payload])
+    )
+
+    with pytest.raises(ValueError, match="required schema"):
+        asyncio.run(
+            service.execute(
+                ResearchStageInput(original_query="Reject an unknown support value.")
+            )
+        )
+
+
 def test_research_executor_raises_when_llm_output_is_not_json() -> None:
     service = _research_executor(llm_client=_FakeLLMClient(responses=["not json"]))
 
@@ -1930,6 +1975,15 @@ def test_research_assessment_prompt_contains_required_context_and_boundaries() -
     assert "不生成 retrieval query" not in prompt
     assert "不执行 retrieval" not in prompt
     assert "不生成 final answer" not in prompt
+    assert (
+        "support_strength: strong_enough | moderate_support | weak_support | "
+        "conflicting_support | insufficient_support" in prompt
+    )
+    assert "只有 strong_enough 表示支撑已足以收束" in prompt
+    assert (
+        "support_strength 描述当前实际支撑强度，minimum_support_requirement "
+        "描述下一步证据的最低要求" in prompt
+    )
 
 
 def test_research_executor_second_iteration_prompt_sees_previous_identified_gaps() -> None:
