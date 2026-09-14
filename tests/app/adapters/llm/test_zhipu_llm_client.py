@@ -171,6 +171,43 @@ def test_generate_text_does_not_retry_deterministic_http_errors(
     assert "secret prompt" not in str(exc_info.value)
 
 
+def test_generate_json_object_does_not_retry_provider_code_1301() -> None:
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        _ = request
+        call_count += 1
+        return httpx.Response(
+            400,
+            headers={"x-request-id": "req-safety"},
+            json={
+                "error": {
+                    "code": "1301",
+                    "message": "request rejected",
+                }
+            },
+        )
+
+    async def run_case() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            llm_client = ZhipuLLMClient(
+                config=ZhipuLLMClientConfig(
+                    api_key="fake-key",
+                    max_retries=2,
+                ),
+                http_client=client,
+            )
+            await llm_client.generate_json_object("safe test prompt")
+
+    with pytest.raises(ZhipuLLMClientError) as exc_info:
+        asyncio.run(run_case())
+    assert call_count == 1
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.provider_code == "1301"
+    assert exc_info.value.retriable is False
+
+
 def test_generate_text_rejects_missing_choices() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         _ = request
@@ -226,8 +263,15 @@ def test_generate_text_wraps_timeout_error() -> None:
 @pytest.mark.parametrize("status_code", [429, 503])
 def test_generate_text_retries_transient_http_error_once_then_succeeds(
     status_code: int,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     call_count = 0
+    sleep_delays: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    monkeypatch.setattr("app.adapters.llm.zhipu_llm_client.asyncio.sleep", fake_sleep)
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal call_count
@@ -253,13 +297,21 @@ def test_generate_text_retries_transient_http_error_once_then_succeeds(
 
     assert asyncio.run(run_case()) == '{"status":"ok"}'
     assert call_count == 2
+    assert sleep_delays == [1.0]
 
 
 @pytest.mark.parametrize("error_type", [httpx.ConnectError, httpx.TimeoutException])
 def test_generate_text_retries_request_error_once_then_succeeds(
     error_type: type[httpx.RequestError],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     call_count = 0
+    sleep_delays: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    monkeypatch.setattr("app.adapters.llm.zhipu_llm_client.asyncio.sleep", fake_sleep)
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal call_count
@@ -281,16 +333,17 @@ def test_generate_text_retries_request_error_once_then_succeeds(
 
     assert asyncio.run(run_case()) == '{"status":"ok"}'
     assert call_count == 2
+    assert sleep_delays == [1.0]
 
 
-def test_generate_json_object_retries_invalid_json_content_once() -> None:
+def test_generate_json_object_does_not_retry_invalid_json_content() -> None:
     call_count = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal call_count
         _ = request
         call_count += 1
-        content = "not-json" if call_count == 1 else '{"status":"ok"}'
+        content = "not-json"
         return httpx.Response(
             200,
             json={"choices": [{"finish_reason": "stop", "message": {"content": content}}]},
@@ -299,23 +352,24 @@ def test_generate_json_object_retries_invalid_json_content_once() -> None:
     async def run_case() -> dict[str, object]:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             llm_client = ZhipuLLMClient(
-                config=ZhipuLLMClientConfig(api_key="fake-key", max_retries=1),
+                config=ZhipuLLMClientConfig(api_key="fake-key", max_retries=2),
                 http_client=client,
             )
             return await llm_client.generate_json_object("hello")
 
-    assert asyncio.run(run_case()) == {"status": "ok"}
-    assert call_count == 2
+    with pytest.raises(ZhipuLLMClientError, match="not valid JSON"):
+        asyncio.run(run_case())
+    assert call_count == 1
 
 
-def test_generate_json_object_retries_non_object_content_once() -> None:
+def test_generate_json_object_does_not_retry_non_object_content() -> None:
     call_count = 0
 
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal call_count
         _ = request
         call_count += 1
-        content = "[]" if call_count == 1 else '{"status":"ok"}'
+        content = "[]"
         return httpx.Response(
             200,
             json={"choices": [{"message": {"content": content}}]},
@@ -324,13 +378,51 @@ def test_generate_json_object_retries_non_object_content_once() -> None:
     async def run_case() -> dict[str, object]:
         async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
             llm_client = ZhipuLLMClient(
-                config=ZhipuLLMClientConfig(api_key="fake-key", max_retries=1),
+                config=ZhipuLLMClientConfig(api_key="fake-key", max_retries=2),
                 http_client=client,
             )
             return await llm_client.generate_json_object("hello")
 
-    assert asyncio.run(run_case()) == {"status": "ok"}
-    assert call_count == 2
+    with pytest.raises(ZhipuLLMClientError, match="must be a JSON object"):
+        asyncio.run(run_case())
+    assert call_count == 1
+
+
+def test_generate_text_retries_connection_errors_twice_with_bounded_backoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call_count = 0
+    sleep_delays: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    monkeypatch.setattr("app.adapters.llm.zhipu_llm_client.asyncio.sleep", fake_sleep)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 2:
+            raise httpx.ConnectError("temporary failure", request=request)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "recovered"}}]},
+        )
+
+    async def run_case() -> str:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            llm_client = ZhipuLLMClient(
+                config=ZhipuLLMClientConfig(
+                    api_key="fake-key",
+                    max_retries=2,
+                ),
+                http_client=client,
+            )
+            return await llm_client.generate_text("hello")
+
+    assert asyncio.run(run_case()) == "recovered"
+    assert call_count == 3
+    assert sleep_delays == [1.0, 3.0]
 
 
 def test_generate_text_reports_empty_content_finish_reason_without_using_reasoning() -> None:

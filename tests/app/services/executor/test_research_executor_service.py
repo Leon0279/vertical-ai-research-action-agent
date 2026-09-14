@@ -498,6 +498,73 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         self.finding_states.append(deepcopy(run_state))
 
 
+class _FailingFourthFindingsResearchExecutorService(ResearchExecutorService):
+    """Minimal loop double used to exercise the iteration failure boundary."""
+
+    async def _assess_research_state_and_select_next_evidence_need(
+        self,
+        stage_input: ResearchStageInput,
+        run_state: ResearchExecutorRunState,
+    ) -> None:
+        _ = stage_input
+        _ = run_state
+
+    async def _decide_whether_external_action_is_needed(
+        self,
+        stage_input: ResearchStageInput,
+        run_state: ResearchExecutorRunState,
+    ) -> bool:
+        _ = stage_input
+        _ = run_state
+        return False
+
+    async def _update_stage_local_working_state(
+        self,
+        stage_input: ResearchStageInput,
+        run_state: ResearchExecutorRunState,
+    ) -> None:
+        _ = stage_input
+        _ = run_state
+
+    async def _produce_or_refine_intermediate_findings(
+        self,
+        stage_input: ResearchStageInput,
+        run_state: ResearchExecutorRunState,
+    ) -> None:
+        _ = stage_input
+        iteration = run_state.require_current_iteration()
+        if iteration.iteration_index == 4:
+            raise RuntimeError("simulated findings provider failure")
+        run_state.intermediate_findings.append(
+            f"completed finding {iteration.iteration_index}"
+        )
+
+    async def _evaluate_iteration_outcome(
+        self,
+        stage_input: ResearchStageInput,
+        run_state: ResearchExecutorRunState,
+    ) -> ResearchIterationOutcome:
+        _ = stage_input
+        iteration = run_state.require_current_iteration()
+        iteration.iteration_outcome = "continue"
+        iteration.outcome_rationale = "continue test loop"
+        self._retrieval_history_tracker.record_completed_iteration(run_state)
+        return "continue"
+
+
+class _PathsExhaustedResearchExecutorService(ResearchExecutorService):
+    async def _decide_whether_external_action_is_needed(
+        self,
+        stage_input: ResearchStageInput,
+        run_state: ResearchExecutorRunState,
+    ) -> bool:
+        _ = stage_input
+        iteration = run_state.require_current_iteration()
+        iteration.action_mode = "refine_from_existing_state"
+        iteration.acquisition_paths_exhausted = True
+        return False
+
+
 def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
     service = _SpyResearchExecutorService()
 
@@ -1460,7 +1527,10 @@ def test_research_executor_accepts_json_object_iteration_outcome_output(
     assert outcome_record.outcome_guardrail_applied is False
 
 
-def test_research_executor_raises_when_iteration_outcome_output_is_not_json() -> None:
+def test_research_executor_preserves_output_when_iteration_outcome_is_not_json(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
     service = _research_executor(
         llm_client=_FakeLLMClient(outcome_responses=["not json"]),
         tool_execution_layer_service=_FakeToolExecutionLayerService(
@@ -1472,18 +1542,27 @@ def test_research_executor_raises_when_iteration_outcome_output_is_not_json() ->
         evidence_processing_service=_successful_evidence_service(),
     )
 
-    with pytest.raises(ValueError, match="not valid JSON"):
-        asyncio.run(
-            service.execute(
-                ResearchStageInput(
-                    original_query="This outcome step should fail.",
-                    available_families=[FamilyName.DOCS_SEARCH],
-                )
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="This outcome step should fail.",
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
+    )
+
+    assert result.research_status == "partial_success"
+    assert result.executed_iteration_count == 0
+    assert result.intermediate_findings
+    failure_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_iteration_failed"
+    )
+    assert failure_record.research_step == "iteration_outcome_evaluation"
 
 
-def test_research_executor_raises_when_iteration_outcome_schema_is_invalid() -> None:
+def test_research_executor_preserves_output_when_iteration_outcome_schema_is_invalid() -> None:
     invalid_payload = json.dumps(
         {
             "top_gap_progress": "unknown",
@@ -1506,15 +1585,110 @@ def test_research_executor_raises_when_iteration_outcome_schema_is_invalid() -> 
         evidence_processing_service=_successful_evidence_service(),
     )
 
-    with pytest.raises(ValueError, match="Iteration outcome.*required schema"):
-        asyncio.run(
-            service.execute(
-                ResearchStageInput(
-                    original_query="This outcome schema should fail validation.",
-                    available_families=[FamilyName.DOCS_SEARCH],
-                )
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="This outcome schema should fail validation.",
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
+    )
+
+    assert result.research_status == "partial_success"
+    assert result.executed_iteration_count == 0
+    assert result.intermediate_findings
+
+
+def test_fourth_iteration_failure_preserves_three_completed_iterations(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
+    service = _FailingFourthFindingsResearchExecutorService(
+        llm_client=_FakeLLMClient(),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(),
+        evidence_processing_service=_FakeEvidenceProcessingService(),
+    )
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Preserve completed research iterations.",
+                iteration_budget=5,
+            )
+        )
+    )
+
+    assert result.research_status == "partial_success"
+    assert result.executed_iteration_count == 3
+    assert result.intermediate_findings == [
+        "completed finding 1",
+        "completed finding 2",
+        "completed finding 3",
+    ]
+    failure_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_iteration_failed"
+    )
+    assert failure_record.iteration_index == 4
+    assert failure_record.research_iteration_count == 3
+    assert failure_record.research_step == "findings_refinement"
+    outcome_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "outcome_decision_source", None)
+        == "runtime_failure_boundary"
+    )
+    assert outcome_record.iteration_outcome == "degrade"
+
+
+def test_first_iteration_failure_without_output_still_raises() -> None:
+    class _AssessmentFailureResearchExecutorService(ResearchExecutorService):
+        async def _assess_research_state_and_select_next_evidence_need(
+            self,
+            stage_input: ResearchStageInput,
+            run_state: ResearchExecutorRunState,
+        ) -> None:
+            _ = stage_input
+            _ = run_state
+            raise RuntimeError("assessment failed before research output")
+
+    service = _AssessmentFailureResearchExecutorService(
+        llm_client=_FakeLLMClient(),
+        tool_execution_layer_service=_FakeToolExecutionLayerService(),
+        evidence_processing_service=_FakeEvidenceProcessingService(),
+    )
+
+    with pytest.raises(RuntimeError, match="assessment failed"):
+        asyncio.run(
+            service.execute(
+                ResearchStageInput(original_query="No output can be retained.")
+            )
+        )
+
+
+def test_paths_exhausted_skips_findings_and_outcome_llm() -> None:
+    fake_llm = _FakeLLMClient()
+    service = _PathsExhaustedResearchExecutorService(
+        llm_client=fake_llm,
+        tool_execution_layer_service=_FakeToolExecutionLayerService(),
+        evidence_processing_service=_FakeEvidenceProcessingService(),
+    )
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Stop when all acquisition paths are exhausted.",
+                available_families=[FamilyName.DOCS_SEARCH],
+                iteration_budget=3,
+            )
+        )
+    )
+
+    assert result.research_status == "failed"
+    assert result.executed_iteration_count == 1
+    assert _findings_prompts(fake_llm) == []
+    assert _outcome_prompts(fake_llm) == []
 
 
 def test_iteration_outcome_prompt_contains_required_context_and_boundaries() -> None:
@@ -2284,6 +2458,8 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
 
     assessment_prompts = _assessment_prompts(fake_llm)
     assert len(assessment_prompts) == 2
+    assert len(_findings_prompts(fake_llm)) == 1
+    assert len(_outcome_prompts(fake_llm)) == 0
     assert '"recent_retrieval_history"' in assessment_prompts[1]
     assert "research_knowledge_recall" in assessment_prompts[1]
     assert "not_useful" in assessment_prompts[1]

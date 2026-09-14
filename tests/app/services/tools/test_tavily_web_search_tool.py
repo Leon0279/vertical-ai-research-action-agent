@@ -7,6 +7,9 @@ import asyncio
 
 import pytest
 
+from app.adapters.web_search.tavily_web_search_client_error import (
+    TavilyWebSearchClientError,
+)
 from app.domain.models import (
     TavilyWebSearchToolRequest,
     WebContentFetchFailedResult,
@@ -205,6 +208,42 @@ def test_run_returns_no_result_for_empty_search_results() -> None:
     result = asyncio.run(tool.run(TavilyWebSearchToolRequest(query_text="missing topic")))
 
     assert result.acquisition_status == AcquisitionStatus.NO_RESULT
+
+
+def test_run_propagates_safe_search_failure_diagnostics() -> None:
+    error = TavilyWebSearchClientError(
+        "Authorization=secret-token",
+        stage="search_http",
+        error_category="http_server_error",
+        failure_reason="server_error",
+        status_code=503,
+        retryable=True,
+        cause_type="ConnectError",
+    )
+    tool = TavilyWebSearchTool(
+        FakeWebSearchClient(error),
+        FakeWebContentFetchClient(
+            WebContentFetchResponse(results=[], failed_results=[])
+        ),
+    )
+
+    result = asyncio.run(
+        tool.run(TavilyWebSearchToolRequest(query_text="agent systems"))
+    )
+
+    assert result.acquisition_status == AcquisitionStatus.FAILED
+    assert "secret-token" not in (result.error_info or "")
+    assert result.retrieval_trace.observability == {
+        "attempted_urls": [],
+        "fetched_urls": [],
+        "failure_stage": "search_http",
+        "failure_reason": "server_error",
+        "error_category": "http_server_error",
+        "provider_http_status": 503,
+        "retryable": True,
+        "exception_type": "ConnectError",
+    }
+    assert result.execution_summary.observability["retryable"] is True
     assert result.normalized_items == []
 
 
@@ -217,7 +256,10 @@ def test_run_returns_failed_when_search_raises() -> None:
     result = asyncio.run(tool.run(TavilyWebSearchToolRequest(query_text="topic")))
 
     assert result.acquisition_status == AcquisitionStatus.FAILED
-    assert result.error_info == "search boom"
+    assert result.error_info == (
+        "Tavily web search failed; failure_stage=web_search; "
+        "error_category=unknown_error; exception_type=RuntimeError."
+    )
     assert result.normalized_items == []
 
 

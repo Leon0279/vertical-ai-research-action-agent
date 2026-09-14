@@ -60,7 +60,11 @@ Tool service that searches the web and fetches content for top candidates."""
                 )
             )
         except Exception as exc:
-            return self._failed_result(str(exc))
+            diagnostics = self._exception_diagnostics(exc)
+            return self._failed_result(
+                self._failure_summary(diagnostics),
+                diagnostics=diagnostics,
+            )
 
         candidates = search_response.results[: normalized_request.max_search_results]
         if not candidates:
@@ -128,7 +132,13 @@ Tool service that searches the web and fetches content for top candidates."""
                 break
         return selected
 
-    def _failed_result(self, error_info: str) -> TavilyWebSearchToolResult:
+    def _failed_result(
+        self,
+        error_info: str,
+        *,
+        diagnostics: dict[str, Any] | None = None,
+    ) -> TavilyWebSearchToolResult:
+        safe_diagnostics = diagnostics or {}
         return TavilyWebSearchToolResult(
             normalized_items=[],
             acquisition_status=AcquisitionStatus.FAILED,
@@ -147,6 +157,7 @@ Tool service that searches the web and fetches content for top candidates."""
                     "fetch_empty_count": 0,
                     "fetch_failed_count": 1,
                 },
+                observability=safe_diagnostics,
             ),
             retrieval_trace=RetrievalTrace(
                 selected_family=FamilyName.WEB_SEARCH,
@@ -154,10 +165,52 @@ Tool service that searches the web and fetches content for top candidates."""
                 observability={
                     "attempted_urls": [],
                     "fetched_urls": [],
+                    **safe_diagnostics,
                 },
             ),
             error_info=error_info,
         )
+
+    @staticmethod
+    def _exception_diagnostics(error: BaseException) -> dict[str, Any]:
+        return {
+            key: value
+            for key, value in {
+                "failure_stage": getattr(error, "stage", "web_search"),
+                "failure_reason": getattr(
+                    error,
+                    "failure_reason",
+                    "unknown_error",
+                ),
+                "error_category": getattr(
+                    error,
+                    "error_category",
+                    "unknown_error",
+                ),
+                "provider_http_status": getattr(error, "status_code", None),
+                "retryable": getattr(error, "retryable", False),
+                "exception_type": (
+                    getattr(error, "cause_type", None) or type(error).__name__
+                ),
+            }.items()
+            if value is not None
+        }
+
+    @staticmethod
+    def _failure_summary(diagnostics: dict[str, Any]) -> str:
+        """Build a bounded error summary without serializing provider payloads."""
+
+        parts = ["Tavily web search failed"]
+        for key in (
+            "failure_stage",
+            "error_category",
+            "provider_http_status",
+            "exception_type",
+        ):
+            value = diagnostics.get(key)
+            if value is not None:
+                parts.append(f"{key}={value}")
+        return "; ".join(parts) + "."
 
     def _no_result(self) -> TavilyWebSearchToolResult:
         return TavilyWebSearchToolResult(

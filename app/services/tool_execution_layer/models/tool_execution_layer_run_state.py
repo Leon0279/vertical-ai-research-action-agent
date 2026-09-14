@@ -93,6 +93,15 @@ class ToolExecutionLayerRunState:
             ),
         },
     )
+    retry_counts_by_family: dict[FamilyName, int] = field(
+        default_factory=dict,
+        metadata={
+            "description": (
+                "可选字段，默认空字典。记录各 retrieval family 已实际执行的 retry_same_tool 次数，"
+                "用于让 fallback 后的新 family 拥有独立的 retry budget；retry_count 仍保留为全请求汇总值。"
+            ),
+        },
+    )
     fallback_applied: bool = field(
         default=False,
         metadata={

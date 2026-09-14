@@ -68,9 +68,19 @@ HTTP client for Zhipu chat completions."""
             except ZhipuLLMClientError as exc:
                 if not exc.retriable or attempt_index >= attempts - 1:
                     raise
-                await asyncio.sleep(0.25 * (2**attempt_index))
+                await asyncio.sleep(self._retry_delay_seconds(attempt_index))
 
         raise ZhipuLLMClientError("Zhipu LLM request exhausted its retry budget.")
+
+    @staticmethod
+    def _retry_delay_seconds(attempt_index: int) -> float:
+        """Use the bounded transient-failure backoff sequence."""
+
+        if attempt_index <= 0:
+            return 1.0
+        if attempt_index == 1:
+            return 3.0
+        return 3.0 * (2 ** (attempt_index - 1))
 
     async def _post_chat_completion(
         self,
@@ -137,14 +147,12 @@ HTTP client for Zhipu chat completions."""
         except ValueError as exc:
             raise ZhipuLLMClientError(
                 "Zhipu LLM response was not valid JSON.",
-                retriable=True,
                 request_id=self._request_id(response),
             ) from exc
 
         if not isinstance(data, dict):
             raise ZhipuLLMClientError(
                 "Zhipu LLM response JSON must be an object.",
-                retriable=True,
                 request_id=self._request_id(response),
             )
         return data
@@ -154,14 +162,12 @@ HTTP client for Zhipu chat completions."""
         if not isinstance(choices, list) or not choices:
             raise ZhipuLLMClientError(
                 "Zhipu LLM response did not include choices.",
-                retriable=True,
             )
 
         first_choice = choices[0]
         if not isinstance(first_choice, dict):
             raise ZhipuLLMClientError(
                 "Zhipu LLM response choice must be an object.",
-                retriable=True,
             )
 
         finish_reason = self._optional_text(first_choice.get("finish_reason"))
@@ -170,7 +176,6 @@ HTTP client for Zhipu chat completions."""
         if not isinstance(message, dict):
             raise ZhipuLLMClientError(
                 self._content_error_message(finish_reason),
-                retriable=True,
                 finish_reason=finish_reason,
             )
 
@@ -178,7 +183,6 @@ HTTP client for Zhipu chat completions."""
         if not isinstance(content, str) or not content.strip():
             raise ZhipuLLMClientError(
                 self._content_error_message(finish_reason),
-                retriable=True,
                 finish_reason=finish_reason,
             )
         return content
@@ -193,13 +197,11 @@ HTTP client for Zhipu chat completions."""
         except json.JSONDecodeError as exc:
             raise ZhipuLLMClientError(
                 "Zhipu LLM response content was not valid JSON.",
-                retriable=True,
                 finish_reason=self._finish_reason(data),
             ) from exc
         if not isinstance(payload, dict):
             raise ZhipuLLMClientError(
                 "Zhipu LLM response content must be a JSON object.",
-                retriable=True,
                 finish_reason=self._finish_reason(data),
             )
         return payload

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 import httpx
 import pytest
@@ -218,6 +219,58 @@ def test_search_web_wraps_http_status_request_and_timeout_errors() -> None:
         asyncio.run(run_case(timeout_handler))
 
 
+@pytest.mark.parametrize(
+    ("status_code", "error_category", "failure_reason", "retryable"),
+    [
+        (400, "http_client_error", "invalid_request", False),
+        (429, "rate_limited", "rate_limited", True),
+        (503, "http_server_error", "server_error", True),
+    ],
+)
+def test_search_web_exposes_safe_http_diagnostics(
+    status_code: int,
+    error_category: str,
+    failure_reason: str,
+    retryable: bool,
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        _ = request
+        return httpx.Response(status_code, text="provider body must not be logged")
+
+    async def run_case() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            search_client = TavilyWebSearchClient(
+                config=TavilyWebSearchClientConfig(api_key="tavily-test-key"),
+                http_client=client,
+            )
+            await search_client.search_web(
+                WebSearchQuery(query_text="safe diagnostics query")
+            )
+
+    with pytest.raises(TavilyWebSearchClientError) as exc_info:
+        asyncio.run(run_case())
+
+    error = exc_info.value
+    assert error.stage == "search_http"
+    assert error.status_code == status_code
+    assert error.error_category == error_category
+    assert error.failure_reason == failure_reason
+    assert error.retryable is retryable
+    failure_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "tavily_search_failed"
+    )
+    assert failure_record.provider_http_status == status_code
+    assert failure_record.error_category == error_category
+    assert failure_record.retryable is retryable
+    assert len(failure_record.query_fingerprint) == 16
+    assert "provider body must not be logged" not in caplog.text
+
+
 def test_search_web_wraps_non_json_and_invalid_shape_errors() -> None:
     def non_json_handler(request: httpx.Request) -> httpx.Response:
         _ = request
@@ -235,10 +288,44 @@ def test_search_web_wraps_non_json_and_invalid_shape_errors() -> None:
             )
             await search_client.search_web(WebSearchQuery(query_text="agent systems"))
 
-    with pytest.raises(TavilyWebSearchClientError, match="valid JSON"):
+    with pytest.raises(TavilyWebSearchClientError, match="valid JSON") as non_json_error:
         asyncio.run(run_case(non_json_handler))
-    with pytest.raises(TavilyWebSearchClientError, match="must be a list"):
+    with pytest.raises(TavilyWebSearchClientError, match="must be a list") as shape_error:
         asyncio.run(run_case(bad_shape_handler))
+    assert non_json_error.value.error_category == "invalid_json"
+    assert non_json_error.value.retryable is False
+    assert shape_error.value.error_category == "invalid_response"
+    assert shape_error.value.retryable is False
+
+
+@pytest.mark.parametrize(
+    ("exception_type", "error_category", "failure_reason"),
+    [
+        (httpx.ConnectError, "network_error", "tool_error"),
+        (httpx.TimeoutException, "timeout", "timeout"),
+    ],
+)
+def test_search_web_classifies_transport_failures(
+    exception_type: type[httpx.RequestError],
+    error_category: str,
+    failure_reason: str,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise exception_type("transport failure", request=request)
+
+    async def run_case() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            search_client = TavilyWebSearchClient(
+                config=TavilyWebSearchClientConfig(api_key="tavily-test-key"),
+                http_client=client,
+            )
+            await search_client.search_web(WebSearchQuery(query_text="agent systems"))
+
+    with pytest.raises(TavilyWebSearchClientError) as exc_info:
+        asyncio.run(run_case())
+    assert exc_info.value.error_category == error_category
+    assert exc_info.value.failure_reason == failure_reason
+    assert exc_info.value.retryable is True
 
 
 def test_search_web_raises_when_all_results_are_malformed() -> None:

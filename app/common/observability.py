@@ -26,6 +26,7 @@ _STRUCTURED_FIELDS = (
     "duration_ms",
     "research_status",
     "research_iteration_count",
+    "research_step",
     "citation_count",
     "attempt_index",
     "selected_family",
@@ -302,6 +303,8 @@ def exception_diagnostic_fields(error: BaseException) -> dict[str, Any]:
         "provider_code": "provider_error_code",
         "request_id": "provider_request_id",
         "finish_reason": "finish_reason",
+        "error_category": "error_category",
+        "retryable": "retryable",
     }
     for attribute_name, field_name in attribute_mapping.items():
         value = getattr(error, attribute_name, None)

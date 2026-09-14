@@ -544,6 +544,82 @@ def test_broader_fallback_blocks_current_family_and_executes_new_family(
     assert summary_record.recovery_attempt_count == 1
 
 
+def test_retry_budget_is_independent_for_each_family_after_fallback() -> None:
+    selector = FakeFamilySelectionService(
+        [_selection_result("web_search"), _selection_result("paper_search")]
+    )
+    query = FakeQueryGenerationService(
+        [
+            _query_result("web_search", "web query"),
+            _query_result("paper_search", "paper query"),
+        ]
+    )
+    evaluator = FakeCompletionEvaluationService(
+        [
+            _evaluation_result("retry_same_tool", "retry_same_tool"),
+            _evaluation_result("fallback", "fallback_to_broader_search"),
+            _evaluation_result("retry_same_tool", "retry_same_tool"),
+            _evaluation_result("stop", "none", request_completed=True),
+        ]
+    )
+    web = FakeFamilyService(
+        selected_family="web_search",
+        results=[
+            _family_result(
+                "web_search",
+                acquisition_status=AcquisitionStatus.FAILED,
+            ),
+            _family_result(
+                "web_search",
+                acquisition_status=AcquisitionStatus.FAILED,
+            ),
+        ],
+    )
+    paper = FakeFamilyService(
+        selected_family="paper_search",
+        results=[
+            _family_result(
+                "paper_search",
+                acquisition_status=AcquisitionStatus.FAILED,
+            ),
+            _family_result(
+                "paper_search",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            ),
+        ],
+    )
+    service = _service(
+        selector=selector,
+        query=query,
+        evaluator=evaluator,
+        web=web,
+        paper=paper,
+    )
+
+    result = _execute(
+        service,
+        ToolExecutionLayerRequest(
+            target_problem="Retry web and paper independently.",
+            available_families=[FamilyName.WEB_SEARCH, FamilyName.PAPER_SEARCH],
+            retry_budget=1,
+            fallback_policy="fallback_to_broader_search",
+        ),
+    )
+
+    assert len(web.requests) == 2
+    assert len(paper.requests) == 2
+    assert [request.retry_count for request in evaluator.requests] == [0, 1, 0, 1]
+    assert [attempt.retry_count for attempt in result.retrieval_trace.attempts] == [
+        0,
+        1,
+        0,
+        1,
+    ]
+    assert result.execution_summary.retry_count == 2
+    assert result.execution_summary.recovery_attempt_count == 3
+    assert result.acquisition_status == AcquisitionStatus.SUCCESS
+
+
 def test_transient_paper_failure_retries_once_then_falls_back_to_web() -> None:
     selector = FakeFamilySelectionService(
         [_selection_result("paper_search"), _selection_result("web_search")]

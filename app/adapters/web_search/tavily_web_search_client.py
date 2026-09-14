@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 import httpx
@@ -15,10 +17,13 @@ from app.adapters.web_search.tavily_web_search_client_config import (
 from app.adapters.web_search.tavily_web_search_client_error import (
     TavilyWebSearchClientError,
 )
+from app.common.observability import retrieval_query_log_fields
 from app.common.utils.hashing import sha1_hex
 from app.common.utils.parsing import parse_optional_iso_datetime
 from app.common.utils.text import normalize_whitespace_or_none
 from app.domain.models import WebSearchQuery, WebSearchResponse, WebSearchResult
+
+logger = logging.getLogger(__name__)
 
 
 class TavilyWebSearchClient(WebSearchClientProtocol):
@@ -37,19 +42,70 @@ HTTP client for provider-backed web search through Tavily."""
     async def search_web(self, query: WebSearchQuery) -> WebSearchResponse:
         """Search the web through Tavily and return normalized results."""
 
-        normalized_query = self._normalize_query(query)
-        payload = self._build_payload(normalized_query)
-        response_json = await self._send_request(payload)
-        return self._normalize_response(response_json, normalized_query)
+        started_at = time.perf_counter()
+        query_fingerprint = retrieval_query_log_fields(query.query_text)[
+            "query_fingerprint"
+        ]
+        logger.info(
+            "Tavily web search started.",
+            extra={
+                "event": "tavily_search_started",
+                "provider": "tavily",
+                "operation": "web_search",
+                "query_fingerprint": query_fingerprint,
+                "configured_timeout_seconds": self._config.timeout_seconds,
+            },
+        )
+        try:
+            normalized_query = self._normalize_query(query)
+            payload = self._build_payload(normalized_query)
+            response_json = await self._send_request(payload)
+            result = self._normalize_response(response_json, normalized_query)
+        except TavilyWebSearchClientError as error:
+            self._log_failure(
+                error,
+                query_fingerprint=query_fingerprint,
+                started_at=started_at,
+            )
+            raise
+        except Exception as error:
+            wrapped_error = TavilyWebSearchClientError(
+                "Unexpected Tavily web search failure.",
+                stage="web_search",
+                error_category="unknown_error",
+                failure_reason="unknown_error",
+                retryable=False,
+                cause_type=type(error).__name__,
+            )
+            self._log_failure(
+                wrapped_error,
+                query_fingerprint=query_fingerprint,
+                started_at=started_at,
+            )
+            raise wrapped_error from error
+
+        logger.info(
+            "Tavily web search completed.",
+            extra={
+                "event": "tavily_search_completed",
+                "provider": "tavily",
+                "operation": "web_search",
+                "query_fingerprint": query_fingerprint,
+                "configured_timeout_seconds": self._config.timeout_seconds,
+                "duration_ms": self._duration_ms(started_at),
+                "result_count": len(result.results),
+            },
+        )
+        return result
 
     def _normalize_query(self, query: WebSearchQuery) -> WebSearchQuery:
         query_text = query.query_text.strip()
         if not query_text:
-            raise TavilyWebSearchClientError("Web search query_text must not be empty.")
+            raise self._invalid_request_error("Web search query_text must not be empty.")
         if query.limit <= 0:
-            raise TavilyWebSearchClientError("Web search limit must be greater than zero.")
+            raise self._invalid_request_error("Web search limit must be greater than zero.")
         if query.limit > self._config.max_limit:
-            raise TavilyWebSearchClientError(
+            raise self._invalid_request_error(
                 f"Web search limit must not exceed {self._config.max_limit}."
             )
 
@@ -111,23 +167,52 @@ HTTP client for provider-backed web search through Tavily."""
                 async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
                     response = await client.post(url, json=payload)
         except httpx.TimeoutException as exc:
-            raise TavilyWebSearchClientError("Tavily web search request timed out.") from exc
+            raise TavilyWebSearchClientError(
+                "Tavily web search request timed out.",
+                stage="search_http",
+                error_category="timeout",
+                failure_reason="timeout",
+                retryable=True,
+                cause_type=type(exc).__name__,
+            ) from exc
         except httpx.RequestError as exc:
-            raise TavilyWebSearchClientError(f"Tavily web search request failed: {exc}") from exc
+            raise TavilyWebSearchClientError(
+                "Tavily web search request failed due to a network error.",
+                stage="search_http",
+                error_category="network_error",
+                failure_reason="tool_error",
+                retryable=True,
+                cause_type=type(exc).__name__,
+            ) from exc
 
         if response.status_code < 200 or response.status_code >= 300:
+            category, reason, retryable = self._http_failure_diagnostics(
+                response.status_code
+            )
             raise TavilyWebSearchClientError(
-                f"Tavily web search request failed with status {response.status_code}."
+                f"Tavily web search request failed with status {response.status_code}.",
+                stage="search_http",
+                error_category=category,
+                failure_reason=reason,
+                status_code=response.status_code,
+                retryable=retryable,
             )
         try:
             payload_json = response.json()
         except ValueError as exc:
             raise TavilyWebSearchClientError(
-                "Tavily web search response was not valid JSON."
+                "Tavily web search response was not valid JSON.",
+                stage="response_parsing",
+                error_category="invalid_json",
+                failure_reason="malformed_response",
+                cause_type=type(exc).__name__,
             ) from exc
         if not isinstance(payload_json, dict):
             raise TavilyWebSearchClientError(
-                "Tavily web search response must be a JSON object."
+                "Tavily web search response must be a JSON object.",
+                stage="response_parsing",
+                error_category="invalid_response",
+                failure_reason="malformed_response",
             )
         return payload_json
 
@@ -139,7 +224,10 @@ HTTP client for provider-backed web search through Tavily."""
         raw_results = payload.get("results", [])
         if not isinstance(raw_results, list):
             raise TavilyWebSearchClientError(
-                "Tavily web search response field 'results' must be a list."
+                "Tavily web search response field 'results' must be a list.",
+                stage="response_normalization",
+                error_category="invalid_response",
+                failure_reason="malformed_response",
             )
 
         results: list[WebSearchResult] = []
@@ -153,7 +241,10 @@ HTTP client for provider-backed web search through Tavily."""
 
         if not results and raw_results:
             raise TavilyWebSearchClientError(
-                "Tavily web search returned results but none could be normalized."
+                "Tavily web search returned results but none could be normalized.",
+                stage="response_normalization",
+                error_category="normalization_error",
+                failure_reason="malformed_response",
             )
 
         return WebSearchResponse(
@@ -165,6 +256,52 @@ HTTP client for provider-backed web search through Tavily."""
                 "dropped_item_count": dropped_item_count,
             },
         )
+
+    @staticmethod
+    def _invalid_request_error(message: str) -> TavilyWebSearchClientError:
+        return TavilyWebSearchClientError(
+            message,
+            stage="request_validation",
+            error_category="invalid_request",
+            failure_reason="invalid_request",
+        )
+
+    @staticmethod
+    def _http_failure_diagnostics(status_code: int) -> tuple[str, str, bool]:
+        if status_code == 429:
+            return "rate_limited", "rate_limited", True
+        if status_code >= 500:
+            return "http_server_error", "server_error", True
+        return "http_client_error", "invalid_request", False
+
+    def _log_failure(
+        self,
+        error: TavilyWebSearchClientError,
+        *,
+        query_fingerprint: str | None,
+        started_at: float,
+    ) -> None:
+        logger.warning(
+            "Tavily web search failed.",
+            extra={
+                "event": "tavily_search_failed",
+                "provider": "tavily",
+                "operation": "web_search",
+                "query_fingerprint": query_fingerprint,
+                "configured_timeout_seconds": self._config.timeout_seconds,
+                "duration_ms": self._duration_ms(started_at),
+                "failure_stage": error.stage,
+                "failure_reason": error.failure_reason,
+                "error_category": error.error_category,
+                "provider_http_status": error.status_code,
+                "retryable": error.retryable,
+                "exception_type": error.cause_type or type(error).__name__,
+            },
+        )
+
+    @staticmethod
+    def _duration_ms(started_at: float) -> int:
+        return round((time.perf_counter() - started_at) * 1000)
 
     def _normalize_item(self, item: Any, index: int) -> WebSearchResult | None:
         if not isinstance(item, dict):

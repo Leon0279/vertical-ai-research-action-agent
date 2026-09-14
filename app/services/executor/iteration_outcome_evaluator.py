@@ -21,6 +21,7 @@ from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
 from app.services.executor.models.research_executor_types import (
+    MEMORY_ACTION_MODE as _MEMORY_ACTION_MODE,
     REFINE_ACTION_MODE as _REFINE_ACTION_MODE,
     ResearchIterationOutcome,
 )
@@ -43,6 +44,89 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         llm_client: LLMClientProtocol,
     ) -> None:
         self._llm_client = llm_client
+
+    def evaluate_before_findings(
+        self,
+        stage_input: ResearchStageInput,
+        run_state: ResearchExecutorRunState,
+    ) -> ResearchIterationOutcome | None:
+        """Apply rules that make findings/outcome LLM calls unnecessary."""
+
+        iteration = run_state.require_current_iteration()
+        if (
+            iteration.acquisition_paths_exhausted
+            and not self._did_new_evidence_arrive(iteration)
+        ):
+            rationale = (
+                "当前 coverage target 的 acquisition 路径已经耗尽，且本轮没有新增 evidence，"
+                "因此跳过 findings 更新并直接降级收束。"
+            )
+            self._write_iteration_outcome(
+                run_state,
+                iteration_outcome="degrade",
+                outcome_rationale=rationale,
+                outcome_decision_source="pre_findings_rule_short_circuit",
+                iteration_evaluation_state=ResearchIterationEvaluationState(
+                    short_circuit_reason=rationale,
+                ),
+            )
+            return "degrade"
+
+        external_families = {
+            family
+            for family in self._available_families(stage_input)
+            if family.value
+            in {"docs_search", "paper_search", "web_search"}
+        }
+        if (
+            iteration.action_mode == _MEMORY_ACTION_MODE
+            and self._did_tel_fail_or_return_no_result(iteration)
+            and not self._did_new_evidence_arrive(iteration)
+            and self._remaining_iteration_budget_after_current(
+                stage_input,
+                iteration,
+            )
+            > 0
+            and external_families
+        ):
+            rationale = (
+                "Memory acquisition 未返回可用 evidence，但仍有 external family 和迭代预算，"
+                "因此跳过无依据的 findings/outcome LLM 调用并进入下一轮。"
+            )
+            self._write_iteration_outcome(
+                run_state,
+                iteration_outcome="continue",
+                outcome_rationale=rationale,
+                outcome_decision_source="pre_findings_rule_short_circuit",
+                iteration_evaluation_state=ResearchIterationEvaluationState(
+                    short_circuit_reason=rationale,
+                ),
+            )
+            return "continue"
+
+        return None
+
+    def degrade_after_runtime_failure(
+        self,
+        run_state: ResearchExecutorRunState,
+        *,
+        failed_step: str,
+    ) -> ResearchIterationOutcome:
+        """Close an interrupted iteration while retaining earlier research output."""
+
+        rationale = (
+            f"Research iteration 在 {failed_step} 阶段发生异常；已保留此前形成的研究成果并降级收束。"
+        )
+        self._write_iteration_outcome(
+            run_state,
+            iteration_outcome="degrade",
+            outcome_rationale=rationale,
+            outcome_decision_source="runtime_failure_boundary",
+            iteration_evaluation_state=ResearchIterationEvaluationState(
+                short_circuit_reason=rationale,
+            ),
+        )
+        return "degrade"
 
     async def evaluate(
         self,

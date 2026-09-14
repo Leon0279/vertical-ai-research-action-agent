@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.observability import exception_diagnostic_fields
 from app.domain.models import ResearchStageInput, ResearchStageResult
 from app.services.evidence.contracts.evidence_processing_service_protocol import (
     EvidenceProcessingServiceProtocol,
@@ -30,6 +33,8 @@ from app.services.executor.research_state_assessor import ResearchStateAssessor
 from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
     ToolExecutionLayerServiceProtocol,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchExecutorService(ResearchExecutorProtocol):
@@ -93,33 +98,101 @@ class ResearchExecutorService(ResearchExecutorProtocol):
                 ),
             )
 
-            await self._assess_research_state_and_select_next_evidence_need(
-                stage_input,
-                run_state,
-            )
-            should_acquire_candidate_material = (
-                await self._decide_whether_external_action_is_needed(
+            research_step = "assessment"
+            try:
+                await self._assess_research_state_and_select_next_evidence_need(
                     stage_input,
                     run_state,
                 )
-            )
-            if should_acquire_candidate_material:
-                await self._acquire_candidate_material(stage_input, run_state)
-                await self._process_candidate_material_into_usable_evidence(
-                    stage_input,
-                    run_state,
+                research_step = "action_selection"
+                should_acquire_candidate_material = (
+                    await self._decide_whether_external_action_is_needed(
+                        stage_input,
+                        run_state,
+                    )
                 )
+                if should_acquire_candidate_material:
+                    research_step = "material_acquisition"
+                    await self._acquire_candidate_material(stage_input, run_state)
+                    research_step = "evidence_processing"
+                    await self._process_candidate_material_into_usable_evidence(
+                        stage_input,
+                        run_state,
+                    )
 
-            await self._update_stage_local_working_state(stage_input, run_state)
-            await self._produce_or_refine_intermediate_findings(stage_input, run_state)
-            outcome = await self._evaluate_iteration_outcome(stage_input, run_state)
-            executed_iteration_count += 1
+                research_step = "coverage_update"
+                await self._update_stage_local_working_state(stage_input, run_state)
+                research_step = "pre_findings_outcome_evaluation"
+                pre_findings_outcome = self._evaluate_before_findings(
+                    stage_input,
+                    run_state,
+                )
+                if pre_findings_outcome is not None:
+                    outcome = pre_findings_outcome
+                    self._retrieval_history_tracker.record_completed_iteration(
+                        run_state
+                    )
+                    executed_iteration_count += 1
+                    continue
+
+                research_step = "findings_refinement"
+                await self._produce_or_refine_intermediate_findings(
+                    stage_input,
+                    run_state,
+                )
+                research_step = "iteration_outcome_evaluation"
+                outcome = await self._evaluate_iteration_outcome(
+                    stage_input,
+                    run_state,
+                )
+                executed_iteration_count += 1
+            except Exception as exc:
+                iteration = run_state.require_current_iteration()
+                logger.warning(
+                    "Research iteration failed.",
+                    extra={
+                        "event": "research_iteration_failed",
+                        "research_step": research_step,
+                        "iteration_index": iteration.iteration_index,
+                        "remaining_iteration_budget": (
+                            iteration.remaining_iteration_budget
+                        ),
+                        "research_iteration_count": executed_iteration_count,
+                        **exception_diagnostic_fields(exc),
+                    },
+                    exc_info=True,
+                )
+                if not self._has_usable_research_output(run_state):
+                    raise
+                outcome = self._outcome_evaluator.degrade_after_runtime_failure(
+                    run_state,
+                    failed_step=research_step,
+                )
+                break
 
         return self._result_builder.build(
             stage_input,
             run_state,
             executed_iteration_count=executed_iteration_count,
             final_outcome=outcome,
+        )
+
+    def _evaluate_before_findings(
+        self,
+        stage_input: ResearchStageInput,
+        run_state: ResearchExecutorRunState,
+    ) -> ResearchIterationOutcome | None:
+        """Return a deterministic outcome when no findings LLM call is useful."""
+
+        return self._outcome_evaluator.evaluate_before_findings(stage_input, run_state)
+
+    @staticmethod
+    def _has_usable_research_output(run_state: ResearchExecutorRunState) -> bool:
+        """Whether the stage has material worth returning after an interruption."""
+
+        return bool(
+            run_state.processed_evidence_units
+            or run_state.intermediate_findings
         )
 
     async def _assess_research_state_and_select_next_evidence_need(

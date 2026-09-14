@@ -21,7 +21,7 @@ Typed runtime settings for Zhipu chat completions."""
     timeout_seconds: float = Field(default=60.0, gt=0, description="单次 LLM HTTP 调用的超时时间，单位秒。")
     temperature: float = Field(default=0.2, ge=0, description="LLM 生成随机性参数；值越高，输出通常越发散。")
     max_tokens: int = Field(default=4096, gt=0, description="单次 LLM 响应允许生成的最大 token 数。")
-    max_retries: int = Field(default=1, ge=0, description="单次 LLM 调用遇到可恢复错误时允许的最大重试次数。")
+    max_retries: int = Field(default=2, ge=0, description="单次 LLM 调用遇到可恢复错误时允许的最大重试次数。")
 
     @classmethod
     def from_env(cls) -> "ZhipuLLMClientConfig":

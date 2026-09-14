@@ -296,7 +296,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             generated_query=generated_query,
             family_result=family_result,
             failure_reason=execution_failure_reason,
-            retry_count=state.retry_count,
+            retry_count=self._family_retry_count(state, selected_family),
             fallback_applied=state.fallback_applied,
             available_families=available_families,
             blocked_families=state.blocked_families,
@@ -329,7 +329,10 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             family_result=attempt_outcome.family_result,
             evaluation_result=attempt_outcome.evaluation_result,
             execution_failure_reason=attempt_outcome.execution_failure_reason,
-            retry_count=state.retry_count,
+            retry_count=self._family_retry_count(
+                state,
+                attempt_outcome.selected_family,
+            ),
             fallback_applied=state.fallback_applied,
         )
         state.attempts.append(attempt)
@@ -408,9 +411,11 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             return "complete"
 
         if evaluation_result.recovery_action == "retry_same_tool":
-            if state.retry_count >= request.retry_budget:
+            family_retry_count = self._family_retry_count(state, selected_family)
+            if family_retry_count >= request.retry_budget:
                 state.recovery_exhausted_reason = "retry_budget_exhausted"
                 return "complete"
+            state.retry_counts_by_family[selected_family] = family_retry_count + 1
             state.retry_count += 1
             state.recovery_attempt_count += 1
             state.retry_context = (selected_family, query_generation_result)
@@ -437,6 +442,15 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             else "recovery_action_not_executable"
         )
         return "complete"
+
+    @staticmethod
+    def _family_retry_count(
+        state: ToolExecutionLayerRunState,
+        family: FamilyName,
+    ) -> int:
+        """Return retries already consumed by one family in this request."""
+
+        return state.retry_counts_by_family.get(family, 0)
 
     def _completed_from_state(
         self,
