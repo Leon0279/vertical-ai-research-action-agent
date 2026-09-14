@@ -43,6 +43,28 @@ def test_project_query_routes_exist() -> None:
     assert len(detail_matches) == 1
 
 
+def test_operational_health_routes_exist() -> None:
+    health_matches = [
+        route
+        for route in app.routes
+        if route.path == "/healthz" and "GET" in (route.methods or set())
+    ]
+    readiness_matches = [
+        route
+        for route in app.routes
+        if route.path == "/readyz" and "GET" in (route.methods or set())
+    ]
+
+    assert len(health_matches) == 1
+    assert len(readiness_matches) == 1
+
+
+def test_readiness_openapi_describes_service_unavailable() -> None:
+    operation = app.openapi()["paths"]["/readyz"]["get"]
+
+    assert set(operation["responses"]) >= {"200", "503"}
+
+
 def test_create_project_openapi_describes_success_and_errors() -> None:
     operation = app.openapi()["paths"]["/v1/projects"]["post"]
 
