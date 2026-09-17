@@ -134,7 +134,8 @@ def test_arxiv_config_requires_user_agent(monkeypatch: pytest.MonkeyPatch) -> No
 def test_adapter_protocol_conformance() -> None:
     assert isinstance(
         ArxivPaperSearchClient(
-            config=ArxivPaperSearchClientConfig(user_agent="vaa-test-agent/1.0")
+            config=ArxivPaperSearchClientConfig(user_agent="vaa-test-agent/1.0"),
+            http_client=object(),
         ),
         PaperSearchClientProtocol,
     )
@@ -264,7 +265,8 @@ def test_search_papers_rejects_bad_inputs() -> None:
         config=ArxivPaperSearchClientConfig(
             max_limit=3,
             user_agent="vaa-test-agent/1.0",
-        )
+        ),
+        http_client=object(),
     )
 
     with pytest.raises(ArxivPaperSearchClientError, match="query_text must not be empty"):
@@ -481,7 +483,8 @@ def test_search_papers_enforces_minimum_interval_without_real_sleep(
             config=ArxivPaperSearchClientConfig(
                 min_interval_seconds=3.0,
                 user_agent="vaa-test-agent/1.0",
-            )
+            ),
+            http_client=object(),
         )
         search_client._last_request_started_at = 100.0
         await search_client._wait_for_rate_limit()
@@ -501,7 +504,8 @@ def test_retry_after_parsing_uses_default_date_and_cap() -> None:
             rate_limit_backoff_seconds=10.0,
             max_retry_after_seconds=30.0,
             user_agent="vaa-test-agent/1.0",
-        )
+        ),
+        http_client=object(),
     )
 
     assert search_client._retry_after_seconds(None) == 10.0
@@ -529,7 +533,8 @@ def test_provider_retry_after_cooldown_is_waited_and_logged(
         config=ArxivPaperSearchClientConfig(
             min_interval_seconds=3.0,
             user_agent="vaa-test-agent/1.0",
-        )
+        ),
+        http_client=object(),
     )
     search_client._last_request_started_at = 99.0
     search_client._provider_retry_not_before = 112.0

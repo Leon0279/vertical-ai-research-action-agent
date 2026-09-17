@@ -1,20 +1,24 @@
 """Agent API route definitions."""
 
 from fastapi import APIRouter
+from dishka.integrations.fastapi import FromDishka, inject
 
 from app.api.schemas.action_item_schema import ActionItemSchema
 from app.api.schemas.agent_run_request import AgentRunRequest
 from app.api.schemas.agent_run_response import AgentRunResponse
 from app.api.schemas.citation_schema import CitationSchema
 from app.domain.models import RequestContext
-from app.orchestration.research_action_pipeline import build_default_pipeline
+from app.orchestration.research_action_pipeline import ResearchActionPipeline
 
 router = APIRouter(prefix="/v1/agent", tags=["agent"])
-_pipeline = build_default_pipeline()
 
 
 @router.post("/run", response_model=AgentRunResponse)
-async def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
+@inject
+async def run_agent(
+    payload: AgentRunRequest,
+    pipeline: FromDishka[ResearchActionPipeline],
+) -> AgentRunResponse:
     """Single entrypoint for architecture skeleton execution."""
 
     request_context = RequestContext(
@@ -25,7 +29,7 @@ async def run_agent(payload: AgentRunRequest) -> AgentRunResponse:
         iteration_budget=payload.iteration_budget,
     )
 
-    output = await _pipeline.run(request_context)
+    output = await pipeline.run(request_context)
     return AgentRunResponse(
         trace_id=output.trace_id,
         task_type=output.task_type.value,

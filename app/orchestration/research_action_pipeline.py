@@ -22,7 +22,7 @@ from app.domain.models import (
     SourceReference,
     StructuredOutput,
 )
-from app.orchestration.pipeline_dependencies import PipelineDependencies, build_default_dependencies
+from app.orchestration.pipeline_dependencies import PipelineDependencies
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -457,12 +457,6 @@ Fixed outer workflow with stage-by-stage execution."""
         context.runtime_context.stage_history.append("output")
         await self._dependencies.session_continuity_manager.update(context)
         return await self._dependencies.response_assembler.assemble(context)
-
-
-def build_default_pipeline() -> ResearchActionPipeline:
-    """Construct pipeline with all default stub dependencies."""
-
-    return ResearchActionPipeline(dependencies=build_default_dependencies())
 
 
 def _elapsed_ms(started_at: float) -> int:

@@ -1,10 +1,12 @@
 """Operational health route tests."""
 
+from dishka import make_async_container
+from dishka.integrations.fastapi import FastapiProvider
 from fastapi.testclient import TestClient
 
-from app.api.app import app
-from app.api.routes import health
+from app.api.app import create_app
 from app.domain.models.health import ReadinessResult
+from app.services.health import ReadinessService
 
 
 class _FakeReadinessService:
@@ -15,20 +17,24 @@ class _FakeReadinessService:
         return self._result
 
 
-_client = TestClient(app)
+def _client(readiness_service: _FakeReadinessService | None = None) -> TestClient:
+    context = {}
+    if readiness_service is not None:
+        context[ReadinessService] = readiness_service
+    container = make_async_container(FastapiProvider(), context=context)
+    return TestClient(create_app(container))
 
 
 def test_healthz_returns_process_liveness() -> None:
-    response = _client.get("/healthz")
+    with _client() as client:
+        response = client.get("/healthz")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-def test_readyz_returns_safe_success_payload(monkeypatch) -> None:
-    monkeypatch.setattr(
-        health,
-        "_readiness_service",
+def test_readyz_returns_safe_success_payload() -> None:
+    with _client(
         _FakeReadinessService(
             ReadinessResult(
                 status="ready",
@@ -39,10 +45,9 @@ def test_readyz_returns_safe_success_payload(monkeypatch) -> None:
                     "pgvector": "ok",
                 },
             )
-        ),
-    )
-
-    response = _client.get("/readyz")
+        )
+    ) as client:
+        response = client.get("/readyz")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -56,10 +61,8 @@ def test_readyz_returns_safe_success_payload(monkeypatch) -> None:
     }
 
 
-def test_readyz_returns_503_without_internal_error_details(monkeypatch) -> None:
-    monkeypatch.setattr(
-        health,
-        "_readiness_service",
+def test_readyz_returns_503_without_internal_error_details() -> None:
+    with _client(
         _FakeReadinessService(
             ReadinessResult(
                 status="not_ready",
@@ -70,10 +73,9 @@ def test_readyz_returns_503_without_internal_error_details(monkeypatch) -> None:
                     "pgvector": "ok",
                 },
             )
-        ),
-    )
-
-    response = _client.get("/readyz")
+        )
+    ) as client:
+        response = client.get("/readyz")
 
     assert response.status_code == 503
     assert response.json()["status"] == "not_ready"

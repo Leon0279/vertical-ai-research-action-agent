@@ -64,10 +64,10 @@ Search configured official documentation sources exposed through llms.txt."""
 
     def __init__(
         self,
-        config: LlmsTxtDocsSearchClientConfig | None = None,
-        http_client: httpx.AsyncClient | None = None,
+        config: LlmsTxtDocsSearchClientConfig,
+        http_client: httpx.AsyncClient,
     ) -> None:
-        self._config = config or LlmsTxtDocsSearchClientConfig.from_env()
+        self._config = config
         self._http_client = http_client
 
     async def search_docs(self, query: DocsSearchQuery) -> DocsSearchResponse:
@@ -176,14 +176,7 @@ Search configured official documentation sources exposed through llms.txt."""
 
     async def _get_text(self, url: str) -> str:
         try:
-            if self._http_client is not None:
-                response = await self._http_client.get(url)
-            else:
-                async with httpx.AsyncClient(
-                    timeout=self._config.timeout_seconds,
-                    follow_redirects=True,
-                ) as client:
-                    response = await client.get(url)
+            response = await self._http_client.get(url)
         except httpx.TimeoutException as exc:
             raise LlmsTxtDocsSearchClientError(f"Docs search request timed out: {url}") from exc
         except httpx.RequestError as exc:

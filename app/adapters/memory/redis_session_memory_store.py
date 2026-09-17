@@ -11,7 +11,6 @@ from pydantic import ValidationError
 
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 from app.adapters.memory.redis_session_memory_store_config import RedisSessionMemoryStoreConfig
-from app.adapters.memory.redis_session_memory_store_error import RedisSessionMemoryStoreError
 from app.domain.models import SessionMemory
 
 logger = logging.getLogger(__name__)
@@ -24,10 +23,10 @@ Persist compact session continuity memory in Redis."""
 
     def __init__(
         self,
-        config: RedisSessionMemoryStoreConfig | None = None,
-        redis_client: Any | None = None,
+        config: RedisSessionMemoryStoreConfig,
+        redis_client: Any,
     ) -> None:
-        self._config = config or RedisSessionMemoryStoreConfig.from_env()
+        self._config = config
         self._redis = redis_client
 
     async def load(self, *, user_id: str, session_id: str | None) -> SessionMemory | None:
@@ -159,16 +158,4 @@ Persist compact session continuity memory in Redis."""
         )
 
     def _ensure_redis(self) -> Any:
-        if self._redis is None:
-            self._redis = self._build_redis_client()
         return self._redis
-
-    def _build_redis_client(self) -> Any:
-        try:
-            from redis import asyncio as redis_asyncio
-        except ImportError as exc:
-            raise RedisSessionMemoryStoreError(
-                "The redis package is required for RedisSessionMemoryStore."
-            ) from exc
-
-        return redis_asyncio.from_url(self._config.redis_url, decode_responses=True)

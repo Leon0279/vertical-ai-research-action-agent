@@ -6,7 +6,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
-from app.adapters.memory._postgres import ensure_asyncpg_pool, postgres_table_ref
+from app.adapters.memory._postgres import postgres_table_ref
 from app.adapters.memory.contracts.action_memory_store_protocol import (
     ActionMemoryStoreProtocol,
 )
@@ -16,6 +16,7 @@ from app.adapters.memory.postgres_action_memory_store_config import (
 from app.adapters.memory.postgres_action_memory_store_error import (
     PostgresActionMemoryStoreError,
 )
+from app.adapters.memory.postgres_pool_registry import PostgresPoolRegistry
 from app.common.utils.json_utils import load_json_string_list
 from app.domain.models import ActionMemoryRecord
 
@@ -27,11 +28,15 @@ Persist action memory records in PostgreSQL."""
 
     def __init__(
         self,
-        config: PostgresActionMemoryStoreConfig | None = None,
+        config: PostgresActionMemoryStoreConfig,
         pool: Any | None = None,
+        pool_registry: PostgresPoolRegistry | None = None,
     ) -> None:
-        self._config = config or PostgresActionMemoryStoreConfig.from_env()
+        if pool is None and pool_registry is None:
+            raise ValueError("PostgresActionMemoryStore requires a pool or pool_registry.")
+        self._config = config
         self._pool = pool
+        self._pool_registry = pool_registry
 
     async def list_active_actions(
         self,
@@ -90,14 +95,12 @@ Persist action memory records in PostgreSQL."""
         return postgres_table_ref(self._config.schema_name, self._config.table_name)
 
     async def _ensure_pool(self) -> Any:
-        self._pool = await ensure_asyncpg_pool(
-            self._pool,
-            dsn=self._config.dsn,
-            error_factory=PostgresActionMemoryStoreError,
-            missing_dependency_message=(
-                "The asyncpg package is required for PostgresActionMemoryStore."
-            ),
-        )
+        if self._pool is None:
+            if self._pool_registry is None:
+                raise PostgresActionMemoryStoreError(
+                    "PostgreSQL pool registry is not configured."
+                )
+            self._pool = await self._pool_registry.get_pool(self._config.dsn)
         return self._pool
 
     def _build_list_active_actions_query(self) -> str:

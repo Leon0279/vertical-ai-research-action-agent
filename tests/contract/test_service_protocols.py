@@ -186,9 +186,18 @@ from app.services.tool_execution_layer.tool_execution_layer_service import (
 
 def test_adapter_protocol_conformance() -> None:
     assert isinstance(StubLLMClient(), LLMClientProtocol)
-    assert isinstance(ZhipuLLMClient(config=ZhipuLLMClientConfig(api_key="fake-key")), LLMClientProtocol)
     assert isinstance(
-        ZhipuEmbeddingClient(config=ZhipuEmbeddingClientConfig(api_key="fake-key")),
+        ZhipuLLMClient(
+            config=ZhipuLLMClientConfig(api_key="fake-key"),
+            http_client=object(),
+        ),
+        LLMClientProtocol,
+    )
+    assert isinstance(
+        ZhipuEmbeddingClient(
+            config=ZhipuEmbeddingClientConfig(api_key="fake-key"),
+            http_client=object(),
+        ),
         EmbeddingClientProtocol,
     )
     assert isinstance(
@@ -200,31 +209,36 @@ def test_adapter_protocol_conformance() -> None:
                         llms_txt_url="https://example.test/llms.txt",
                     )
                 ]
-            )
+            ),
+            http_client=object(),
         ),
         DocsSearchClientProtocol,
     )
     assert isinstance(
         ArxivPaperSearchClient(
-            config=ArxivPaperSearchClientConfig(user_agent="test-agent")
+            config=ArxivPaperSearchClientConfig(user_agent="test-agent"),
+            http_client=object(),
         ),
         PaperSearchClientProtocol,
     )
     assert isinstance(
         ArxivPaperContentFetchClient(
-            config=ArxivPaperContentFetchClientConfig(user_agent="test-agent")
+            config=ArxivPaperContentFetchClientConfig(user_agent="test-agent"),
+            http_client=object(),
         ),
         PaperContentFetchClientProtocol,
     )
     assert isinstance(
         TavilyWebSearchClient(
-            config=TavilyWebSearchClientConfig(api_key="fake-key")
+            config=TavilyWebSearchClientConfig(api_key="fake-key"),
+            http_client=object(),
         ),
         WebSearchClientProtocol,
     )
     assert isinstance(
         TavilyWebContentFetchClient(
-            config=TavilyWebContentFetchClientConfig(api_key="fake-key")
+            config=TavilyWebContentFetchClientConfig(api_key="fake-key"),
+            http_client=object(),
         ),
         WebContentFetchClientProtocol,
     )
@@ -323,10 +337,12 @@ def test_service_protocol_conformance() -> None:
     assert isinstance(
         TavilyWebSearchTool(
             web_search_client=TavilyWebSearchClient(
-                config=TavilyWebSearchClientConfig(api_key="fake-key")
+                config=TavilyWebSearchClientConfig(api_key="fake-key"),
+                http_client=object(),
             ),
             web_content_fetch_client=TavilyWebContentFetchClient(
-                config=TavilyWebContentFetchClientConfig(api_key="fake-key")
+                config=TavilyWebContentFetchClientConfig(api_key="fake-key"),
+                http_client=object(),
             ),
         ),
         TavilyWebSearchToolProtocol,
@@ -334,10 +350,12 @@ def test_service_protocol_conformance() -> None:
     assert isinstance(
         ArxivPaperSearchTool(
             paper_search_client=ArxivPaperSearchClient(
-                config=ArxivPaperSearchClientConfig(user_agent="test-agent")
+                config=ArxivPaperSearchClientConfig(user_agent="test-agent"),
+                http_client=object(),
             ),
             paper_content_fetch_client=ArxivPaperContentFetchClient(
-                config=ArxivPaperContentFetchClientConfig(user_agent="test-agent")
+                config=ArxivPaperContentFetchClientConfig(user_agent="test-agent"),
+                http_client=object(),
             ),
         ),
         ArxivPaperSearchToolProtocol,
@@ -352,7 +370,8 @@ def test_service_protocol_conformance() -> None:
                             llms_txt_url="https://example.test/llms.txt",
                         )
                     ]
-                )
+                ),
+                http_client=object(),
             ),
         ),
         LlmsTxtDocsSearchToolProtocol,
@@ -366,7 +385,8 @@ def test_service_protocol_conformance() -> None:
                 pool=object(),
             ),
             embedding_client=ZhipuEmbeddingClient(
-                config=ZhipuEmbeddingClientConfig(api_key="fake-key")
+                config=ZhipuEmbeddingClientConfig(api_key="fake-key"),
+                http_client=object(),
             ),
         ),
         ResearchKnowledgeMemoryToolProtocol,
@@ -375,10 +395,12 @@ def test_service_protocol_conformance() -> None:
         PaperSearchFamilyService(
             ArxivPaperSearchTool(
                 paper_search_client=ArxivPaperSearchClient(
-                    config=ArxivPaperSearchClientConfig(user_agent="test-agent")
+                    config=ArxivPaperSearchClientConfig(user_agent="test-agent"),
+                    http_client=object(),
                 ),
                 paper_content_fetch_client=ArxivPaperContentFetchClient(
-                    config=ArxivPaperContentFetchClientConfig(user_agent="test-agent")
+                    config=ArxivPaperContentFetchClientConfig(user_agent="test-agent"),
+                    http_client=object(),
                 ),
             )
         ),
@@ -395,7 +417,8 @@ def test_service_protocol_conformance() -> None:
                                 llms_txt_url="https://example.test/llms.txt",
                             )
                         ]
-                    )
+                    ),
+                    http_client=object(),
                 ),
             )
         ),
@@ -405,10 +428,12 @@ def test_service_protocol_conformance() -> None:
         WebSearchFamilyService(
             TavilyWebSearchTool(
                 web_search_client=TavilyWebSearchClient(
-                    config=TavilyWebSearchClientConfig(api_key="fake-key")
+                    config=TavilyWebSearchClientConfig(api_key="fake-key"),
+                    http_client=object(),
                 ),
                 web_content_fetch_client=TavilyWebContentFetchClient(
-                    config=TavilyWebContentFetchClientConfig(api_key="fake-key")
+                    config=TavilyWebContentFetchClientConfig(api_key="fake-key"),
+                    http_client=object(),
                 ),
             )
         ),
@@ -424,7 +449,8 @@ def test_service_protocol_conformance() -> None:
                     pool=object(),
                 ),
                 embedding_client=ZhipuEmbeddingClient(
-                    config=ZhipuEmbeddingClientConfig(api_key="fake-key")
+                    config=ZhipuEmbeddingClientConfig(api_key="fake-key"),
+                    http_client=object(),
                 ),
             )
         ),
@@ -461,7 +487,10 @@ def test_memory_service_interfaces_instantiable() -> None:
         config=PostgresResearchKnowledgeMemoryStoreConfig(dsn="postgresql://example.test/db"),
         pool=object(),
     )
-    embedding_client = ZhipuEmbeddingClient(config=ZhipuEmbeddingClientConfig(api_key="fake-key"))
+    embedding_client = ZhipuEmbeddingClient(
+        config=ZhipuEmbeddingClientConfig(api_key="fake-key"),
+        http_client=object(),
+    )
 
     memory_loader = ContextMemoryLoaderService(
         session_store=session_store,

@@ -1,17 +1,21 @@
 """Tests for project creation and query API routes."""
 
 from datetime import UTC, datetime
+from typing import Any
 
+from dishka import make_async_container
+from dishka.integrations.fastapi import FastapiProvider
 from fastapi.testclient import TestClient
+from httpx import Response
 
-from app.api.app import app
-from app.api.routes import projects
+from app.api.app import create_app
 from app.domain.models.project import (
     ProjectCreationResult,
     ProjectDetailsResult,
     ProjectIdListResult,
 )
 from app.services.project.project_service_error import ProjectServiceError
+from app.services.project.contracts.project_service_protocol import ProjectServiceProtocol
 
 
 class _ProjectService:
@@ -55,7 +59,21 @@ class _ProjectService:
         return self.project_details
 
 
-_client = TestClient(app, raise_server_exceptions=False)
+def _request(
+    service: _ProjectService,
+    method: str,
+    path: str,
+    **kwargs: Any,
+) -> Response:
+    container = make_async_container(
+        FastapiProvider(),
+        context={ProjectServiceProtocol: service},
+    )
+    with TestClient(
+        create_app(container),
+        raise_server_exceptions=False,
+    ) as client:
+        return client.request(method, path, **kwargs)
 
 
 def _payload() -> dict[str, object]:
@@ -83,11 +101,9 @@ def _project_details() -> ProjectDetailsResult:
     )
 
 
-def test_create_project_returns_201_and_project_id(monkeypatch) -> None:
+def test_create_project_returns_201_and_project_id() -> None:
     service = _ProjectService(project_id="project-123")
-    monkeypatch.setattr(projects, "_project_service", service)
-
-    response = _client.post("/v1/projects", json=_payload())
+    response = _request(service, "POST", "/v1/projects", json=_payload())
 
     assert response.status_code == 201
     assert response.json() == {"project_id": "project-123"}
@@ -98,7 +114,9 @@ def test_create_project_returns_201_and_project_id(monkeypatch) -> None:
 
 
 def test_create_project_validation_failure_uses_stable_error_body() -> None:
-    response = _client.post(
+    response = _request(
+        _ProjectService(),
+        "POST",
         "/v1/projects",
         json={
             "user_id": "user-1",
@@ -114,16 +132,14 @@ def test_create_project_validation_failure_uses_stable_error_body() -> None:
     assert set(body) == {"error_code", "error_reason"}
 
 
-def test_create_project_persistence_failure_returns_503(monkeypatch) -> None:
+def test_create_project_persistence_failure_returns_503() -> None:
     service = _ProjectService(
         error=ProjectServiceError(
             error_code="PROJECT_PROFILE_PERSISTENCE_FAILED",
             error_reason="项目档案暂时无法保存，请稍后重试。",
         )
     )
-    monkeypatch.setattr(projects, "_project_service", service)
-
-    response = _client.post("/v1/projects", json=_payload())
+    response = _request(service, "POST", "/v1/projects", json=_payload())
 
     assert response.status_code == 503
     assert response.json() == {
@@ -132,11 +148,9 @@ def test_create_project_persistence_failure_returns_503(monkeypatch) -> None:
     }
 
 
-def test_create_project_unexpected_failure_returns_safe_500(monkeypatch) -> None:
+def test_create_project_unexpected_failure_returns_safe_500() -> None:
     service = _ProjectService(error=RuntimeError("database password=secret"))
-    monkeypatch.setattr(projects, "_project_service", service)
-
-    response = _client.post("/v1/projects", json=_payload())
+    response = _request(service, "POST", "/v1/projects", json=_payload())
 
     assert response.status_code == 500
     assert response.json() == {
@@ -146,29 +160,40 @@ def test_create_project_unexpected_failure_returns_safe_500(monkeypatch) -> None
     assert "secret" not in response.text
 
 
-def test_list_project_ids_returns_200_and_ids(monkeypatch) -> None:
+def test_list_project_ids_returns_200_and_ids() -> None:
     service = _ProjectService(project_ids=["project-newer", "project-older"])
-    monkeypatch.setattr(projects, "_project_service", service)
-
-    response = _client.get("/v1/projects", params={"user_id": "user-1"})
+    response = _request(
+        service,
+        "GET",
+        "/v1/projects",
+        params={"user_id": "user-1"},
+    )
 
     assert response.status_code == 200
     assert response.json() == {"project_ids": ["project-newer", "project-older"]}
     assert service.list_user_ids == ["user-1"]
 
 
-def test_list_project_ids_returns_empty_list(monkeypatch) -> None:
-    monkeypatch.setattr(projects, "_project_service", _ProjectService())
-
-    response = _client.get("/v1/projects", params={"user_id": "user-1"})
+def test_list_project_ids_returns_empty_list() -> None:
+    response = _request(
+        _ProjectService(),
+        "GET",
+        "/v1/projects",
+        params={"user_id": "user-1"},
+    )
 
     assert response.status_code == 200
     assert response.json() == {"project_ids": []}
 
 
 def test_list_project_ids_requires_non_blank_user_id() -> None:
-    missing = _client.get("/v1/projects")
-    blank = _client.get("/v1/projects", params={"user_id": "   "})
+    missing = _request(_ProjectService(), "GET", "/v1/projects")
+    blank = _request(
+        _ProjectService(),
+        "GET",
+        "/v1/projects",
+        params={"user_id": "   "},
+    )
 
     assert missing.status_code == 422
     assert missing.json()["error_code"] == "INVALID_PROJECT_REQUEST"
@@ -176,26 +201,29 @@ def test_list_project_ids_requires_non_blank_user_id() -> None:
     assert blank.json()["error_code"] == "INVALID_PROJECT_REQUEST"
 
 
-def test_list_project_ids_store_failure_returns_503(monkeypatch) -> None:
+def test_list_project_ids_store_failure_returns_503() -> None:
     service = _ProjectService(
         error=ProjectServiceError(
             error_code="PROJECT_PROFILE_QUERY_FAILED",
             error_reason="项目列表暂时无法读取，请稍后重试。",
         )
     )
-    monkeypatch.setattr(projects, "_project_service", service)
-
-    response = _client.get("/v1/projects", params={"user_id": "user-1"})
+    response = _request(
+        service,
+        "GET",
+        "/v1/projects",
+        params={"user_id": "user-1"},
+    )
 
     assert response.status_code == 503
     assert response.json()["error_code"] == "PROJECT_PROFILE_QUERY_FAILED"
 
 
-def test_get_project_returns_current_business_details(monkeypatch) -> None:
+def test_get_project_returns_current_business_details() -> None:
     service = _ProjectService(project_details=_project_details())
-    monkeypatch.setattr(projects, "_project_service", service)
-
-    response = _client.get(
+    response = _request(
+        service,
+        "GET",
         "/v1/projects/project-123",
         params={"user_id": "user-1"},
     )
@@ -216,10 +244,10 @@ def test_get_project_returns_current_business_details(monkeypatch) -> None:
     assert service.detail_requests == [("user-1", "project-123")]
 
 
-def test_get_project_returns_404_for_unmatched_user_project_scope(monkeypatch) -> None:
-    monkeypatch.setattr(projects, "_project_service", _ProjectService())
-
-    response = _client.get(
+def test_get_project_returns_404_for_unmatched_user_project_scope() -> None:
+    response = _request(
+        _ProjectService(),
+        "GET",
         "/v1/projects/project-123",
         params={"user_id": "other-user"},
     )
@@ -232,22 +260,26 @@ def test_get_project_returns_404_for_unmatched_user_project_scope(monkeypatch) -
 
 
 def test_get_project_requires_user_id() -> None:
-    response = _client.get("/v1/projects/project-123")
+    response = _request(
+        _ProjectService(),
+        "GET",
+        "/v1/projects/project-123",
+    )
 
     assert response.status_code == 422
     assert response.json()["error_code"] == "INVALID_PROJECT_REQUEST"
 
 
-def test_get_project_query_failure_returns_503(monkeypatch) -> None:
+def test_get_project_query_failure_returns_503() -> None:
     service = _ProjectService(
         error=ProjectServiceError(
             error_code="PROJECT_PROFILE_QUERY_FAILED",
             error_reason="项目详情暂时无法读取，请稍后重试。",
         )
     )
-    monkeypatch.setattr(projects, "_project_service", service)
-
-    response = _client.get(
+    response = _request(
+        service,
+        "GET",
         "/v1/projects/project-123",
         params={"user_id": "user-1"},
     )
@@ -256,11 +288,14 @@ def test_get_project_query_failure_returns_503(monkeypatch) -> None:
     assert response.json()["error_code"] == "PROJECT_PROFILE_QUERY_FAILED"
 
 
-def test_project_query_unexpected_failure_returns_safe_500(monkeypatch) -> None:
+def test_project_query_unexpected_failure_returns_safe_500() -> None:
     service = _ProjectService(error=RuntimeError("database password=secret"))
-    monkeypatch.setattr(projects, "_project_service", service)
-
-    response = _client.get("/v1/projects", params={"user_id": "user-1"})
+    response = _request(
+        service,
+        "GET",
+        "/v1/projects",
+        params={"user_id": "user-1"},
+    )
 
     assert response.status_code == 500
     assert response.json() == {
@@ -271,7 +306,7 @@ def test_project_query_unexpected_failure_returns_safe_500(monkeypatch) -> None:
 
 
 def test_project_query_routes_are_registered_in_openapi() -> None:
-    schema = _client.get("/openapi.json").json()
+    schema = _request(_ProjectService(), "GET", "/openapi.json").json()
 
     assert "get" in schema["paths"]["/v1/projects"]
     assert "get" in schema["paths"]["/v1/projects/{project_id}"]

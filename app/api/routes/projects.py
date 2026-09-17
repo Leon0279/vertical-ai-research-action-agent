@@ -5,10 +5,10 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, Path, Query, status
 from starlette.responses import JSONResponse
 
-from app.api.dependencies import build_default_project_service
 from app.api.routes.project_request_validation_route import (
     ProjectRequestValidationRoute,
 )
@@ -18,6 +18,7 @@ from app.api.schemas.list_project_ids_response import ListProjectIdsResponse
 from app.api.schemas.project_details_response import ProjectDetailsResponse
 from app.api.schemas.project_error_response import ProjectErrorResponse
 from app.domain.models.project import ProjectCreationInput
+from app.services.project.contracts.project_service_protocol import ProjectServiceProtocol
 from app.services.project.project_service_error import ProjectServiceError
 
 logger = logging.getLogger(__name__)
@@ -27,8 +28,6 @@ router = APIRouter(
     tags=["projects"],
     route_class=ProjectRequestValidationRoute,
 )
-_project_service = build_default_project_service()
-
 _PROJECT_SERVICE_ERROR_STATUS = {
     "INVALID_PROJECT_REQUEST": status.HTTP_422_UNPROCESSABLE_CONTENT,
     "PROJECT_NOT_FOUND": status.HTTP_404_NOT_FOUND,
@@ -65,8 +64,10 @@ _ProjectIdPath = Annotated[
         },
     },
 )
+@inject
 async def create_project(
     payload: CreateProjectRequest,
+    project_service: FromDishka[ProjectServiceProtocol],
 ) -> CreateProjectResponse | JSONResponse:
     """创建项目并返回后续 agent run 可使用的稳定项目标识。
 
@@ -78,7 +79,7 @@ async def create_project(
     """
 
     try:
-        result = await _project_service.create_project(
+        result = await project_service.create_project(
             ProjectCreationInput(**payload.model_dump())
         )
     except ProjectServiceError as exc:
@@ -119,8 +120,10 @@ async def create_project(
         },
     },
 )
+@inject
 async def list_project_ids(
     user_id: _UserIdQuery,
+    project_service: FromDishka[ProjectServiceProtocol],
 ) -> ListProjectIdsResponse | JSONResponse:
     """查询指定用户当前拥有的所有项目标识。
 
@@ -132,7 +135,7 @@ async def list_project_ids(
     """
 
     try:
-        result = await _project_service.list_project_ids_by_user_id(user_id=user_id)
+        result = await project_service.list_project_ids_by_user_id(user_id=user_id)
     except ProjectServiceError as exc:
         logger.warning(
             "Project list query failed.",
@@ -175,9 +178,11 @@ async def list_project_ids(
         },
     },
 )
+@inject
 async def get_project(
     project_id: _ProjectIdPath,
     user_id: _UserIdQuery,
+    project_service: FromDishka[ProjectServiceProtocol],
 ) -> ProjectDetailsResponse | JSONResponse:
     """查询指定用户和项目范围的当前项目业务信息。
 
@@ -190,7 +195,7 @@ async def get_project(
     """
 
     try:
-        result = await _project_service.get_project(
+        result = await project_service.get_project(
             user_id=user_id,
             project_id=project_id,
         )

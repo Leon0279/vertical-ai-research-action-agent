@@ -33,10 +33,10 @@ HTTP client for provider-backed web content fetch through Tavily Extract."""
 
     def __init__(
         self,
-        config: TavilyWebContentFetchClientConfig | None = None,
-        http_client: httpx.AsyncClient | None = None,
+        config: TavilyWebContentFetchClientConfig,
+        http_client: httpx.AsyncClient,
     ) -> None:
-        self._config = config or TavilyWebContentFetchClientConfig.from_env()
+        self._config = config
         self._http_client = http_client
 
     async def fetch_content(
@@ -133,13 +133,7 @@ HTTP client for provider-backed web content fetch through Tavily Extract."""
             "Content-Type": "application/json",
         }
         try:
-            if self._http_client is not None:
-                response = await self._http_client.post(url, json=payload, headers=headers)
-            else:
-                async with httpx.AsyncClient(
-                    timeout=self._config.http_timeout_seconds
-                ) as client:
-                    response = await client.post(url, json=payload, headers=headers)
+            response = await self._http_client.post(url, json=payload, headers=headers)
         except httpx.TimeoutException as exc:
             raise TavilyWebContentFetchClientError(
                 "Tavily web content fetch request timed out."

@@ -91,7 +91,8 @@ def test_arxiv_content_config_requires_user_agent(monkeypatch: pytest.MonkeyPatc
 def test_adapter_protocol_conformance() -> None:
     assert isinstance(
         ArxivPaperContentFetchClient(
-            config=ArxivPaperContentFetchClientConfig(user_agent="vaa-test-agent/1.0")
+            config=ArxivPaperContentFetchClientConfig(user_agent="vaa-test-agent/1.0"),
+            http_client=object(),
         ),
         PaperContentFetchClientProtocol,
     )
@@ -372,7 +373,8 @@ def test_fetch_content_returns_extraction_failed_for_malformed_pdf(caplog) -> No
 
 def test_fetch_content_rejects_invalid_inputs() -> None:
     fetch_client = ArxivPaperContentFetchClient(
-        config=ArxivPaperContentFetchClientConfig(user_agent="vaa-test-agent/1.0")
+        config=ArxivPaperContentFetchClientConfig(user_agent="vaa-test-agent/1.0"),
+        http_client=object(),
     )
 
     with pytest.raises(ArxivPaperContentFetchClientError, match="paper_id must not be empty"):

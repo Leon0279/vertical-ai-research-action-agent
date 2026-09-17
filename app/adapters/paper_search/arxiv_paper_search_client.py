@@ -51,10 +51,10 @@ HTTP client for arXiv paper search."""
 
     def __init__(
         self,
-        config: ArxivPaperSearchClientConfig | None = None,
-        http_client: httpx.AsyncClient | None = None,
+        config: ArxivPaperSearchClientConfig,
+        http_client: httpx.AsyncClient,
     ) -> None:
-        self._config = config or ArxivPaperSearchClientConfig.from_env()
+        self._config = config
         self._http_client = http_client
         self._rate_limit_lock = asyncio.Lock()
         self._last_request_started_at: float | None = None
@@ -171,11 +171,11 @@ HTTP client for arXiv paper search."""
             await self._wait_for_rate_limit()
             self._last_request_started_at = time.monotonic()
             try:
-                if self._http_client is not None:
-                    response = await self._http_client.get(url, params=params, headers=headers)
-                else:
-                    async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-                        response = await client.get(url, params=params, headers=headers)
+                response = await self._http_client.get(
+                    url,
+                    params=params,
+                    headers=headers,
+                )
             except httpx.TimeoutException as exc:
                 raise ArxivPaperSearchClientError(
                     "arXiv paper search request timed out.",

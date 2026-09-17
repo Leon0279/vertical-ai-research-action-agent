@@ -110,7 +110,10 @@ def test_config_rejects_invalid_sources_json(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_adapter_protocol_conformance() -> None:
-    assert isinstance(LlmsTxtDocsSearchClient(config=_config()), DocsSearchClientProtocol)
+    assert isinstance(
+        LlmsTxtDocsSearchClient(config=_config(), http_client=object()),
+        DocsSearchClientProtocol,
+    )
 
 
 def test_search_docs_fetches_manifest_pages_and_normalizes_snippets() -> None:
@@ -257,7 +260,8 @@ def test_search_docs_rejects_bad_inputs_and_unknown_sources() -> None:
         config=LlmsTxtDocsSearchClientConfig(
             sources=[_config().sources[0]],
             max_limit=2,
-        )
+        ),
+        http_client=object(),
     )
 
     with pytest.raises(LlmsTxtDocsSearchClientError, match="query_text must not be empty"):

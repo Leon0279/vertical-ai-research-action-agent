@@ -85,7 +85,10 @@ def test_tavily_config_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_adapter_protocol_conformance() -> None:
     assert isinstance(
-        TavilyWebSearchClient(config=TavilyWebSearchClientConfig(api_key="tavily-test-key")),
+        TavilyWebSearchClient(
+            config=TavilyWebSearchClientConfig(api_key="tavily-test-key"),
+            http_client=object(),
+        ),
         WebSearchClientProtocol,
     )
 
@@ -181,7 +184,8 @@ def test_search_web_returns_empty_results_for_empty_response() -> None:
 
 def test_search_web_rejects_bad_inputs() -> None:
     search_client = TavilyWebSearchClient(
-        config=TavilyWebSearchClientConfig(api_key="tavily-test-key", max_limit=3)
+        config=TavilyWebSearchClientConfig(api_key="tavily-test-key", max_limit=3),
+        http_client=object(),
     )
 
     with pytest.raises(TavilyWebSearchClientError, match="query_text must not be empty"):

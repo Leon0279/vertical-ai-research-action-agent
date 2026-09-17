@@ -33,10 +33,10 @@ HTTP client for provider-backed web search through Tavily."""
 
     def __init__(
         self,
-        config: TavilyWebSearchClientConfig | None = None,
-        http_client: httpx.AsyncClient | None = None,
+        config: TavilyWebSearchClientConfig,
+        http_client: httpx.AsyncClient,
     ) -> None:
-        self._config = config or TavilyWebSearchClientConfig.from_env()
+        self._config = config
         self._http_client = http_client
 
     async def search_web(self, query: WebSearchQuery) -> WebSearchResponse:
@@ -161,11 +161,7 @@ HTTP client for provider-backed web search through Tavily."""
     async def _send_request(self, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self._config.base_url.rstrip('/')}/search"
         try:
-            if self._http_client is not None:
-                response = await self._http_client.post(url, json=payload)
-            else:
-                async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-                    response = await client.post(url, json=payload)
+            response = await self._http_client.post(url, json=payload)
         except httpx.TimeoutException as exc:
             raise TavilyWebSearchClientError(
                 "Tavily web search request timed out.",

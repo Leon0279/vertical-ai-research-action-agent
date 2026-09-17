@@ -1,5 +1,7 @@
 """Importability tests for architecture skeleton."""
 
+import asyncio
+
 from app.api.app import app
 from app.adapters.embedding.zhipu_embedding_client import ZhipuEmbeddingClient
 from app.adapters.memory.postgres_action_memory_store import PostgresActionMemoryStore
@@ -16,7 +18,8 @@ from app.adapters.memory.postgres_research_knowledge_memory_store import (
 from app.adapters.memory.redis_session_memory_store import RedisSessionMemoryStore
 from app.adapters.memory.redis_session_memory_store_config import RedisSessionMemoryStoreConfig
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
-from app.orchestration.research_action_pipeline import ResearchActionPipeline, build_default_pipeline
+from app.bootstrap import build_application_container
+from app.orchestration.research_action_pipeline import ResearchActionPipeline
 from app.services.project import ProjectService
 from app.services.project.contracts import ProjectServiceProtocol
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
@@ -27,8 +30,16 @@ def test_app_importable() -> None:
     assert app.title
 
 
+async def _resolved_production_pipeline() -> ResearchActionPipeline:
+    container = build_application_container()
+    try:
+        return await container.get(ResearchActionPipeline)
+    finally:
+        await container.close()
+
+
 def test_pipeline_importable() -> None:
-    pipeline = build_default_pipeline()
+    pipeline = asyncio.run(_resolved_production_pipeline())
     assert isinstance(pipeline, ResearchActionPipeline)
 
 
@@ -38,7 +49,7 @@ def test_project_service_importable() -> None:
 
 
 def test_pipeline_exposes_private_stage_methods() -> None:
-    pipeline = build_default_pipeline()
+    pipeline = asyncio.run(_resolved_production_pipeline())
     for method_name in (
         "_request_intake",
         "_task_interpretation",
@@ -54,7 +65,7 @@ def test_pipeline_exposes_private_stage_methods() -> None:
 
 
 def test_default_dependencies_satisfy_pipeline_protocols() -> None:
-    pipeline = build_default_pipeline()
+    pipeline = asyncio.run(_resolved_production_pipeline())
 
     assert isinstance(pipeline._dependencies.request_intake, RequestIntakeProtocol)
     assert isinstance(pipeline._dependencies.task_interpreter, TaskInterpreterProtocol)

@@ -97,7 +97,8 @@ def test_tavily_content_config_requires_api_key(monkeypatch: pytest.MonkeyPatch)
 def test_adapter_protocol_conformance() -> None:
     assert isinstance(
         TavilyWebContentFetchClient(
-            config=TavilyWebContentFetchClientConfig(api_key="tavily-test-key")
+            config=TavilyWebContentFetchClientConfig(api_key="tavily-test-key"),
+            http_client=object(),
         ),
         WebContentFetchClientProtocol,
     )
@@ -234,7 +235,8 @@ def test_fetch_content_uses_defaults_and_skips_chunks_without_query() -> None:
 
 def test_fetch_content_rejects_bad_inputs() -> None:
     fetch_client = TavilyWebContentFetchClient(
-        config=TavilyWebContentFetchClientConfig(api_key="tavily-test-key")
+        config=TavilyWebContentFetchClientConfig(api_key="tavily-test-key"),
+        http_client=object(),
     )
 
     with pytest.raises(TavilyWebContentFetchClientError, match="urls must not be empty"):

@@ -25,10 +25,10 @@ HTTP client for Zhipu embeddings."""
 
     def __init__(
         self,
-        config: ZhipuEmbeddingClientConfig | None = None,
-        http_client: httpx.AsyncClient | None = None,
+        config: ZhipuEmbeddingClientConfig,
+        http_client: httpx.AsyncClient,
     ) -> None:
-        self._config = config or ZhipuEmbeddingClientConfig.from_env()
+        self._config = config
         self._http_client = http_client
 
     async def embed_text(self, text: str) -> EmbeddingResult:
@@ -71,11 +71,7 @@ HTTP client for Zhipu embeddings."""
         url = f"{self._config.base_url.rstrip('/')}/embeddings"
 
         try:
-            if self._http_client:
-                response = await self._http_client.post(url, json=payload, headers=headers)
-            else:
-                async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-                    response = await client.post(url, json=payload, headers=headers)
+            response = await self._http_client.post(url, json=payload, headers=headers)
         except httpx.TimeoutException as exc:
             raise ZhipuEmbeddingClientError("Zhipu embedding request timed out.") from exc
         except httpx.RequestError as exc:

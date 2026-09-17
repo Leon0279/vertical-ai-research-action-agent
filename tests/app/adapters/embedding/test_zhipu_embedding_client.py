@@ -175,7 +175,8 @@ def test_embedding_2_payload_omits_dimensions() -> None:
 
 def test_embed_text_rejects_empty_text() -> None:
     embedding_client = ZhipuEmbeddingClient(
-        config=ZhipuEmbeddingClientConfig(api_key="fake-key")
+        config=ZhipuEmbeddingClientConfig(api_key="fake-key"),
+        http_client=object(),
     )
 
     with pytest.raises(ZhipuEmbeddingClientError, match="must not be empty"):
@@ -184,7 +185,8 @@ def test_embed_text_rejects_empty_text() -> None:
 
 def test_embed_texts_rejects_empty_or_too_large_batches() -> None:
     embedding_client = ZhipuEmbeddingClient(
-        config=ZhipuEmbeddingClientConfig(api_key="fake-key", max_batch_size=1)
+        config=ZhipuEmbeddingClientConfig(api_key="fake-key", max_batch_size=1),
+        http_client=object(),
     )
 
     with pytest.raises(ZhipuEmbeddingClientError, match="must not be empty"):
@@ -271,7 +273,8 @@ def test_embed_text_rejects_mismatched_response_count() -> None:
 
 def test_zhipu_embedding_client_satisfies_protocol() -> None:
     embedding_client = ZhipuEmbeddingClient(
-        config=ZhipuEmbeddingClientConfig(api_key="fake-key")
+        config=ZhipuEmbeddingClientConfig(api_key="fake-key"),
+        http_client=object(),
     )
 
     assert isinstance(embedding_client, EmbeddingClientProtocol)

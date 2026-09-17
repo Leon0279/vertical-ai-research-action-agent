@@ -1,5 +1,6 @@
 """Operational health route definitions."""
 
+from dishka.integrations.fastapi import FromDishka, inject
 from fastapi import APIRouter, status
 from starlette.responses import JSONResponse
 
@@ -8,7 +9,6 @@ from app.api.schemas.readiness_response import ReadinessResponse
 from app.services.health import ReadinessService
 
 router = APIRouter(tags=["health"])
-_readiness_service = ReadinessService()
 
 
 @router.get("/healthz", response_model=HealthResponse)
@@ -28,10 +28,13 @@ async def health() -> HealthResponse:
         }
     },
 )
-async def readiness() -> ReadinessResponse | JSONResponse:
+@inject
+async def readiness(
+    readiness_service: FromDishka[ReadinessService],
+) -> ReadinessResponse | JSONResponse:
     """Return dependency readiness without exposing connection details."""
 
-    result = await _readiness_service.check()
+    result = await readiness_service.check()
     response = ReadinessResponse(status=result.status, checks=result.checks)
     if result.status == "not_ready":
         return JSONResponse(

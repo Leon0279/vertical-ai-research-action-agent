@@ -120,7 +120,10 @@ def test_generate_json_object_posts_expected_payload_and_returns_dict() -> None:
 
 
 def test_generate_text_rejects_empty_prompt() -> None:
-    llm_client = ZhipuLLMClient(config=ZhipuLLMClientConfig(api_key="fake-key"))
+    llm_client = ZhipuLLMClient(
+        config=ZhipuLLMClientConfig(api_key="fake-key"),
+        http_client=object(),
+    )
 
     with pytest.raises(ZhipuLLMClientError, match="Prompt must not be empty"):
         asyncio.run(llm_client.generate_text("   "))

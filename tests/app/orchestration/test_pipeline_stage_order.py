@@ -5,8 +5,47 @@ import json
 import logging
 
 import pytest
+from dishka import Provider, Scope, provide
 
+from app.adapters.docs_search.contracts.docs_search_client_protocol import (
+    DocsSearchClientProtocol,
+)
+from app.adapters.embedding.contracts.embedding_client_protocol import (
+    EmbeddingClientProtocol,
+)
+from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.adapters.llm.zhipu_llm_client_error import ZhipuLLMClientError
+from app.adapters.memory.contracts.action_memory_store_protocol import (
+    ActionMemoryStoreProtocol,
+)
+from app.adapters.memory.contracts.decision_memory_store_protocol import (
+    DecisionMemoryStoreProtocol,
+)
+from app.adapters.memory.contracts.preference_policy_memory_store_protocol import (
+    PreferencePolicyMemoryStoreProtocol,
+)
+from app.adapters.memory.contracts.project_profile_memory_store_protocol import (
+    ProjectProfileMemoryStoreProtocol,
+)
+from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
+    ResearchKnowledgeMemoryStoreProtocol,
+)
+from app.adapters.memory.contracts.session_memory_store_protocol import (
+    SessionMemoryStoreProtocol,
+)
+from app.adapters.paper_content_fetch.contracts.paper_content_fetch_client_protocol import (
+    PaperContentFetchClientProtocol,
+)
+from app.adapters.paper_search.contracts.paper_search_client_protocol import (
+    PaperSearchClientProtocol,
+)
+from app.adapters.web_content_fetch.contracts.web_content_fetch_client_protocol import (
+    WebContentFetchClientProtocol,
+)
+from app.adapters.web_search.contracts.web_search_client_protocol import (
+    WebSearchClientProtocol,
+)
+from app.bootstrap import build_application_container
 from app.common.observability import current_trace_id
 from app.domain.enums import FamilyName
 from app.domain.models import (
@@ -20,9 +59,7 @@ from app.domain.models import (
     SourceReference,
     SupplementalContext,
 )
-from app.orchestration import pipeline_dependencies
 from app.orchestration.pipeline_dependencies import PipelineDependencies
-from app.orchestration.research_action_pipeline import build_default_pipeline
 from app.orchestration.research_action_pipeline import ResearchActionPipeline
 from app.services.intake.request_intake_service import RequestIntakeService
 
@@ -57,6 +94,8 @@ class _FailingTaskInterpreter:
 
 class _FakeZhipuLLMClient:
     async def generate_text(self, prompt: str) -> str:
+        if "长期记忆候选提取任务" in prompt:
+            return json.dumps({"candidates": []}, ensure_ascii=False)
         if "最终结论生成调用" in prompt:
             return json.dumps(
                 {
@@ -163,6 +202,129 @@ class _FakeEmbeddingClient(_FakeProviderClient):
         raise RuntimeError("Embedding should not be required by this no-op research test.")
 
 
+class _FakeMemoryStore:
+    """Return empty memory reads and accept best-effort writes."""
+
+    async def load(self, **kwargs):
+        del kwargs
+        return None
+
+    async def save(self, memory) -> None:
+        del memory
+
+    async def load_active_profile(self, **kwargs):
+        del kwargs
+        return None
+
+    async def list_active_project_ids(self, **kwargs):
+        del kwargs
+        return []
+
+    async def create_profile(self, profile) -> None:
+        del profile
+
+    async def upsert_profile(self, profile) -> None:
+        del profile
+
+    async def list_active_decisions(self, **kwargs):
+        del kwargs
+        return []
+
+    async def upsert_decision(self, decision) -> None:
+        del decision
+
+    async def list_active_actions(self, **kwargs):
+        del kwargs
+        return []
+
+    async def list_actions_by_parent_decision(self, **kwargs):
+        del kwargs
+        return []
+
+    async def upsert_action(self, action) -> None:
+        del action
+
+    async def list_applicable_policies(self, **kwargs):
+        del kwargs
+        return []
+
+    async def upsert_policy(self, policy) -> None:
+        del policy
+
+    async def get_knowledge_unit(self, **kwargs):
+        del kwargs
+        return None
+
+    async def upsert_knowledge_unit(self, unit) -> None:
+        del unit
+
+    async def find_active_by_dedupe_key(self, **kwargs):
+        del kwargs
+        return None
+
+    async def recall_knowledge_units(self, query):
+        del query
+        return []
+
+
+class _PipelineTestProvider(Provider):
+    """Replace external dependencies while retaining the production object graph."""
+
+    scope = Scope.APP
+
+    @provide(override=True)
+    def llm_client(self) -> LLMClientProtocol:
+        return _FakeZhipuLLMClient()
+
+    @provide(override=True)
+    def embedding_client(self) -> EmbeddingClientProtocol:
+        return _FakeEmbeddingClient()
+
+    @provide(override=True)
+    def docs_client(self) -> DocsSearchClientProtocol:
+        return _FakeProviderClient()
+
+    @provide(override=True)
+    def paper_search_client(self) -> PaperSearchClientProtocol:
+        return _FakeProviderClient()
+
+    @provide(override=True)
+    def paper_content_client(self) -> PaperContentFetchClientProtocol:
+        return _FakeProviderClient()
+
+    @provide(override=True)
+    def web_search_client(self) -> WebSearchClientProtocol:
+        return _FakeProviderClient()
+
+    @provide(override=True)
+    def web_content_client(self) -> WebContentFetchClientProtocol:
+        return _FakeProviderClient()
+
+    @provide(override=True)
+    def session_store(self) -> SessionMemoryStoreProtocol:
+        return _FakeMemoryStore()
+
+    @provide(override=True)
+    def project_store(self) -> ProjectProfileMemoryStoreProtocol:
+        return _FakeMemoryStore()
+
+    @provide(override=True)
+    def decision_store(self) -> DecisionMemoryStoreProtocol:
+        return _FakeMemoryStore()
+
+    @provide(override=True)
+    def action_store(self) -> ActionMemoryStoreProtocol:
+        return _FakeMemoryStore()
+
+    @provide(override=True)
+    def policy_store(self) -> PreferencePolicyMemoryStoreProtocol:
+        return _FakeMemoryStore()
+
+    @provide(override=True)
+    def knowledge_store(self) -> ResearchKnowledgeMemoryStoreProtocol:
+        return _FakeMemoryStore()
+
+
 class _FailingMemoryDistiller:
     async def distill(self, context: ExecutionContext):
         del context
@@ -179,40 +341,34 @@ class _RecordingMemoryPersistence:
         raise AssertionError("Persistence must not run after distillation failure.")
 
 
-def _patch_default_provider_clients(monkeypatch) -> None:
-    monkeypatch.setattr(pipeline_dependencies, "ZhipuLLMClient", _FakeZhipuLLMClient)
-    monkeypatch.setattr(
-        pipeline_dependencies,
-        "ZhipuEmbeddingClient",
-        _FakeEmbeddingClient,
-    )
-    for client_name in (
-        "LlmsTxtDocsSearchClient",
-        "ArxivPaperSearchClient",
-        "ArxivPaperContentFetchClient",
-        "TavilyWebSearchClient",
-        "TavilyWebContentFetchClient",
-    ):
-        monkeypatch.setattr(pipeline_dependencies, client_name, _FakeProviderClient)
+async def _resolve_test_pipeline() -> tuple[ResearchActionPipeline, object]:
+    container = build_application_container(_PipelineTestProvider())
+    pipeline = await container.get(ResearchActionPipeline)
+    return pipeline, container
 
 
-def test_pipeline_stage_order(monkeypatch, caplog) -> None:
+def test_pipeline_stage_order(caplog) -> None:
     caplog.set_level(
         logging.INFO,
         logger="app.orchestration.research_action_pipeline",
     )
-    _patch_default_provider_clients(monkeypatch)
-    pipeline = build_default_pipeline()
-    output = asyncio.run(
-        pipeline.run(
-            RequestContext(
-                original_query="Compare RAG and agentic retrieval for production systems.",
-                user_id="u-1",
-                session_id="s-1",
-                project_id="p-1",
+    async def run_pipeline():
+        pipeline, container = await _resolve_test_pipeline()
+        try:
+            return await pipeline.run(
+                RequestContext(
+                    original_query=(
+                        "Compare RAG and agentic retrieval for production systems."
+                    ),
+                    user_id="u-1",
+                    session_id="s-1",
+                    project_id="p-1",
+                )
             )
-        )
-    )
+        finally:
+            await container.close()
+
+    output = asyncio.run(run_pipeline())
     assert output.stage_history == [
         "request_intake",
         "task_interpretation",
@@ -276,28 +432,32 @@ def test_pipeline_stage_order(monkeypatch, caplog) -> None:
 
 
 def test_memory_distillation_failure_is_best_effort_and_not_logged_as_completed(
-    monkeypatch,
     caplog,
 ) -> None:
     caplog.set_level(
         logging.INFO,
         logger="app.orchestration.research_action_pipeline",
     )
-    _patch_default_provider_clients(monkeypatch)
-    pipeline = build_default_pipeline()
-    pipeline._dependencies.memory_distiller = _FailingMemoryDistiller()
     memory_persistence = _RecordingMemoryPersistence()
-    pipeline._dependencies.memory_persistence = memory_persistence
 
-    output = asyncio.run(
-        pipeline.run(
-            RequestContext(
-                original_query="Return a normal response when memory distillation fails.",
-                user_id="u-memory-failure",
-                session_id="s-memory-failure",
+    async def run_pipeline():
+        pipeline, container = await _resolve_test_pipeline()
+        pipeline._dependencies.memory_distiller = _FailingMemoryDistiller()
+        pipeline._dependencies.memory_persistence = memory_persistence
+        try:
+            return await pipeline.run(
+                RequestContext(
+                    original_query=(
+                        "Return a normal response when memory distillation fails."
+                    ),
+                    user_id="u-memory-failure",
+                    session_id="s-memory-failure",
+                )
             )
-        )
-    )
+        finally:
+            await container.close()
+
+    output = asyncio.run(run_pipeline())
 
     assert output.answer
     assert "memory_writeback" in output.stage_history
@@ -371,18 +531,22 @@ def test_pipeline_failure_logs_provider_diagnostics_and_clears_trace(caplog) -> 
     assert current_trace_id() is None
 
 
-def test_default_dependencies_register_the_same_capabilities_as_tel(monkeypatch) -> None:
-    _patch_default_provider_clients(monkeypatch)
-
-    dependencies = pipeline_dependencies.build_default_dependencies()
-    context = asyncio.run(
-        dependencies.request_intake.intake(
-            RequestContext(
-                original_query="Compare current retrieval options.",
-                user_id="user-1",
+def test_default_dependencies_register_the_same_capabilities_as_tel() -> None:
+    async def resolve_dependencies():
+        pipeline, container = await _resolve_test_pipeline()
+        try:
+            dependencies = pipeline._dependencies
+            context = await dependencies.request_intake.intake(
+                RequestContext(
+                    original_query="Compare current retrieval options.",
+                    user_id="user-1",
+                )
             )
-        )
-    )
+            return dependencies, context
+        finally:
+            await container.close()
+
+    dependencies, context = asyncio.run(resolve_dependencies())
 
     expected_families = [
         FamilyName.RESEARCH_KNOWLEDGE_RECALL,

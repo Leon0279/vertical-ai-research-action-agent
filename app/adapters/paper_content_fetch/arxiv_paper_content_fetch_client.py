@@ -33,10 +33,10 @@ HTTP client for fetching and extracting arXiv PDF text."""
 
     def __init__(
         self,
-        config: ArxivPaperContentFetchClientConfig | None = None,
-        http_client: httpx.AsyncClient | None = None,
+        config: ArxivPaperContentFetchClientConfig,
+        http_client: httpx.AsyncClient,
     ) -> None:
-        self._config = config or ArxivPaperContentFetchClientConfig.from_env()
+        self._config = config
         self._http_client = http_client
 
     async def fetch_content(
@@ -210,19 +210,11 @@ HTTP client for fetching and extracting arXiv PDF text."""
         }
 
         try:
-            if self._http_client is not None:
-                response = await self._http_client.get(
-                    pdf_url,
-                    headers=headers,
-                    follow_redirects=True,
-                )
-            else:
-                async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
-                    response = await client.get(
-                        pdf_url,
-                        headers=headers,
-                        follow_redirects=True,
-                    )
+            response = await self._http_client.get(
+                pdf_url,
+                headers=headers,
+                follow_redirects=True,
+            )
         except httpx.TimeoutException as exc:
             return None, ArxivPaperContentFetchClientError(
                 "arXiv PDF download request timed out.",
