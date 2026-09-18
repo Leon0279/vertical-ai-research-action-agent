@@ -136,6 +136,12 @@ _STRUCTURED_FIELDS = (
     "ttl_seconds",
     "recent_turn_count",
     "open_question_count",
+    "memory_query_type",
+    "project_id",
+    "query_limit",
+    "cursor_present",
+    "next_cursor_present",
+    "error_code",
 )
 
 _BEARER_PATTERN = re.compile(r"(?i)(\bbearer\s+)[^\s,;]+")

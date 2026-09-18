@@ -57,6 +57,35 @@ Persist decision memory records in PostgreSQL."""
 
         return [self._row_to_record(row) for row in rows]
 
+    async def list_active_decisions_page(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        limit: int,
+        after_updated_at: datetime | None = None,
+        after_decision_id: str | None = None,
+    ) -> list[DecisionMemoryRecord]:
+        pool = await self._ensure_pool()
+        query = self._build_list_active_decisions_page_query()
+
+        try:
+            async with pool.acquire() as connection:
+                rows = await connection.fetch(
+                    query,
+                    user_id,
+                    project_id,
+                    after_updated_at,
+                    after_decision_id,
+                    limit,
+                )
+        except Exception as exc:
+            raise PostgresDecisionMemoryStoreError(
+                "Failed to load an active decision page."
+            ) from exc
+
+        return [self._row_to_record(row) for row in rows]
+
     async def upsert_decision(self, decision: DecisionMemoryRecord) -> None:
         pool = await self._ensure_pool()
         stored_decision = self._record_for_storage(decision)
@@ -127,6 +156,46 @@ WHERE user_id = $1
   AND project_id = $2
   AND record_status = 'active'
 ORDER BY decided_at DESC NULLS LAST, updated_at DESC
+"""
+
+    def _build_list_active_decisions_page_query(self) -> str:
+        return f"""
+SELECT
+    decision_id,
+    user_id,
+    project_id,
+    decision_title,
+    decision_question,
+    chosen_option,
+    alternatives,
+    rationale,
+    tradeoffs,
+    decision_state,
+    record_status,
+    impact_scope,
+    confidence,
+    decided_at,
+    supersedes_decision_id,
+    superseded_by_decision_id,
+    embedding_text,
+    embedding_model,
+    embedding_version,
+    created_at,
+    updated_at,
+    derived_from_session_id,
+    derived_from_run_id,
+    source_refs
+FROM {self._table_ref}
+WHERE user_id = $1
+  AND project_id = $2
+  AND record_status = 'active'
+  AND (
+      $3::timestamptz IS NULL
+      OR updated_at < $3
+      OR (updated_at = $3 AND decision_id < $4::text)
+  )
+ORDER BY updated_at DESC, decision_id DESC
+LIMIT $5
 """
 
     def _build_supersede_decision_query(self) -> str:

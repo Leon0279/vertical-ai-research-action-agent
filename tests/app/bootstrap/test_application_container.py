@@ -32,6 +32,10 @@ from app.adapters.web_search.tavily_web_search_client import TavilyWebSearchClie
 from app.bootstrap import build_application_container
 from app.orchestration.research_action_pipeline import ResearchActionPipeline
 from app.services.memory.memory_distiller_service import MemoryDistillerService
+from app.services.memory.contracts.decision_memory_service_protocol import (
+    DecisionMemoryServiceProtocol,
+)
+from app.services.memory.decision_memory_service import DecisionMemoryService
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.output.conclusion_generator_service import ConclusionGeneratorService
@@ -40,6 +44,12 @@ from app.services.project.contracts.project_service_protocol import ProjectServi
 from app.services.project.project_service import ProjectService
 from app.services.tool_execution_layer.retrieval_query_generation_service import (
     RetrievalQueryGenerationService,
+)
+from app.services.use_cases.contracts.list_decision_memories_use_case_service_protocol import (
+    ListDecisionMemoriesUseCaseServiceProtocol,
+)
+from app.services.use_cases.list_decision_memories_use_case_service import (
+    ListDecisionMemoriesUseCaseService,
 )
 
 
@@ -53,6 +63,20 @@ def test_app_dependencies_are_singletons_and_protocol_aliases_share_instances() 
 
             project_service = await container.get(ProjectService)
             assert project_service is await container.get(ProjectServiceProtocol)
+
+            decision_service = await container.get(DecisionMemoryService)
+            assert decision_service is await container.get(DecisionMemoryServiceProtocol)
+            decision_use_case_service = await container.get(
+                ListDecisionMemoriesUseCaseService
+            )
+            assert decision_use_case_service is await container.get(
+                ListDecisionMemoriesUseCaseServiceProtocol
+            )
+            assert decision_use_case_service._project_service is project_service
+            assert (
+                decision_use_case_service._decision_memory_service is decision_service
+            )
+            assert not hasattr(decision_service, "_project_service")
 
             project_store = await container.get(PostgresProjectProfileMemoryStore)
             assert project_store is await container.get(ProjectProfileMemoryStoreProtocol)

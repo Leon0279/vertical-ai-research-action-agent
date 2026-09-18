@@ -186,6 +186,44 @@ def test_jsonl_handler_preserves_stack_trace_and_provider_diagnostics(
     assert "secret-value" not in str(record["stack_trace"])
 
 
+def test_memory_query_log_fields_are_structured_without_user_or_content(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "app.jsonl"
+    logger = _logger("app.tests.observability.memory_query")
+    handler = configure_file_logging(_settings(log_path), logger=logger)
+    assert handler is not None
+
+    logger.info(
+        "Decision Memory query completed.",
+        extra={
+            "event": "memory_query_completed",
+            "memory_query_type": "decisions",
+            "project_id": "project-1",
+            "query_limit": 20,
+            "cursor_present": True,
+            "next_cursor_present": False,
+            "result_count": 2,
+            "error_code": None,
+            "user_id": "private-user",
+            "decision_content": "private-memory-content",
+        },
+    )
+    handler.flush()
+    remove_file_logging_handler(logger=logger)
+
+    record = _json_lines(log_path)[-1]
+    assert record["memory_query_type"] == "decisions"
+    assert record["project_id"] == "project-1"
+    assert record["query_limit"] == 20
+    assert record["cursor_present"] is True
+    assert record["next_cursor_present"] is False
+    assert record["result_count"] == 2
+    serialized = json.dumps(record, ensure_ascii=False)
+    assert "private-user" not in serialized
+    assert "private-memory-content" not in serialized
+
+
 def test_file_logging_is_idempotent_and_rotates(tmp_path: Path) -> None:
     log_path = tmp_path / "app.jsonl"
     logger = _logger("app.tests.observability.rotation")

@@ -219,6 +219,72 @@ def test_list_active_decisions_wraps_fetch_errors() -> None:
         asyncio.run(store.list_active_decisions(user_id="user-1", project_id="project-1"))
 
 
+def test_list_active_decisions_page_uses_active_scope_keyset_and_limit() -> None:
+    cursor_time = datetime(2026, 6, 1, 9, 5, tzinfo=UTC)
+    connection = FakeConnection(rows=[_row(decision_id="decision-1")])
+    store = PostgresDecisionMemoryStore(config=_config(), pool=FakePool(connection))
+
+    decisions = asyncio.run(
+        store.list_active_decisions_page(
+            user_id="user-1",
+            project_id="project-1",
+            limit=21,
+            after_updated_at=cursor_time,
+            after_decision_id="decision-2",
+        )
+    )
+
+    assert [item.decision_id for item in decisions] == ["decision-1"]
+    query, args = connection.fetch_calls[0]
+    assert "user_id = $1" in query
+    assert "project_id = $2" in query
+    assert "record_status = 'active'" in query
+    assert "updated_at < $3" in query
+    assert "updated_at = $3 AND decision_id < $4::text" in query
+    assert "ORDER BY updated_at DESC, decision_id DESC" in query
+    assert "LIMIT $5" in query
+    assert args == (
+        "user-1",
+        "project-1",
+        cursor_time,
+        "decision-2",
+        21,
+    )
+
+
+def test_list_active_decisions_page_first_page_uses_null_keyset() -> None:
+    connection = FakeConnection()
+    store = PostgresDecisionMemoryStore(config=_config(), pool=FakePool(connection))
+
+    decisions = asyncio.run(
+        store.list_active_decisions_page(
+            user_id="user-1",
+            project_id="project-1",
+            limit=2,
+        )
+    )
+
+    assert decisions == []
+    _, args = connection.fetch_calls[0]
+    assert args == ("user-1", "project-1", None, None, 2)
+
+
+def test_list_active_decisions_page_wraps_fetch_errors() -> None:
+    store = PostgresDecisionMemoryStore(
+        config=_config(),
+        pool=FakePool(FakeConnection(fetch_error=RuntimeError("db failed"))),
+    )
+
+    with pytest.raises(PostgresDecisionMemoryStoreError, match="decision page"):
+        asyncio.run(
+            store.list_active_decisions_page(
+                user_id="user-1",
+                project_id="project-1",
+                limit=21,
+            )
+        )
+
+
 def test_upsert_decision_executes_only_upsert_without_supersede() -> None:
     connection = FakeConnection()
     store = PostgresDecisionMemoryStore(config=_config(), pool=FakePool(connection))

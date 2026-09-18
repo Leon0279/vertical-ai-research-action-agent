@@ -40,6 +40,9 @@ from app.services.memory.context_memory_loader_service import ContextMemoryLoade
 from app.services.memory.contracts.context_memory_loader_protocol import (
     ContextMemoryLoaderProtocol,
 )
+from app.services.memory.contracts.decision_memory_service_protocol import (
+    DecisionMemoryServiceProtocol,
+)
 from app.services.memory.contracts.memory_distiller_protocol import (
     MemoryDistillerProtocol,
 )
@@ -53,6 +56,7 @@ from app.services.memory.contracts.session_continuity_manager_protocol import (
     SessionContinuityManagerProtocol,
 )
 from app.services.memory.memory_distiller_service import MemoryDistillerService
+from app.services.memory.decision_memory_service import DecisionMemoryService
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.memory.session_continuity_manager_service import (
@@ -80,6 +84,12 @@ from app.services.project.contracts.project_service_protocol import ProjectServi
 from app.services.project.project_service import ProjectService
 from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
     ToolExecutionLayerServiceProtocol,
+)
+from app.services.use_cases.contracts.list_decision_memories_use_case_service_protocol import (
+    ListDecisionMemoriesUseCaseServiceProtocol,
+)
+from app.services.use_cases.list_decision_memories_use_case_service import (
+    ListDecisionMemoriesUseCaseService,
 )
 
 _REGISTERED_FAMILIES = [
@@ -120,6 +130,18 @@ class ApplicationServiceProvider(Provider):
     )
     project_service = provide(ProjectService)
     project_service_protocol = alias(ProjectService, provides=ProjectServiceProtocol)
+    decision_memory_service = provide(DecisionMemoryService)
+    decision_memory_service_protocol = alias(
+        DecisionMemoryService,
+        provides=DecisionMemoryServiceProtocol,
+    )
+    list_decision_memories_use_case_service = provide(
+        ListDecisionMemoriesUseCaseService
+    )
+    list_decision_memories_use_case_service_protocol = alias(
+        ListDecisionMemoriesUseCaseService,
+        provides=ListDecisionMemoriesUseCaseServiceProtocol,
+    )
     session_continuity_manager = provide(SessionContinuityManagerService)
     session_continuity_manager_protocol = alias(
         SessionContinuityManagerService,

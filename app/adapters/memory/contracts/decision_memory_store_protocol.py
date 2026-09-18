@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from app.domain.models import DecisionMemoryRecord
@@ -27,6 +28,28 @@ Protocol for the decision_memory table adapter."""
 
         Returns:
             list[DecisionMemoryRecord]: 当前 active-like 生命周期状态的决策记录列表。
+        """
+
+    async def list_active_decisions_page(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        limit: int,
+        after_updated_at: datetime | None = None,
+        after_decision_id: str | None = None,
+    ) -> list[DecisionMemoryRecord]:
+        """按稳定 keyset 顺序读取一批 active 决策记录。
+
+        Args:
+            user_id (str): 所属用户标识，用于隔离读取范围。
+            project_id (str): 所属项目标识，用于隔离读取范围。
+            limit (int): 由上层指定的数据库最大返回行数，通常为页面大小加一。
+            after_updated_at (datetime | None): 上一页末项的更新时间；首页为 None。
+            after_decision_id (str | None): 上一页末项的决策标识；首页为 None。
+
+        Returns:
+            list[DecisionMemoryRecord]: 按 updated_at、decision_id 倒序排列的记录。
         """
 
     async def upsert_decision(self, decision: DecisionMemoryRecord) -> None:
