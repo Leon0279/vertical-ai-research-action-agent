@@ -27,6 +27,22 @@ def test_memory_cursor_round_trip_is_url_safe_and_stable() -> None:
     )
 
 
+def test_action_memory_cursor_round_trip_preserves_status_filter() -> None:
+    cursor = MemoryPageCursor(
+        collection="actions",
+        updated_at=datetime(2026, 9, 18, 10, 30, tzinfo=UTC),
+        record_id="action-2",
+        action_statuses=["in_progress", "done"],
+    )
+
+    encoded = encode_memory_cursor(cursor)
+    decoded = decode_memory_cursor(encoded, expected_collection="actions")
+
+    assert decoded == cursor
+    with pytest.raises(ValueError, match="collection mismatch"):
+        decode_memory_cursor(encoded, expected_collection="decisions")
+
+
 @pytest.mark.parametrize(
     "value",
     [
@@ -65,4 +81,29 @@ def test_memory_cursor_rejects_naive_timestamp() -> None:
             collection="decisions",
             updated_at=datetime(2026, 9, 18, 10, 30),
             record_id="decision-2",
+        )
+
+
+def test_memory_cursor_rejects_collection_specific_filter_mismatch() -> None:
+    with pytest.raises(ValueError, match="decision cursors"):
+        MemoryPageCursor(
+            collection="decisions",
+            updated_at=datetime(2026, 9, 18, 10, 30, tzinfo=UTC),
+            record_id="decision-2",
+            action_statuses=["todo"],
+        )
+
+    with pytest.raises(ValueError, match="at least one"):
+        MemoryPageCursor(
+            collection="actions",
+            updated_at=datetime(2026, 9, 18, 10, 30, tzinfo=UTC),
+            record_id="action-2",
+        )
+
+    with pytest.raises(ValueError, match="unique"):
+        MemoryPageCursor(
+            collection="actions",
+            updated_at=datetime(2026, 9, 18, 10, 30, tzinfo=UTC),
+            record_id="action-2",
+            action_statuses=["todo", "todo"],
         )

@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.domain.models.memory.action_memory_status import ActionMemoryStatus
 
 
 class MemoryPageCursor(BaseModel):
@@ -14,9 +16,10 @@ class MemoryPageCursor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: Literal[1] = 1
-    collection: Literal["decisions"]
+    collection: Literal["decisions", "actions"]
     updated_at: datetime
     record_id: str = Field(min_length=1)
+    action_statuses: list[ActionMemoryStatus] | None = None
 
     @field_validator("updated_at")
     @classmethod
@@ -26,3 +29,18 @@ class MemoryPageCursor(BaseModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("updated_at must include a timezone")
         return value
+
+    @model_validator(mode="after")
+    def validate_collection_filters(self) -> "MemoryPageCursor":
+        """Keep collection-specific filters bound to the correct cursor type."""
+
+        if self.collection == "decisions":
+            if self.action_statuses is not None:
+                raise ValueError("decision cursors cannot contain action statuses")
+            return self
+
+        if not self.action_statuses:
+            raise ValueError("action cursors require at least one action status")
+        if len(self.action_statuses) != len(set(self.action_statuses)):
+            raise ValueError("action cursor statuses must be unique")
+        return self

@@ -137,6 +137,7 @@ _STRUCTURED_FIELDS = (
     "recent_turn_count",
     "open_question_count",
     "memory_query_type",
+    "action_statuses",
     "project_id",
     "query_limit",
     "cursor_present",

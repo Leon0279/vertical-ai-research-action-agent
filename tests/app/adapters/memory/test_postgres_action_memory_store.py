@@ -260,6 +260,67 @@ def test_list_actions_by_parent_decision_uses_expected_scope_filters() -> None:
     assert args == ("user-1", "decision-1")
 
 
+def test_list_actions_page_uses_status_lifecycle_and_keyset_filters() -> None:
+    connection = FakeConnection(rows=[_row(action_status="done")])
+    store = PostgresActionMemoryStore(config=_config(), pool=FakePool(connection))
+    after_updated_at = datetime(2026, 6, 3, 10, 0, tzinfo=UTC)
+
+    actions = asyncio.run(
+        store.list_actions_page(
+            user_id="user-1",
+            project_id="project-1",
+            action_statuses=["in_progress", "done"],
+            limit=21,
+            after_updated_at=after_updated_at,
+            after_action_id="action-9",
+        )
+    )
+
+    assert [action.action_id for action in actions] == ["action-1"]
+    query, args = connection.fetch_calls[0]
+    assert "action_status = ANY($3::text[])" in query
+    assert "record_status = 'active'" in query
+    assert "action_status IN ('todo', 'in_progress', 'blocked')" in query
+    assert "record_status = 'archived'" in query
+    assert "action_status IN ('done', 'cancelled')" in query
+    assert "updated_at < $4" in query
+    assert "action_id < $5::text" in query
+    assert "ORDER BY updated_at DESC, action_id DESC" in query
+    assert "LIMIT $6" in query
+    assert args == (
+        "user-1",
+        "project-1",
+        ["in_progress", "done"],
+        after_updated_at,
+        "action-9",
+        21,
+    )
+
+
+def test_list_actions_page_supports_first_page_without_keyset() -> None:
+    connection = FakeConnection()
+    store = PostgresActionMemoryStore(config=_config(), pool=FakePool(connection))
+
+    actions = asyncio.run(
+        store.list_actions_page(
+            user_id="user-1",
+            project_id="project-1",
+            action_statuses=["todo", "blocked"],
+            limit=6,
+        )
+    )
+
+    assert actions == []
+    assert connection.fetch_calls[0][1] == (
+        "user-1",
+        "project-1",
+        ["todo", "blocked"],
+        None,
+        None,
+        6,
+    )
+
+
 def test_list_active_actions_wraps_fetch_errors() -> None:
     store = PostgresActionMemoryStore(
         config=_config(),
@@ -281,6 +342,26 @@ def test_list_actions_by_parent_decision_wraps_fetch_errors() -> None:
             store.list_actions_by_parent_decision(
                 user_id="user-1",
                 parent_decision_id="decision-1",
+            )
+        )
+
+
+def test_list_actions_page_wraps_fetch_errors() -> None:
+    store = PostgresActionMemoryStore(
+        config=_config(),
+        pool=FakePool(FakeConnection(fetch_error=RuntimeError("db failed"))),
+    )
+
+    with pytest.raises(
+        PostgresActionMemoryStoreError,
+        match="Failed to load an Action Memory page",
+    ):
+        asyncio.run(
+            store.list_actions_page(
+                user_id="user-1",
+                project_id="project-1",
+                action_statuses=["done"],
+                limit=2,
             )
         )
 

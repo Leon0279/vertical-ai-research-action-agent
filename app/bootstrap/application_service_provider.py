@@ -36,7 +36,10 @@ from app.services.executor.research_executor_service import ResearchExecutorServ
 from app.services.health.readiness_service import ReadinessService
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
 from app.services.intake.request_intake_service import RequestIntakeService
-from app.services.memory.context_memory_loader_service import ContextMemoryLoaderService
+from app.services.memory.action_memory_service import ActionMemoryService
+from app.services.memory.contracts.action_memory_service_protocol import (
+    ActionMemoryServiceProtocol,
+)
 from app.services.memory.contracts.context_memory_loader_protocol import (
     ContextMemoryLoaderProtocol,
 )
@@ -55,8 +58,9 @@ from app.services.memory.contracts.semantic_resolver_protocol import (
 from app.services.memory.contracts.session_continuity_manager_protocol import (
     SessionContinuityManagerProtocol,
 )
-from app.services.memory.memory_distiller_service import MemoryDistillerService
+from app.services.memory.context_memory_loader_service import ContextMemoryLoaderService
 from app.services.memory.decision_memory_service import DecisionMemoryService
+from app.services.memory.memory_distiller_service import MemoryDistillerService
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.memory.session_continuity_manager_service import (
@@ -85,8 +89,14 @@ from app.services.project.project_service import ProjectService
 from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
     ToolExecutionLayerServiceProtocol,
 )
+from app.services.use_cases.contracts.list_action_memories_use_case_service_protocol import (
+    ListActionMemoriesUseCaseServiceProtocol,
+)
 from app.services.use_cases.contracts.list_decision_memories_use_case_service_protocol import (
     ListDecisionMemoriesUseCaseServiceProtocol,
+)
+from app.services.use_cases.list_action_memories_use_case_service import (
+    ListActionMemoriesUseCaseService,
 )
 from app.services.use_cases.list_decision_memories_use_case_service import (
     ListDecisionMemoriesUseCaseService,
@@ -130,6 +140,11 @@ class ApplicationServiceProvider(Provider):
     )
     project_service = provide(ProjectService)
     project_service_protocol = alias(ProjectService, provides=ProjectServiceProtocol)
+    action_memory_service = provide(ActionMemoryService)
+    action_memory_service_protocol = alias(
+        ActionMemoryService,
+        provides=ActionMemoryServiceProtocol,
+    )
     decision_memory_service = provide(DecisionMemoryService)
     decision_memory_service_protocol = alias(
         DecisionMemoryService,
@@ -141,6 +156,13 @@ class ApplicationServiceProvider(Provider):
     list_decision_memories_use_case_service_protocol = alias(
         ListDecisionMemoriesUseCaseService,
         provides=ListDecisionMemoriesUseCaseServiceProtocol,
+    )
+    list_action_memories_use_case_service = provide(
+        ListActionMemoriesUseCaseService
+    )
+    list_action_memories_use_case_service_protocol = alias(
+        ListActionMemoriesUseCaseService,
+        provides=ListActionMemoriesUseCaseServiceProtocol,
     )
     session_continuity_manager = provide(SessionContinuityManagerService)
     session_continuity_manager_protocol = alias(

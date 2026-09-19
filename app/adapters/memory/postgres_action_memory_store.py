@@ -19,6 +19,7 @@ from app.adapters.memory.postgres_action_memory_store_error import (
 from app.adapters.memory.postgres_pool_registry import PostgresPoolRegistry
 from app.common.utils.json_utils import load_json_string_list
 from app.domain.models import ActionMemoryRecord
+from app.domain.models.memory.action_memory_status import ActionMemoryStatus
 
 
 class PostgresActionMemoryStore(ActionMemoryStoreProtocol):
@@ -72,6 +73,37 @@ Persist action memory records in PostgreSQL."""
         except Exception as exc:
             raise PostgresActionMemoryStoreError(
                 "Failed to load actions by parent decision."
+            ) from exc
+
+        return [self._row_to_record(row) for row in rows]
+
+    async def list_actions_page(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        action_statuses: list[ActionMemoryStatus],
+        limit: int,
+        after_updated_at: datetime | None = None,
+        after_action_id: str | None = None,
+    ) -> list[ActionMemoryRecord]:
+        pool = await self._ensure_pool()
+        query = self._build_list_actions_page_query()
+
+        try:
+            async with pool.acquire() as connection:
+                rows = await connection.fetch(
+                    query,
+                    user_id,
+                    project_id,
+                    action_statuses,
+                    after_updated_at,
+                    after_action_id,
+                    limit,
+                )
+        except Exception as exc:
+            raise PostgresActionMemoryStoreError(
+                "Failed to load an Action Memory page."
             ) from exc
 
         return [self._row_to_record(row) for row in rows]
@@ -168,6 +200,55 @@ WHERE user_id = $1
   AND parent_decision_id = $2
   AND record_status = 'active'
 ORDER BY updated_at DESC
+"""
+
+    def _build_list_actions_page_query(self) -> str:
+        return f"""
+SELECT
+    action_id,
+    user_id,
+    project_id,
+    parent_decision_id,
+    action_title,
+    action_description,
+    action_status,
+    priority,
+    owner,
+    due_at,
+    blocking_reason,
+    result_summary,
+    completed_at,
+    record_status,
+    confidence,
+    embedding_text,
+    embedding_model,
+    embedding_version,
+    created_at,
+    updated_at,
+    derived_from_session_id,
+    derived_from_run_id,
+    source_refs
+FROM {self._table_ref}
+WHERE user_id = $1
+  AND project_id = $2
+  AND action_status = ANY($3::text[])
+  AND (
+      (
+          record_status = 'active'
+          AND action_status IN ('todo', 'in_progress', 'blocked')
+      )
+      OR (
+          record_status = 'archived'
+          AND action_status IN ('done', 'cancelled')
+      )
+  )
+  AND (
+      $4::timestamptz IS NULL
+      OR updated_at < $4
+      OR (updated_at = $4 AND action_id < $5::text)
+  )
+ORDER BY updated_at DESC, action_id DESC
+LIMIT $6
 """
 
     def _build_upsert_action_query(self) -> str:

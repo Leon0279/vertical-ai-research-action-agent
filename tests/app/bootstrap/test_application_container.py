@@ -13,6 +13,9 @@ from app.adapters.embedding.contracts.embedding_client_protocol import (
 from app.adapters.embedding.zhipu_embedding_client import ZhipuEmbeddingClient
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.adapters.llm.zhipu_llm_client import ZhipuLLMClient
+from app.adapters.memory.contracts.action_memory_store_protocol import (
+    ActionMemoryStoreProtocol,
+)
 from app.adapters.memory.contracts.project_profile_memory_store_protocol import (
     ProjectProfileMemoryStoreProtocol,
 )
@@ -32,6 +35,10 @@ from app.adapters.web_search.tavily_web_search_client import TavilyWebSearchClie
 from app.bootstrap import build_application_container
 from app.orchestration.research_action_pipeline import ResearchActionPipeline
 from app.services.memory.memory_distiller_service import MemoryDistillerService
+from app.services.memory.action_memory_service import ActionMemoryService
+from app.services.memory.contracts.action_memory_service_protocol import (
+    ActionMemoryServiceProtocol,
+)
 from app.services.memory.contracts.decision_memory_service_protocol import (
     DecisionMemoryServiceProtocol,
 )
@@ -45,11 +52,17 @@ from app.services.project.project_service import ProjectService
 from app.services.tool_execution_layer.retrieval_query_generation_service import (
     RetrievalQueryGenerationService,
 )
+from app.services.use_cases.contracts.list_action_memories_use_case_service_protocol import (
+    ListActionMemoriesUseCaseServiceProtocol,
+)
 from app.services.use_cases.contracts.list_decision_memories_use_case_service_protocol import (
     ListDecisionMemoriesUseCaseServiceProtocol,
 )
 from app.services.use_cases.list_decision_memories_use_case_service import (
     ListDecisionMemoriesUseCaseService,
+)
+from app.services.use_cases.list_action_memories_use_case_service import (
+    ListActionMemoriesUseCaseService,
 )
 
 
@@ -63,6 +76,21 @@ def test_app_dependencies_are_singletons_and_protocol_aliases_share_instances() 
 
             project_service = await container.get(ProjectService)
             assert project_service is await container.get(ProjectServiceProtocol)
+
+            action_service = await container.get(ActionMemoryService)
+            assert action_service is await container.get(ActionMemoryServiceProtocol)
+            action_use_case_service = await container.get(
+                ListActionMemoriesUseCaseService
+            )
+            assert action_use_case_service is await container.get(
+                ListActionMemoriesUseCaseServiceProtocol
+            )
+            assert action_use_case_service._project_service is project_service
+            assert action_use_case_service._action_memory_service is action_service
+            assert not hasattr(action_service, "_project_service")
+            assert action_service._action_memory_store is await container.get(
+                ActionMemoryStoreProtocol
+            )
 
             decision_service = await container.get(DecisionMemoryService)
             assert decision_service is await container.get(DecisionMemoryServiceProtocol)

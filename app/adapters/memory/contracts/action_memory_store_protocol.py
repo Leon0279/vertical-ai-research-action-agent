@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from app.domain.models import ActionMemoryRecord
+from app.domain.models.memory.action_memory_status import ActionMemoryStatus
 
 
 @runtime_checkable
@@ -43,6 +45,30 @@ Protocol for the action_memory table adapter."""
 
         Returns:
             list[ActionMemoryRecord]: 与该父决策关联且仍有效的行动记录列表。
+        """
+
+    async def list_actions_page(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        action_statuses: list[ActionMemoryStatus],
+        limit: int,
+        after_updated_at: datetime | None = None,
+        after_action_id: str | None = None,
+    ) -> list[ActionMemoryRecord]:
+        """按状态集合和稳定 keyset 顺序读取一批 Action Memory。
+
+        Args:
+            user_id (str): 所属用户标识，用于隔离读取范围。
+            project_id (str): 所属项目标识，用于隔离读取范围。
+            action_statuses (list[ActionMemoryStatus]): 需要读取的业务状态集合。
+            limit (int): 数据库最大返回行数，通常为页面大小加一。
+            after_updated_at (datetime | None): 上一页末项的更新时间；首页为 None。
+            after_action_id (str | None): 上一页末项的 Action 标识；首页为 None。
+
+        Returns:
+            list[ActionMemoryRecord]: 按 updated_at、action_id 倒序排列的记录。
         """
 
     async def upsert_action(self, action: ActionMemoryRecord) -> None:

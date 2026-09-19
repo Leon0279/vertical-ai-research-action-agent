@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated, Any
 
 from dishka.integrations.fastapi import FromDishka, inject
-from fastapi import APIRouter, Query, status
-from pydantic import BeforeValidator
+from fastapi import APIRouter, status
 from starlette.responses import JSONResponse
 
+from app.api.routes._memory_route_support import (
+    MemoryCursorQuery,
+    MemoryLimitQuery,
+    RequiredMemoryIdentifierQuery,
+    memory_query_error_response,
+)
 from app.api.routes.memory_request_validation_route import (
     MemoryRequestValidationRoute,
 )
@@ -34,34 +38,6 @@ router = APIRouter(
     tags=["decision-memory"],
     route_class=MemoryRequestValidationRoute,
 )
-
-_MEMORY_QUERY_ERROR_STATUS = {
-    "INVALID_MEMORY_QUERY": status.HTTP_422_UNPROCESSABLE_CONTENT,
-    "PROJECT_NOT_FOUND": status.HTTP_404_NOT_FOUND,
-    "MEMORY_STORE_UNAVAILABLE": status.HTTP_503_SERVICE_UNAVAILABLE,
-    "MEMORY_QUERY_FAILED": status.HTTP_500_INTERNAL_SERVER_ERROR,
-}
-
-
-def _parse_strict_decimal_integer(value: Any) -> Any:
-    if isinstance(value, str) and value.isascii() and value.isdecimal():
-        return int(value)
-    return value
-
-
-_RequiredIdentifierQuery = Annotated[
-    str,
-    Query(min_length=1, max_length=200, pattern=r".*\S.*"),
-]
-_DecisionLimitQuery = Annotated[
-    int,
-    Query(ge=1, le=100, strict=True),
-    BeforeValidator(_parse_strict_decimal_integer),
-]
-_DecisionCursorQuery = Annotated[
-    str | None,
-    Query(min_length=1, max_length=4096, pattern=r".*\S.*"),
-]
 
 
 @router.get(
@@ -88,11 +64,11 @@ _DecisionCursorQuery = Annotated[
 )
 @inject
 async def list_decision_memories(
-    user_id: _RequiredIdentifierQuery,
-    project_id: _RequiredIdentifierQuery,
+    user_id: RequiredMemoryIdentifierQuery,
+    project_id: RequiredMemoryIdentifierQuery,
     use_case_service: FromDishka[ListDecisionMemoriesUseCaseServiceProtocol],
-    limit: _DecisionLimitQuery = 20,
-    cursor: _DecisionCursorQuery = None,
+    limit: MemoryLimitQuery = 20,
+    cursor: MemoryCursorQuery = None,
 ) -> DecisionMemoryListResponse | JSONResponse:
     """列出指定用户和项目范围内当前 active 的 Decision Memory。"""
 
@@ -104,47 +80,24 @@ async def list_decision_memories(
             cursor=cursor,
         )
     except ListDecisionMemoriesUseCaseError as exc:
-        status_code = _MEMORY_QUERY_ERROR_STATUS.get(exc.error_code)
-        if status_code is None:
-            return _error_response(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                error_code="MEMORY_QUERY_FAILED",
-                error_reason="Decision Memory 查询失败，请稍后重试。",
-            )
-        return _error_response(
-            status_code=status_code,
+        return memory_query_error_response(
             error_code=exc.error_code,
             error_reason=exc.error_reason,
+            fallback_reason="Decision Memory 查询失败，请稍后重试。",
         )
     except Exception:
         logger.error(
             "Decision Memory route failed unexpectedly.",
             extra={"event": "memory_query_failed", "memory_query_type": "decisions"},
         )
-        return _error_response(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        return memory_query_error_response(
             error_code="MEMORY_QUERY_FAILED",
             error_reason="Decision Memory 查询失败，请稍后重试。",
+            fallback_reason="Decision Memory 查询失败，请稍后重试。",
         )
 
     return DecisionMemoryListResponse(
         project_id=page.project_id,
         items=[DecisionMemoryItemResponse.model_validate(item) for item in page.items],
         next_cursor=page.next_cursor,
-    )
-
-
-def _error_response(
-    *,
-    status_code: int,
-    error_code: str,
-    error_reason: str,
-) -> JSONResponse:
-    payload = MemoryQueryErrorResponse(
-        error_code=error_code,
-        error_reason=error_reason,
-    )
-    return JSONResponse(
-        status_code=status_code,
-        content=payload.model_dump(mode="json"),
     )

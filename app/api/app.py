@@ -9,6 +9,7 @@ from dishka import AsyncContainer
 from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
 
+from app.api.routes.action_memories import router as action_memories_router
 from app.api.routes.agent import router as agent_router
 from app.api.routes.decision_memories import router as decision_memories_router
 from app.api.routes.health import router as health_router
@@ -46,6 +47,7 @@ def create_app(container: AsyncContainer | None = None) -> FastAPI:
     application.include_router(agent_router)
     application.include_router(projects_router)
     application.include_router(decision_memories_router)
+    application.include_router(action_memories_router)
     setup_dishka(container=application_container, app=application)
     return application
 
