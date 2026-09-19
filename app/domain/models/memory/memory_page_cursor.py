@@ -16,7 +16,7 @@ class MemoryPageCursor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     version: Literal[1] = 1
-    collection: Literal["decisions", "actions"]
+    collection: Literal["decisions", "actions", "policies"]
     updated_at: datetime
     record_id: str = Field(min_length=1)
     action_statuses: list[ActionMemoryStatus] | None = None
@@ -37,6 +37,11 @@ class MemoryPageCursor(BaseModel):
         if self.collection == "decisions":
             if self.action_statuses is not None:
                 raise ValueError("decision cursors cannot contain action statuses")
+            return self
+
+        if self.collection == "policies":
+            if self.action_statuses is not None:
+                raise ValueError("policy cursors cannot contain action statuses")
             return self
 
         if not self.action_statuses:

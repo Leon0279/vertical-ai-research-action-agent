@@ -19,6 +19,9 @@ from app.adapters.memory.contracts.action_memory_store_protocol import (
 from app.adapters.memory.contracts.project_profile_memory_store_protocol import (
     ProjectProfileMemoryStoreProtocol,
 )
+from app.adapters.memory.contracts.preference_policy_memory_store_protocol import (
+    PreferencePolicyMemoryStoreProtocol,
+)
 from app.adapters.memory.postgres_pool_registry import PostgresPoolRegistry
 from app.adapters.memory.postgres_project_profile_memory_store import (
     PostgresProjectProfileMemoryStore,
@@ -44,6 +47,10 @@ from app.services.memory.contracts.decision_memory_service_protocol import (
 )
 from app.services.memory.decision_memory_service import DecisionMemoryService
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
+from app.services.memory.contracts.policy_memory_service_protocol import (
+    PolicyMemoryServiceProtocol,
+)
+from app.services.memory.policy_memory_service import PolicyMemoryService
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.output.conclusion_generator_service import ConclusionGeneratorService
 from app.services.planner.task_interpreter_service import TaskInterpreterService
@@ -60,6 +67,12 @@ from app.services.use_cases.contracts.list_decision_memories_use_case_service_pr
 )
 from app.services.use_cases.list_decision_memories_use_case_service import (
     ListDecisionMemoriesUseCaseService,
+)
+from app.services.use_cases.contracts.list_policy_memories_use_case_service_protocol import (
+    ListPolicyMemoriesUseCaseServiceProtocol,
+)
+from app.services.use_cases.list_policy_memories_use_case_service import (
+    ListPolicyMemoriesUseCaseService,
 )
 from app.services.use_cases.list_action_memories_use_case_service import (
     ListActionMemoriesUseCaseService,
@@ -105,6 +118,21 @@ def test_app_dependencies_are_singletons_and_protocol_aliases_share_instances() 
                 decision_use_case_service._decision_memory_service is decision_service
             )
             assert not hasattr(decision_service, "_project_service")
+
+            policy_service = await container.get(PolicyMemoryService)
+            assert policy_service is await container.get(PolicyMemoryServiceProtocol)
+            policy_use_case_service = await container.get(
+                ListPolicyMemoriesUseCaseService
+            )
+            assert policy_use_case_service is await container.get(
+                ListPolicyMemoriesUseCaseServiceProtocol
+            )
+            assert policy_use_case_service._project_service is project_service
+            assert policy_use_case_service._policy_memory_service is policy_service
+            assert not hasattr(policy_service, "_project_service")
+            assert policy_service._preference_policy_store is await container.get(
+                PreferencePolicyMemoryStoreProtocol
+            )
 
             project_store = await container.get(PostgresProjectProfileMemoryStore)
             assert project_store is await container.get(ProjectProfileMemoryStoreProtocol)

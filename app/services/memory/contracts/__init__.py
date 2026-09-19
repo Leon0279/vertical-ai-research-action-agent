@@ -11,6 +11,9 @@ from app.services.memory.contracts.decision_memory_service_protocol import (
 )
 from app.services.memory.contracts.memory_distiller_protocol import MemoryDistillerProtocol
 from app.services.memory.contracts.memory_persistence_protocol import MemoryPersistenceProtocol
+from app.services.memory.contracts.policy_memory_service_protocol import (
+    PolicyMemoryServiceProtocol,
+)
 from app.services.memory.contracts.semantic_resolver_protocol import SemanticResolverProtocol
 from app.services.memory.contracts.session_continuity_manager_protocol import SessionContinuityManagerProtocol
 
@@ -20,6 +23,7 @@ __all__ = [
     "DecisionMemoryServiceProtocol",
     "MemoryDistillerProtocol",
     "MemoryPersistenceProtocol",
+    "PolicyMemoryServiceProtocol",
     "SemanticResolverProtocol",
     "SessionContinuityManagerProtocol",
 ]

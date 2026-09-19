@@ -43,6 +43,21 @@ def test_action_memory_cursor_round_trip_preserves_status_filter() -> None:
         decode_memory_cursor(encoded, expected_collection="decisions")
 
 
+def test_policy_memory_cursor_round_trip_is_collection_bound() -> None:
+    cursor = MemoryPageCursor(
+        collection="policies",
+        updated_at=datetime(2026, 9, 19, 10, 30, tzinfo=UTC),
+        record_id="policy-2",
+    )
+
+    encoded = encode_memory_cursor(cursor)
+    decoded = decode_memory_cursor(encoded, expected_collection="policies")
+
+    assert decoded == cursor
+    with pytest.raises(ValueError, match="collection mismatch"):
+        decode_memory_cursor(encoded, expected_collection="actions")
+
+
 @pytest.mark.parametrize(
     "value",
     [
@@ -106,4 +121,12 @@ def test_memory_cursor_rejects_collection_specific_filter_mismatch() -> None:
             updated_at=datetime(2026, 9, 18, 10, 30, tzinfo=UTC),
             record_id="action-2",
             action_statuses=["todo", "todo"],
+        )
+
+    with pytest.raises(ValueError, match="policy cursors"):
+        MemoryPageCursor(
+            collection="policies",
+            updated_at=datetime(2026, 9, 18, 10, 30, tzinfo=UTC),
+            record_id="policy-2",
+            action_statuses=["todo"],
         )

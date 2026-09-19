@@ -251,6 +251,76 @@ def test_list_applicable_policies_skips_optional_filters_when_missing() -> None:
     assert args == ("user-1", "__system__")
 
 
+def test_list_policies_page_includes_project_user_and_system_global_scopes() -> None:
+    connection = FakeConnection(rows=[_row()])
+    store = PostgresPreferencePolicyMemoryStore(
+        config=_config(),
+        pool=FakePool(connection),
+    )
+    after_updated_at = datetime(2026, 6, 4, 10, 0, tzinfo=UTC)
+
+    policies = asyncio.run(
+        store.list_policies_page(
+            user_id="user-1",
+            project_id="project-1",
+            limit=21,
+            after_updated_at=after_updated_at,
+            after_policy_id="policy-9",
+        )
+    )
+
+    assert [policy.policy_id for policy in policies] == ["policy-1"]
+    query, args = connection.fetch_calls[0]
+    assert "record_status = 'active'" in query
+    assert "owner_scope_type = 'project'" in query
+    assert "owner_scope_type = 'user'" in query
+    assert "owner_scope_type = 'global'" in query
+    assert "user_id = $1" in query
+    assert "project_id = $2" in query
+    assert "user_id = $3" in query
+    assert "owner_scope_value = $3" in query
+    assert "target_scope_type =" not in query
+    assert "target_scope_value =" not in query
+    assert "updated_at < $4" in query
+    assert "policy_id < $5::text" in query
+    assert "ORDER BY updated_at DESC, policy_id DESC" in query
+    assert "LIMIT $6" in query
+    assert args == (
+        "user-1",
+        "project-1",
+        "__system__",
+        after_updated_at,
+        "policy-9",
+        21,
+    )
+
+
+def test_list_policies_page_supports_first_page_without_keyset() -> None:
+    connection = FakeConnection()
+    store = PostgresPreferencePolicyMemoryStore(
+        config=_config(),
+        pool=FakePool(connection),
+    )
+
+    policies = asyncio.run(
+        store.list_policies_page(
+            user_id="user-1",
+            project_id="project-1",
+            limit=6,
+        )
+    )
+
+    assert policies == []
+    assert connection.fetch_calls[0][1] == (
+        "user-1",
+        "project-1",
+        "__system__",
+        None,
+        None,
+        6,
+    )
+
+
 def test_list_applicable_policies_wraps_fetch_errors() -> None:
     store = PostgresPreferencePolicyMemoryStore(
         config=_config(),
@@ -259,6 +329,25 @@ def test_list_applicable_policies_wraps_fetch_errors() -> None:
 
     with pytest.raises(PostgresPreferencePolicyMemoryStoreError, match="Failed to load"):
         asyncio.run(store.list_applicable_policies(user_id="user-1"))
+
+
+def test_list_policies_page_wraps_fetch_errors() -> None:
+    store = PostgresPreferencePolicyMemoryStore(
+        config=_config(),
+        pool=FakePool(FakeConnection(fetch_error=RuntimeError("db failed"))),
+    )
+
+    with pytest.raises(
+        PostgresPreferencePolicyMemoryStoreError,
+        match="Failed to load a Policy Memory page",
+    ):
+        asyncio.run(
+            store.list_policies_page(
+                user_id="user-1",
+                project_id="project-1",
+                limit=2,
+            )
+        )
 
 
 def test_upsert_policy_executes_only_upsert_without_supersede() -> None:

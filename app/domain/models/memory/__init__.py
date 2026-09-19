@@ -20,6 +20,7 @@ from app.domain.models.memory.memory_record import MemoryRecord
 from app.domain.models.memory.preference_policy_memory_record import (
     PreferencePolicyMemoryRecord,
 )
+from app.domain.models.memory.policy_memory_page import PolicyMemoryPage
 from app.domain.models.memory.preference_policy_candidate_details import (
     PreferencePolicyCandidateDetails,
 )
@@ -61,6 +62,7 @@ __all__ = [
     "MemoryPersistenceResult",
     "MemoryRecord",
     "PreferencePolicyMemoryRecord",
+    "PolicyMemoryPage",
     "PreferencePolicyCandidateDetails",
     "ProjectProfileMemoryRecord",
     "ProjectProfileCandidateDetails",

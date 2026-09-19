@@ -67,6 +67,36 @@ Persist preference/policy memory records in PostgreSQL."""
 
         return [self._row_to_record(row) for row in rows]
 
+    async def list_policies_page(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        limit: int,
+        after_updated_at: datetime | None = None,
+        after_policy_id: str | None = None,
+    ) -> list[PreferencePolicyMemoryRecord]:
+        pool = await self._ensure_pool()
+        query = self._build_list_policies_page_query()
+
+        try:
+            async with pool.acquire() as connection:
+                rows = await connection.fetch(
+                    query,
+                    user_id,
+                    project_id,
+                    self._config.system_user_id,
+                    after_updated_at,
+                    after_policy_id,
+                    limit,
+                )
+        except Exception as exc:
+            raise PostgresPreferencePolicyMemoryStoreError(
+                "Failed to load a Policy Memory page."
+            ) from exc
+
+        return [self._row_to_record(row) for row in rows]
+
     async def upsert_policy(self, policy: PreferencePolicyMemoryRecord) -> None:
         pool = await self._ensure_pool()
         stored_policy = self._record_for_storage(policy)
@@ -203,6 +233,60 @@ ORDER BY
   updated_at DESC
 """
         return query, tuple(params)
+
+    def _build_list_policies_page_query(self) -> str:
+        return f"""
+SELECT
+    policy_id,
+    user_id,
+    project_id,
+    owner_scope_type,
+    owner_scope_value,
+    target_scope_type,
+    target_scope_value,
+    policy_type,
+    policy_text,
+    conditions,
+    priority,
+    enforcement_level,
+    record_status,
+    confidence,
+    supersedes_policy_id,
+    superseded_by_policy_id,
+    embedding_text,
+    embedding_model,
+    embedding_version,
+    created_at,
+    updated_at,
+    derived_from_session_id,
+    derived_from_run_id,
+    source_refs
+FROM {self._table_ref}
+WHERE record_status = 'active'
+  AND (
+      (
+          owner_scope_type = 'project'
+          AND user_id = $1
+          AND project_id = $2
+      )
+      OR (
+          owner_scope_type = 'user'
+          AND user_id = $1
+      )
+      OR (
+          owner_scope_type = 'global'
+          AND user_id = $3
+          AND owner_scope_value = $3
+      )
+  )
+  AND (
+      $4::timestamptz IS NULL
+      OR updated_at < $4
+      OR (updated_at = $4 AND policy_id < $5::text)
+  )
+ORDER BY updated_at DESC, policy_id DESC
+LIMIT $6
+"""
 
     def _build_supersede_policy_query(self) -> str:
         return f"""

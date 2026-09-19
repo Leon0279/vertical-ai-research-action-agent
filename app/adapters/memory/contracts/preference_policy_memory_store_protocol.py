@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from app.domain.enums import MemoryType, TaskType
@@ -33,6 +34,17 @@ Protocol for the preference_policy_memory table adapter."""
         Returns:
             list[PreferencePolicyMemoryRecord]: 当前范围内仍有效且适用的 policy record 列表。
         """
+
+    async def list_policies_page(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        limit: int,
+        after_updated_at: datetime | None = None,
+        after_policy_id: str | None = None,
+    ) -> list[PreferencePolicyMemoryRecord]:
+        """分页读取项目上下文可见的全部 active project/user/global Policy。"""
 
     async def upsert_policy(self, policy: PreferencePolicyMemoryRecord) -> None:
         """新增或更新一条 typed 偏好或策略记忆记录。

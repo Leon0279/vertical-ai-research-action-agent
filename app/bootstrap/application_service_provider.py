@@ -52,6 +52,9 @@ from app.services.memory.contracts.memory_distiller_protocol import (
 from app.services.memory.contracts.memory_persistence_protocol import (
     MemoryPersistenceProtocol,
 )
+from app.services.memory.contracts.policy_memory_service_protocol import (
+    PolicyMemoryServiceProtocol,
+)
 from app.services.memory.contracts.semantic_resolver_protocol import (
     SemanticResolverProtocol,
 )
@@ -62,6 +65,7 @@ from app.services.memory.context_memory_loader_service import ContextMemoryLoade
 from app.services.memory.decision_memory_service import DecisionMemoryService
 from app.services.memory.memory_distiller_service import MemoryDistillerService
 from app.services.memory.memory_persistence_service import MemoryPersistenceService
+from app.services.memory.policy_memory_service import PolicyMemoryService
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.memory.session_continuity_manager_service import (
     SessionContinuityManagerService,
@@ -95,11 +99,17 @@ from app.services.use_cases.contracts.list_action_memories_use_case_service_prot
 from app.services.use_cases.contracts.list_decision_memories_use_case_service_protocol import (
     ListDecisionMemoriesUseCaseServiceProtocol,
 )
+from app.services.use_cases.contracts.list_policy_memories_use_case_service_protocol import (
+    ListPolicyMemoriesUseCaseServiceProtocol,
+)
 from app.services.use_cases.list_action_memories_use_case_service import (
     ListActionMemoriesUseCaseService,
 )
 from app.services.use_cases.list_decision_memories_use_case_service import (
     ListDecisionMemoriesUseCaseService,
+)
+from app.services.use_cases.list_policy_memories_use_case_service import (
+    ListPolicyMemoriesUseCaseService,
 )
 
 _REGISTERED_FAMILIES = [
@@ -150,6 +160,11 @@ class ApplicationServiceProvider(Provider):
         DecisionMemoryService,
         provides=DecisionMemoryServiceProtocol,
     )
+    policy_memory_service = provide(PolicyMemoryService)
+    policy_memory_service_protocol = alias(
+        PolicyMemoryService,
+        provides=PolicyMemoryServiceProtocol,
+    )
     list_decision_memories_use_case_service = provide(
         ListDecisionMemoriesUseCaseService
     )
@@ -163,6 +178,13 @@ class ApplicationServiceProvider(Provider):
     list_action_memories_use_case_service_protocol = alias(
         ListActionMemoriesUseCaseService,
         provides=ListActionMemoriesUseCaseServiceProtocol,
+    )
+    list_policy_memories_use_case_service = provide(
+        ListPolicyMemoriesUseCaseService
+    )
+    list_policy_memories_use_case_service_protocol = alias(
+        ListPolicyMemoriesUseCaseService,
+        provides=ListPolicyMemoriesUseCaseServiceProtocol,
     )
     session_continuity_manager = provide(SessionContinuityManagerService)
     session_continuity_manager_protocol = alias(
