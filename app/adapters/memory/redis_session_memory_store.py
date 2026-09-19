@@ -11,6 +11,9 @@ from pydantic import ValidationError
 
 from app.adapters.memory.contracts.session_memory_store_protocol import SessionMemoryStoreProtocol
 from app.adapters.memory.redis_session_memory_store_config import RedisSessionMemoryStoreConfig
+from app.adapters.memory.redis_session_memory_store_error import (
+    RedisSessionMemoryStoreError,
+)
 from app.domain.models import SessionMemory
 
 logger = logging.getLogger(__name__)
@@ -37,7 +40,7 @@ Persist compact session continuity memory in Redis."""
         try:
             redis = self._ensure_redis()
             value = await redis.get(key)
-        except Exception:
+        except Exception as exc:
             logger.exception(
                 "Failed to load Redis session memory.",
                 extra={
@@ -45,9 +48,13 @@ Persist compact session continuity memory in Redis."""
                     "memory_load_source": "session",
                     "session_id": session_id,
                     "failure_stage": "redis_get",
+                    "error_category": "unavailable",
                 },
             )
-            return None
+            raise RedisSessionMemoryStoreError(
+                "Redis session memory is unavailable.",
+                error_category="unavailable",
+            ) from exc
 
         if value is None:
             logger.info(
@@ -60,14 +67,13 @@ Persist compact session continuity memory in Redis."""
                 },
             )
             return None
-        if isinstance(value, bytes):
-            value = value.decode("utf-8")
-        if not isinstance(value, str):
-            return None
-
         try:
+            if isinstance(value, bytes):
+                value = value.decode("utf-8")
+            if not isinstance(value, str):
+                raise TypeError("Stored Redis session memory must be text.")
             memory = SessionMemory.model_validate_json(value)
-        except (ValueError, ValidationError):
+        except (UnicodeDecodeError, TypeError, ValueError, ValidationError) as exc:
             logger.warning(
                 "Stored Redis session memory was invalid.",
                 extra={
@@ -78,7 +84,10 @@ Persist compact session continuity memory in Redis."""
                     "error_category": "invalid_stored_value",
                 },
             )
-            return None
+            raise RedisSessionMemoryStoreError(
+                "Stored Redis session memory is invalid.",
+                error_category="invalid_stored_value",
+            ) from exc
 
         if memory.user_id != user_id or memory.session_id != session_id:
             logger.warning(
@@ -91,7 +100,10 @@ Persist compact session continuity memory in Redis."""
                     "error_category": "boundary_mismatch",
                 },
             )
-            return None
+            raise RedisSessionMemoryStoreError(
+                "Stored Redis session memory boundary is invalid.",
+                error_category="boundary_mismatch",
+            )
         logger.info(
             "Redis session memory loaded.",
             extra={

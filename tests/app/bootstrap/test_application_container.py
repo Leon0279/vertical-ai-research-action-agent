@@ -25,6 +25,9 @@ from app.adapters.memory.contracts.preference_policy_memory_store_protocol impor
 from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
     ResearchKnowledgeMemoryStoreProtocol,
 )
+from app.adapters.memory.contracts.session_memory_store_protocol import (
+    SessionMemoryStoreProtocol,
+)
 from app.adapters.memory.postgres_pool_registry import PostgresPoolRegistry
 from app.adapters.memory.postgres_project_profile_memory_store import (
     PostgresProjectProfileMemoryStore,
@@ -60,6 +63,10 @@ from app.services.memory.contracts.research_knowledge_memory_service_protocol im
 from app.services.memory.research_knowledge_memory_service import (
     ResearchKnowledgeMemoryService,
 )
+from app.services.memory.contracts.session_memory_service_protocol import (
+    SessionMemoryServiceProtocol,
+)
+from app.services.memory.session_memory_service import SessionMemoryService
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.output.conclusion_generator_service import ConclusionGeneratorService
 from app.services.planner.task_interpreter_service import TaskInterpreterService
@@ -168,6 +175,13 @@ def test_app_dependencies_are_singletons_and_protocol_aliases_share_instances() 
             assert knowledge_service._research_knowledge_store is await container.get(
                 ResearchKnowledgeMemoryStoreProtocol
             )
+
+            session_service = await container.get(SessionMemoryService)
+            assert session_service is await container.get(SessionMemoryServiceProtocol)
+            assert session_service._session_store is await container.get(
+                SessionMemoryStoreProtocol
+            )
+            assert not hasattr(session_service, "_project_service")
 
             project_store = await container.get(PostgresProjectProfileMemoryStore)
             assert project_store is await container.get(ProjectProfileMemoryStoreProtocol)

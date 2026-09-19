@@ -64,6 +64,9 @@ from app.services.memory.contracts.semantic_resolver_protocol import (
 from app.services.memory.contracts.session_continuity_manager_protocol import (
     SessionContinuityManagerProtocol,
 )
+from app.services.memory.contracts.session_memory_service_protocol import (
+    SessionMemoryServiceProtocol,
+)
 from app.services.memory.context_memory_loader_service import ContextMemoryLoaderService
 from app.services.memory.decision_memory_service import DecisionMemoryService
 from app.services.memory.memory_distiller_service import MemoryDistillerService
@@ -76,6 +79,7 @@ from app.services.memory.semantic_resolver_service import SemanticResolverServic
 from app.services.memory.session_continuity_manager_service import (
     SessionContinuityManagerService,
 )
+from app.services.memory.session_memory_service import SessionMemoryService
 from app.services.output.conclusion_generator_service import ConclusionGeneratorService
 from app.services.output.contracts.conclusion_generator_protocol import (
     ConclusionGeneratorProtocol,
@@ -214,6 +218,11 @@ class ApplicationServiceProvider(Provider):
     session_continuity_manager_protocol = alias(
         SessionContinuityManagerService,
         provides=SessionContinuityManagerProtocol,
+    )
+    session_memory_service = provide(SessionMemoryService)
+    session_memory_service_protocol = alias(
+        SessionMemoryService,
+        provides=SessionMemoryServiceProtocol,
     )
 
     evidence_processing_protocol = alias(

@@ -11,6 +11,7 @@ from app.services.memory.research_knowledge_memory_service import (
 )
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.memory.session_continuity_manager_service import SessionContinuityManagerService
+from app.services.memory.session_memory_service import SessionMemoryService
 
 __all__ = [
     "ActionMemoryService",
@@ -22,4 +23,5 @@ __all__ = [
     "ResearchKnowledgeMemoryService",
     "SemanticResolverService",
     "SessionContinuityManagerService",
+    "SessionMemoryService",
 ]

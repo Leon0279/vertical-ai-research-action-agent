@@ -21,6 +21,8 @@ from app.api.schemas.research_knowledge_memory_item_response import (
 from app.api.schemas.research_knowledge_memory_list_response import (
     ResearchKnowledgeMemoryListResponse,
 )
+from app.api.schemas.session_memory_response import SessionMemoryResponse
+from app.api.schemas.session_turn_summary_response import SessionTurnSummaryResponse
 
 __all__ = [
     "AgentRunRequest",
@@ -40,4 +42,6 @@ __all__ = [
     "ProjectErrorResponse",
     "ResearchKnowledgeMemoryItemResponse",
     "ResearchKnowledgeMemoryListResponse",
+    "SessionMemoryResponse",
+    "SessionTurnSummaryResponse",
 ]

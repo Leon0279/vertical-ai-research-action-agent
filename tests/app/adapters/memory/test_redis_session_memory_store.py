@@ -150,16 +150,17 @@ def test_load_returns_none_for_missing_key() -> None:
     assert loaded is None
 
 
-def test_load_returns_none_for_invalid_json() -> None:
+def test_load_raises_integrity_error_for_invalid_json() -> None:
     redis_client = FakeRedisClient(initial={"session_memory:user-1:session-1": "not json"})
     store = RedisSessionMemoryStore(config=_config(), redis_client=redis_client)
 
-    loaded = asyncio.run(store.load(user_id="user-1", session_id="session-1"))
+    with pytest.raises(RedisSessionMemoryStoreError) as caught:
+        asyncio.run(store.load(user_id="user-1", session_id="session-1"))
 
-    assert loaded is None
+    assert caught.value.error_category == "invalid_stored_value"
 
 
-def test_load_returns_none_for_invalid_schema() -> None:
+def test_load_raises_integrity_error_for_invalid_schema() -> None:
     redis_client = FakeRedisClient(
         initial={
             "session_memory:user-1:session-1": json.dumps(
@@ -175,30 +176,34 @@ def test_load_returns_none_for_invalid_schema() -> None:
     )
     store = RedisSessionMemoryStore(config=_config(), redis_client=redis_client)
 
-    loaded = asyncio.run(store.load(user_id="user-1", session_id="session-1"))
+    with pytest.raises(RedisSessionMemoryStoreError) as caught:
+        asyncio.run(store.load(user_id="user-1", session_id="session-1"))
 
-    assert loaded is None
+    assert caught.value.error_category == "invalid_stored_value"
 
 
-def test_load_returns_none_for_user_or_session_mismatch() -> None:
+def test_load_raises_integrity_error_for_user_or_session_mismatch() -> None:
     stored = SessionMemory(user_id="other-user", session_id="session-1").model_dump_json()
     redis_client = FakeRedisClient(initial={"session_memory:user-1:session-1": stored})
     store = RedisSessionMemoryStore(config=_config(), redis_client=redis_client)
 
-    loaded = asyncio.run(store.load(user_id="user-1", session_id="session-1"))
+    with pytest.raises(RedisSessionMemoryStoreError) as caught:
+        asyncio.run(store.load(user_id="user-1", session_id="session-1"))
 
-    assert loaded is None
+    assert caught.value.error_category == "boundary_mismatch"
 
 
-def test_load_returns_none_when_redis_get_fails() -> None:
+def test_load_raises_unavailable_error_when_redis_get_fails() -> None:
     store = RedisSessionMemoryStore(
         config=_config(),
         redis_client=FakeRedisClient(fail_get=True),
     )
 
-    loaded = asyncio.run(store.load(user_id="user-1", session_id="session-1"))
+    with pytest.raises(RedisSessionMemoryStoreError) as caught:
+        asyncio.run(store.load(user_id="user-1", session_id="session-1"))
 
-    assert loaded is None
+    assert caught.value.error_category == "unavailable"
+    assert "redis get failed" not in str(caught.value)
 
 
 def test_save_does_not_raise_when_redis_set_fails(caplog) -> None:

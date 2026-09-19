@@ -19,6 +19,9 @@ from app.services.memory.contracts.research_knowledge_memory_service_protocol im
 )
 from app.services.memory.contracts.semantic_resolver_protocol import SemanticResolverProtocol
 from app.services.memory.contracts.session_continuity_manager_protocol import SessionContinuityManagerProtocol
+from app.services.memory.contracts.session_memory_service_protocol import (
+    SessionMemoryServiceProtocol,
+)
 
 __all__ = [
     "ActionMemoryServiceProtocol",
@@ -30,4 +33,5 @@ __all__ = [
     "ResearchKnowledgeMemoryServiceProtocol",
     "SemanticResolverProtocol",
     "SessionContinuityManagerProtocol",
+    "SessionMemoryServiceProtocol",
 ]

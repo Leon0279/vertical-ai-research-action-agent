@@ -18,6 +18,7 @@ from app.api.routes.projects import router as projects_router
 from app.api.routes.research_knowledge_memories import (
     router as research_knowledge_memories_router,
 )
+from app.api.routes.session_memories import router as session_memories_router
 from app.bootstrap import build_application_container
 from app.config.app_settings import AppSettings
 
@@ -54,6 +55,7 @@ def create_app(container: AsyncContainer | None = None) -> FastAPI:
     application.include_router(action_memories_router)
     application.include_router(policy_memories_router)
     application.include_router(research_knowledge_memories_router)
+    application.include_router(session_memories_router)
     setup_dishka(container=application_container, app=application)
     return application
 

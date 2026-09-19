@@ -22,6 +22,9 @@ Protocol for short-term session memory storage."""
 
         Returns:
             SessionMemory | None: 当前会话的紧凑连续性记忆；不存在时返回 None。
+
+        Raises:
+            Exception: 存储不可用、内容损坏或读取边界不一致；调用方决定是否降级。
         """
 
     async def save(self, memory: SessionMemory) -> None:

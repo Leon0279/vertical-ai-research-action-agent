@@ -9,6 +9,7 @@ from app.api.routes.projects import router as projects_router
 from app.api.routes.research_knowledge_memories import (
     router as research_knowledge_memories_router,
 )
+from app.api.routes.session_memories import router as session_memories_router
 
 __all__ = [
     "action_memories_router",
@@ -18,4 +19,5 @@ __all__ = [
     "policy_memories_router",
     "projects_router",
     "research_knowledge_memories_router",
+    "session_memories_router",
 ]
