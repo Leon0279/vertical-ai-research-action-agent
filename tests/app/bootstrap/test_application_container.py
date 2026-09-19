@@ -99,6 +99,12 @@ from app.services.use_cases.list_research_knowledge_memories_use_case_service im
 from app.services.use_cases.list_action_memories_use_case_service import (
     ListActionMemoriesUseCaseService,
 )
+from app.services.use_cases.contracts.memory_summary_use_case_service_protocol import (
+    MemorySummaryUseCaseServiceProtocol,
+)
+from app.services.use_cases.memory_summary_use_case_service import (
+    MemorySummaryUseCaseService,
+)
 
 
 def test_app_dependencies_are_singletons_and_protocol_aliases_share_instances() -> None:
@@ -174,6 +180,24 @@ def test_app_dependencies_are_singletons_and_protocol_aliases_share_instances() 
             assert not hasattr(knowledge_service, "_project_service")
             assert knowledge_service._research_knowledge_store is await container.get(
                 ResearchKnowledgeMemoryStoreProtocol
+            )
+
+            summary_use_case_service = await container.get(
+                MemorySummaryUseCaseService
+            )
+            assert summary_use_case_service is await container.get(
+                MemorySummaryUseCaseServiceProtocol
+            )
+            assert summary_use_case_service._project_service is project_service
+            assert (
+                summary_use_case_service._decision_memory_service
+                is decision_service
+            )
+            assert summary_use_case_service._action_memory_service is action_service
+            assert summary_use_case_service._policy_memory_service is policy_service
+            assert (
+                summary_use_case_service._research_knowledge_memory_service
+                is knowledge_service
             )
 
             session_service = await container.get(SessionMemoryService)

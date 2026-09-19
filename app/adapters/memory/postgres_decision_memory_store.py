@@ -18,7 +18,7 @@ from app.adapters.memory.postgres_decision_memory_store_error import (
 )
 from app.adapters.memory.postgres_pool_registry import PostgresPoolRegistry
 from app.common.utils.json_utils import load_json_string_list
-from app.domain.models import DecisionMemoryRecord
+from app.domain.models import DecisionMemoryRecord, MemoryCollectionSummary
 
 
 class PostgresDecisionMemoryStore(DecisionMemoryStoreProtocol):
@@ -85,6 +85,25 @@ Persist decision memory records in PostgreSQL."""
             ) from exc
 
         return [self._row_to_record(row) for row in rows]
+
+    async def summarize_active_decisions(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+    ) -> MemoryCollectionSummary:
+        pool = await self._ensure_pool()
+        query = self._build_summarize_active_decisions_query()
+
+        try:
+            async with pool.acquire() as connection:
+                row = await connection.fetchrow(query, user_id, project_id)
+        except Exception as exc:
+            raise PostgresDecisionMemoryStoreError(
+                "Failed to summarize active decisions."
+            ) from exc
+
+        return self._row_to_summary(row)
 
     async def upsert_decision(self, decision: DecisionMemoryRecord) -> None:
         pool = await self._ensure_pool()
@@ -197,6 +216,24 @@ WHERE user_id = $1
 ORDER BY updated_at DESC, decision_id DESC
 LIMIT $5
 """
+
+    def _build_summarize_active_decisions_query(self) -> str:
+        return f"""
+SELECT
+    COUNT(*) AS count,
+    MAX(updated_at) AS last_updated_at
+FROM {self._table_ref}
+WHERE user_id = $1
+  AND project_id = $2
+  AND record_status = 'active'
+"""
+
+    @staticmethod
+    def _row_to_summary(row: Any) -> MemoryCollectionSummary:
+        return MemoryCollectionSummary(
+            count=int(row["count"]),
+            last_updated_at=row["last_updated_at"],
+        )
 
     def _build_supersede_decision_query(self) -> str:
         return f"""

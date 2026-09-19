@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from app.domain.enums import MemoryType, TaskType
-from app.domain.models import PreferencePolicyMemoryRecord
+from app.domain.models import MemoryCollectionSummary, PreferencePolicyMemoryRecord
 
 
 @runtime_checkable
@@ -55,3 +55,11 @@ Protocol for the preference_policy_memory table adapter."""
         Returns:
             None: 写入成功后无返回值；底层存储异常由实现向调用方抛出。
         """
+
+    async def summarize_policies(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+    ) -> MemoryCollectionSummary:
+        """Aggregate all active project/user/system-global Policies in context."""

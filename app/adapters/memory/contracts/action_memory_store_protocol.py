@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from app.domain.models import ActionMemoryRecord
+from app.domain.models import ActionMemoryRecord, MemoryCollectionSummary
 from app.domain.models.memory.action_memory_status import ActionMemoryStatus
 
 
@@ -80,3 +80,12 @@ Protocol for the action_memory table adapter."""
         Returns:
             None: 写入成功后无返回值；底层存储异常由实现向调用方抛出。
         """
+
+    async def summarize_actions(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        action_statuses: list[ActionMemoryStatus],
+    ) -> MemoryCollectionSummary:
+        """Aggregate Actions using the same status and lifecycle rules as browsing."""

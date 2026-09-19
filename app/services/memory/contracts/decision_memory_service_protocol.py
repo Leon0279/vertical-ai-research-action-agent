@@ -3,6 +3,7 @@
 from typing import Protocol, runtime_checkable
 
 from app.domain.models.memory.decision_memory_page import DecisionMemoryPage
+from app.domain.models.memory.memory_collection_summary import MemoryCollectionSummary
 
 
 @runtime_checkable
@@ -18,4 +19,13 @@ class DecisionMemoryServiceProtocol(Protocol):
         cursor: str | None = None,
     ) -> DecisionMemoryPage:
         """读取指定用户和项目范围内的一页 active Decision Memory。"""
+        ...
+
+    async def summarize_active_decisions(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+    ) -> MemoryCollectionSummary:
+        """统计指定用户和项目范围内的 active Decision Memory。"""
         ...

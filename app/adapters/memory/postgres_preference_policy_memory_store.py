@@ -19,7 +19,7 @@ from app.adapters.memory.postgres_preference_policy_memory_store_error import (
 from app.adapters.memory.postgres_pool_registry import PostgresPoolRegistry
 from app.common.utils.json_utils import load_json_string_list
 from app.domain.enums import MemoryType, TaskType
-from app.domain.models import PreferencePolicyMemoryRecord
+from app.domain.models import MemoryCollectionSummary, PreferencePolicyMemoryRecord
 
 
 class PostgresPreferencePolicyMemoryStore(PreferencePolicyMemoryStoreProtocol):
@@ -96,6 +96,30 @@ Persist preference/policy memory records in PostgreSQL."""
             ) from exc
 
         return [self._row_to_record(row) for row in rows]
+
+    async def summarize_policies(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+    ) -> MemoryCollectionSummary:
+        pool = await self._ensure_pool()
+        query = self._build_summarize_policies_query()
+
+        try:
+            async with pool.acquire() as connection:
+                row = await connection.fetchrow(
+                    query,
+                    user_id,
+                    project_id,
+                    self._config.system_user_id,
+                )
+        except Exception as exc:
+            raise PostgresPreferencePolicyMemoryStoreError(
+                "Failed to summarize Policy Memory."
+            ) from exc
+
+        return self._row_to_summary(row)
 
     async def upsert_policy(self, policy: PreferencePolicyMemoryRecord) -> None:
         pool = await self._ensure_pool()
@@ -287,6 +311,38 @@ WHERE record_status = 'active'
 ORDER BY updated_at DESC, policy_id DESC
 LIMIT $6
 """
+
+    def _build_summarize_policies_query(self) -> str:
+        return f"""
+SELECT
+    COUNT(*) AS count,
+    MAX(updated_at) AS last_updated_at
+FROM {self._table_ref}
+WHERE record_status = 'active'
+  AND (
+      (
+          owner_scope_type = 'project'
+          AND user_id = $1
+          AND project_id = $2
+      )
+      OR (
+          owner_scope_type = 'user'
+          AND user_id = $1
+      )
+      OR (
+          owner_scope_type = 'global'
+          AND user_id = $3
+          AND owner_scope_value = $3
+      )
+  )
+"""
+
+    @staticmethod
+    def _row_to_summary(row: Any) -> MemoryCollectionSummary:
+        return MemoryCollectionSummary(
+            count=int(row["count"]),
+            last_updated_at=row["last_updated_at"],
+        )
 
     def _build_supersede_policy_query(self) -> str:
         return f"""

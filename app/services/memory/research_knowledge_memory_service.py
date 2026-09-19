@@ -7,6 +7,7 @@ from app.adapters.memory.contracts.research_knowledge_memory_store_protocol impo
 )
 from app.common.utils.memory_cursor import decode_memory_cursor, encode_memory_cursor
 from app.domain.models.memory.memory_page_cursor import MemoryPageCursor
+from app.domain.models.memory.memory_collection_summary import MemoryCollectionSummary
 from app.domain.models.memory.research_knowledge_memory_page import (
     ResearchKnowledgeMemoryPage,
 )
@@ -114,6 +115,31 @@ class ResearchKnowledgeMemoryService(ResearchKnowledgeMemoryServiceProtocol):
             items=page_items,
             next_cursor=next_cursor,
         )
+
+    async def summarize_knowledge_units(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        visibility_scopes: list[ResearchKnowledgeVisibilityScope] | None = None,
+    ) -> MemoryCollectionSummary:
+        normalized_user_id = self._required_identifier(user_id, field_name="user_id")
+        normalized_project_id = self._required_identifier(
+            project_id,
+            field_name="project_id",
+        )
+        normalized_scopes = self._normalize_visibility_scopes(visibility_scopes)
+        try:
+            return await self._research_knowledge_store.summarize_knowledge_units(
+                owner_user_id=normalized_user_id,
+                project_scope_id=normalized_project_id,
+                visibility_scopes=list(normalized_scopes),
+            )
+        except Exception as exc:
+            raise ResearchKnowledgeMemoryServiceError(
+                error_code="MEMORY_STORE_UNAVAILABLE",
+                error_reason="Research Knowledge Memory 暂时无法读取，请稍后重试。",
+            ) from exc
 
     @staticmethod
     def _required_identifier(value: str, *, field_name: str) -> str:

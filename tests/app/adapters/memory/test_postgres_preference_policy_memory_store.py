@@ -38,14 +38,17 @@ class FakeConnection:
     def __init__(
         self,
         *,
+        row: dict[str, object] | None = None,
         rows: list[dict[str, object]] | None = None,
         fetch_error: Exception | None = None,
         execute_error: Exception | None = None,
     ) -> None:
+        self.row = row
         self.rows = rows or []
         self.fetch_error = fetch_error
         self.execute_error = execute_error
         self.fetch_calls: list[tuple[str, tuple[object, ...]]] = []
+        self.fetchrow_calls: list[tuple[str, tuple[object, ...]]] = []
         self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
 
     async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
@@ -53,6 +56,12 @@ class FakeConnection:
         if self.fetch_error:
             raise self.fetch_error
         return self.rows
+
+    async def fetchrow(self, query: str, *args: object) -> dict[str, object] | None:
+        self.fetchrow_calls.append((query, args))
+        if self.fetch_error:
+            raise self.fetch_error
+        return self.row
 
     async def execute(self, query: str, *args: object) -> str:
         self.execute_calls.append((query, args))
@@ -404,3 +413,28 @@ def test_preference_policy_store_satisfies_protocol() -> None:
         PostgresPreferencePolicyMemoryStore(config=_config(), pool=object()),
         PreferencePolicyMemoryStoreProtocol,
     )
+
+
+def test_summarize_policies_uses_visible_active_scopes_and_aggregate_only() -> None:
+    updated_at = datetime(2026, 9, 20, 8, 0, tzinfo=UTC)
+    connection = FakeConnection(row={"count": 4, "last_updated_at": updated_at})
+    store = PostgresPreferencePolicyMemoryStore(
+        config=_config(),
+        pool=FakePool(connection),
+    )
+
+    summary = asyncio.run(
+        store.summarize_policies(user_id="user-1", project_id="project-1")
+    )
+
+    query, args = connection.fetchrow_calls[0]
+    assert summary.count == 4
+    assert summary.last_updated_at == updated_at
+    assert "COUNT(*) AS count" in query
+    assert "record_status = 'active'" in query
+    assert "owner_scope_type = 'project'" in query
+    assert "owner_scope_type = 'user'" in query
+    assert "owner_scope_type = 'global'" in query
+    assert "policy_text" not in query
+    assert "embedding" not in query
+    assert args == ("user-1", "project-1", "__system__")

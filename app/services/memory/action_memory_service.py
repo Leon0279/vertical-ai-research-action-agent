@@ -9,6 +9,7 @@ from app.common.utils.memory_cursor import decode_memory_cursor, encode_memory_c
 from app.domain.models.memory.action_memory_page import ActionMemoryPage
 from app.domain.models.memory.action_memory_status import ActionMemoryStatus
 from app.domain.models.memory.memory_page_cursor import MemoryPageCursor
+from app.domain.models.memory.memory_collection_summary import MemoryCollectionSummary
 from app.services.memory.action_memory_service_error import ActionMemoryServiceError
 from app.services.memory.contracts.action_memory_service_protocol import (
     ActionMemoryServiceProtocol,
@@ -106,6 +107,31 @@ class ActionMemoryService(ActionMemoryServiceProtocol):
             items=page_items,
             next_cursor=next_cursor,
         )
+
+    async def summarize_actions(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        action_statuses: list[ActionMemoryStatus] | None = None,
+    ) -> MemoryCollectionSummary:
+        normalized_user_id = self._required_identifier(user_id, field_name="user_id")
+        normalized_project_id = self._required_identifier(
+            project_id,
+            field_name="project_id",
+        )
+        normalized_statuses = self._normalize_statuses(action_statuses)
+        try:
+            return await self._action_memory_store.summarize_actions(
+                user_id=normalized_user_id,
+                project_id=normalized_project_id,
+                action_statuses=list(normalized_statuses),
+            )
+        except Exception as exc:
+            raise ActionMemoryServiceError(
+                error_code="MEMORY_STORE_UNAVAILABLE",
+                error_reason="Action Memory 暂时无法读取，请稍后重试。",
+            ) from exc
 
     @staticmethod
     def _required_identifier(value: str, *, field_name: str) -> str:

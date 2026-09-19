@@ -115,6 +115,9 @@ from app.services.use_cases.contracts.list_policy_memories_use_case_service_prot
 from app.services.use_cases.contracts.list_research_knowledge_memories_use_case_service_protocol import (
     ListResearchKnowledgeMemoriesUseCaseServiceProtocol,
 )
+from app.services.use_cases.contracts.memory_summary_use_case_service_protocol import (
+    MemorySummaryUseCaseServiceProtocol,
+)
 from app.services.use_cases.list_action_memories_use_case_service import (
     ListActionMemoriesUseCaseService,
 )
@@ -126,6 +129,9 @@ from app.services.use_cases.list_policy_memories_use_case_service import (
 )
 from app.services.use_cases.list_research_knowledge_memories_use_case_service import (
     ListResearchKnowledgeMemoriesUseCaseService,
+)
+from app.services.use_cases.memory_summary_use_case_service import (
+    MemorySummaryUseCaseService,
 )
 
 _REGISTERED_FAMILIES = [
@@ -213,6 +219,11 @@ class ApplicationServiceProvider(Provider):
     list_research_knowledge_memories_use_case_service_protocol = alias(
         ListResearchKnowledgeMemoriesUseCaseService,
         provides=ListResearchKnowledgeMemoriesUseCaseServiceProtocol,
+    )
+    memory_summary_use_case_service = provide(MemorySummaryUseCaseService)
+    memory_summary_use_case_service_protocol = alias(
+        MemorySummaryUseCaseService,
+        provides=MemorySummaryUseCaseServiceProtocol,
     )
     session_continuity_manager = provide(SessionContinuityManagerService)
     session_continuity_manager_protocol = alias(

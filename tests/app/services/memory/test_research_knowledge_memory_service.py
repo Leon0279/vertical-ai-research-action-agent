@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.common.utils.memory_cursor import decode_memory_cursor, encode_memory_cursor
-from app.domain.models import ResearchKnowledgeUnitRecord
+from app.domain.models import MemoryCollectionSummary, ResearchKnowledgeUnitRecord
 from app.domain.models.memory.memory_page_cursor import MemoryPageCursor
 from app.services.memory.research_knowledge_memory_service import (
     ResearchKnowledgeMemoryService,
@@ -27,6 +27,12 @@ class _Store:
         if self.error is not None:
             raise self.error
         return self.records
+
+    async def summarize_knowledge_units(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return MemoryCollectionSummary(count=7)
 
 
 def _record(knowledge_id: str, *, updated_at: datetime | None):
@@ -190,3 +196,23 @@ def test_rejects_missing_updated_at_when_next_page_is_needed() -> None:
             )
         )
     assert caught.value.error_code == "MEMORY_QUERY_FAILED"
+
+
+def test_summarizes_default_project_visibility_scope() -> None:
+    store = _Store()
+
+    summary = asyncio.run(
+        ResearchKnowledgeMemoryService(store).summarize_knowledge_units(
+            user_id=" user-1 ",
+            project_id=" project-1 ",
+        )
+    )
+
+    assert summary.count == 7
+    assert store.calls == [
+        {
+            "owner_user_id": "user-1",
+            "project_scope_id": "project-1",
+            "visibility_scopes": ["project"],
+        }
+    ]

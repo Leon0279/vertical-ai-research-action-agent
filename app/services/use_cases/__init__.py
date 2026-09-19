@@ -12,10 +12,14 @@ from app.services.use_cases.list_policy_memories_use_case_service import (
 from app.services.use_cases.list_research_knowledge_memories_use_case_service import (
     ListResearchKnowledgeMemoriesUseCaseService,
 )
+from app.services.use_cases.memory_summary_use_case_service import (
+    MemorySummaryUseCaseService,
+)
 
 __all__ = [
     "ListActionMemoriesUseCaseService",
     "ListDecisionMemoriesUseCaseService",
     "ListPolicyMemoriesUseCaseService",
     "ListResearchKnowledgeMemoriesUseCaseService",
+    "MemorySummaryUseCaseService",
 ]

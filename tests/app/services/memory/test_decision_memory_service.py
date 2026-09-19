@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.common.utils.memory_cursor import decode_memory_cursor, encode_memory_cursor
-from app.domain.models import DecisionMemoryRecord
+from app.domain.models import DecisionMemoryRecord, MemoryCollectionSummary
 from app.domain.models.memory.memory_page_cursor import MemoryPageCursor
 from app.services.memory.decision_memory_service import DecisionMemoryService
 from app.services.memory.decision_memory_service_error import (
@@ -30,6 +30,12 @@ class _DecisionStore:
         if self.error is not None:
             raise self.error
         return self.records
+
+    async def summarize_active_decisions(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return MemoryCollectionSummary(count=2)
 
 
 def _record(
@@ -191,3 +197,17 @@ def test_decision_service_rejects_missing_cursor_timestamp_for_next_page() -> No
         )
 
     assert caught.value.error_code == "MEMORY_QUERY_FAILED"
+
+
+def test_decision_service_summarizes_normalized_scope() -> None:
+    store = _DecisionStore()
+
+    summary = asyncio.run(
+        DecisionMemoryService(store).summarize_active_decisions(
+            user_id=" user-1 ",
+            project_id=" project-1 ",
+        )
+    )
+
+    assert summary.count == 2
+    assert store.calls == [{"user_id": "user-1", "project_id": "project-1"}]

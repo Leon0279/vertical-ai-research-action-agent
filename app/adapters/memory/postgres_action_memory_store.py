@@ -18,7 +18,7 @@ from app.adapters.memory.postgres_action_memory_store_error import (
 )
 from app.adapters.memory.postgres_pool_registry import PostgresPoolRegistry
 from app.common.utils.json_utils import load_json_string_list
-from app.domain.models import ActionMemoryRecord
+from app.domain.models import ActionMemoryRecord, MemoryCollectionSummary
 from app.domain.models.memory.action_memory_status import ActionMemoryStatus
 
 
@@ -107,6 +107,31 @@ Persist action memory records in PostgreSQL."""
             ) from exc
 
         return [self._row_to_record(row) for row in rows]
+
+    async def summarize_actions(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        action_statuses: list[ActionMemoryStatus],
+    ) -> MemoryCollectionSummary:
+        pool = await self._ensure_pool()
+        query = self._build_summarize_actions_query()
+
+        try:
+            async with pool.acquire() as connection:
+                row = await connection.fetchrow(
+                    query,
+                    user_id,
+                    project_id,
+                    action_statuses,
+                )
+        except Exception as exc:
+            raise PostgresActionMemoryStoreError(
+                "Failed to summarize Action Memory."
+            ) from exc
+
+        return self._row_to_summary(row)
 
     async def upsert_action(self, action: ActionMemoryRecord) -> None:
         pool = await self._ensure_pool()
@@ -250,6 +275,34 @@ WHERE user_id = $1
 ORDER BY updated_at DESC, action_id DESC
 LIMIT $6
 """
+
+    def _build_summarize_actions_query(self) -> str:
+        return f"""
+SELECT
+    COUNT(*) AS count,
+    MAX(updated_at) AS last_updated_at
+FROM {self._table_ref}
+WHERE user_id = $1
+  AND project_id = $2
+  AND action_status = ANY($3::text[])
+  AND (
+      (
+          record_status = 'active'
+          AND action_status IN ('todo', 'in_progress', 'blocked')
+      )
+      OR (
+          record_status = 'archived'
+          AND action_status IN ('done', 'cancelled')
+      )
+  )
+"""
+
+    @staticmethod
+    def _row_to_summary(row: Any) -> MemoryCollectionSummary:
+        return MemoryCollectionSummary(
+            count=int(row["count"]),
+            last_updated_at=row["last_updated_at"],
+        )
 
     def _build_upsert_action_query(self) -> str:
         return f"""

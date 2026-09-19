@@ -37,14 +37,17 @@ class FakeConnection:
     def __init__(
         self,
         *,
+        row: dict[str, object] | None = None,
         rows: list[dict[str, object]] | None = None,
         fetch_error: Exception | None = None,
         execute_error: Exception | None = None,
     ) -> None:
+        self.row = row
         self.rows = rows or []
         self.fetch_error = fetch_error
         self.execute_error = execute_error
         self.fetch_calls: list[tuple[str, tuple[object, ...]]] = []
+        self.fetchrow_calls: list[tuple[str, tuple[object, ...]]] = []
         self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
 
     async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
@@ -52,6 +55,12 @@ class FakeConnection:
         if self.fetch_error:
             raise self.fetch_error
         return self.rows
+
+    async def fetchrow(self, query: str, *args: object) -> dict[str, object] | None:
+        self.fetchrow_calls.append((query, args))
+        if self.fetch_error:
+            raise self.fetch_error
+        return self.row
 
     async def execute(self, query: str, *args: object) -> str:
         self.execute_calls.append((query, args))
@@ -217,6 +226,29 @@ def test_list_active_decisions_wraps_fetch_errors() -> None:
 
     with pytest.raises(PostgresDecisionMemoryStoreError, match="Failed to load"):
         asyncio.run(store.list_active_decisions(user_id="user-1", project_id="project-1"))
+
+
+def test_summarize_active_decisions_uses_list_filters_and_aggregate_only() -> None:
+    updated_at = datetime(2026, 9, 20, 8, 0, tzinfo=UTC)
+    connection = FakeConnection(row={"count": 2, "last_updated_at": updated_at})
+    store = PostgresDecisionMemoryStore(config=_config(), pool=FakePool(connection))
+
+    summary = asyncio.run(
+        store.summarize_active_decisions(
+            user_id="user-1",
+            project_id="project-1",
+        )
+    )
+
+    query, args = connection.fetchrow_calls[0]
+    assert summary.count == 2
+    assert summary.last_updated_at == updated_at
+    assert "COUNT(*) AS count" in query
+    assert "MAX(updated_at) AS last_updated_at" in query
+    assert "record_status = 'active'" in query
+    assert "decision_title" not in query
+    assert "embedding" not in query
+    assert args == ("user-1", "project-1")
 
 
 def test_list_active_decisions_page_uses_active_scope_keyset_and_limit() -> None:

@@ -19,6 +19,7 @@ from app.adapters.memory.postgres_research_knowledge_memory_store_error import (
 from app.adapters.memory.postgres_pool_registry import PostgresPoolRegistry
 from app.common.utils.json_utils import load_json_string_list
 from app.domain.models import (
+    MemoryCollectionSummary,
     ResearchKnowledgeRecallQuery,
     ResearchKnowledgeRecallResult,
     ResearchKnowledgeUnitRecord,
@@ -150,6 +151,31 @@ Persist and recall research knowledge units in PostgreSQL + pgvector."""
 
         return [self._row_to_record(row) for row in rows]
 
+    async def summarize_knowledge_units(
+        self,
+        *,
+        owner_user_id: str,
+        project_scope_id: str,
+        visibility_scopes: list[ResearchKnowledgeVisibilityScope],
+    ) -> MemoryCollectionSummary:
+        pool = await self._ensure_pool()
+        query = self._build_summarize_knowledge_units_query()
+
+        try:
+            async with pool.acquire() as connection:
+                row = await connection.fetchrow(
+                    query,
+                    owner_user_id,
+                    project_scope_id,
+                    visibility_scopes,
+                )
+        except Exception as exc:
+            raise PostgresResearchKnowledgeMemoryStoreError(
+                "Failed to summarize Research Knowledge Memory."
+            ) from exc
+
+        return self._row_to_summary(row)
+
     @property
     def _table_ref(self) -> str:
         return postgres_table_ref(self._config.schema_name, self._config.table_name)
@@ -275,6 +301,33 @@ WHERE owner_user_id = $1
 ORDER BY updated_at DESC, knowledge_id DESC
 LIMIT $6
 """
+
+    def _build_summarize_knowledge_units_query(self) -> str:
+        return f"""
+SELECT
+    COUNT(*) AS count,
+    MAX(updated_at) AS last_updated_at
+FROM {self._table_ref}
+WHERE owner_user_id = $1
+  AND visibility_scope_effective = ANY($3::text[])
+  AND status = 'active'
+  AND is_canonical = true
+  AND merged_into_id IS NULL
+  AND (
+      (visibility_scope_effective = 'project' AND project_scope_id = $2)
+      OR (
+          visibility_scope_effective IN ('user', 'domain', 'global')
+          AND project_scope_id IS NULL
+      )
+  )
+"""
+
+    @staticmethod
+    def _row_to_summary(row: Any) -> MemoryCollectionSummary:
+        return MemoryCollectionSummary(
+            count=int(row["count"]),
+            last_updated_at=row["last_updated_at"],
+        )
 
     def _build_upsert_knowledge_unit_query(self) -> str:
         return f"""

@@ -544,3 +544,31 @@ def test_postgres_research_knowledge_store_satisfies_protocol() -> None:
     store = PostgresResearchKnowledgeMemoryStore(config=_config(), pool=FakePool(FakeConnection()))
 
     assert isinstance(store, ResearchKnowledgeMemoryStoreProtocol)
+
+
+def test_summarize_knowledge_uses_browse_filters_and_aggregate_only() -> None:
+    updated_at = datetime(2026, 9, 20, 8, 0, tzinfo=UTC)
+    connection = FakeConnection(row={"count": 7, "last_updated_at": updated_at})
+    store = PostgresResearchKnowledgeMemoryStore(
+        config=_config(),
+        pool=FakePool(connection),
+    )
+
+    summary = asyncio.run(
+        store.summarize_knowledge_units(
+            owner_user_id="user-1",
+            project_scope_id="project-1",
+            visibility_scopes=["project"],
+        )
+    )
+
+    query, args = connection.fetchrow_calls[0]
+    assert summary.count == 7
+    assert summary.last_updated_at == updated_at
+    assert "COUNT(*) AS count" in query
+    assert "visibility_scope_effective = ANY($3::text[])" in query
+    assert "status = 'active'" in query
+    assert "is_canonical = true" in query
+    assert "merged_into_id IS NULL" in query
+    assert "embedding" not in query
+    assert args == ("user-1", "project-1", ["project"])

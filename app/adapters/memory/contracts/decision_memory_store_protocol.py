@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from app.domain.models import DecisionMemoryRecord
+from app.domain.models import DecisionMemoryRecord, MemoryCollectionSummary
 
 
 @runtime_checkable
@@ -61,3 +61,11 @@ Protocol for the decision_memory table adapter."""
         Returns:
             None: 写入成功后无返回值；底层存储异常由实现向调用方抛出。
         """
+
+    async def summarize_active_decisions(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+    ) -> MemoryCollectionSummary:
+        """Count active Decisions and return their latest update time."""

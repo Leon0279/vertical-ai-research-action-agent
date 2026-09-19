@@ -8,6 +8,7 @@ from app.adapters.memory.contracts.decision_memory_store_protocol import (
 from app.common.utils.memory_cursor import decode_memory_cursor, encode_memory_cursor
 from app.domain.models.memory.decision_memory_page import DecisionMemoryPage
 from app.domain.models.memory.memory_page_cursor import MemoryPageCursor
+from app.domain.models.memory.memory_collection_summary import MemoryCollectionSummary
 from app.services.memory.contracts.decision_memory_service_protocol import (
     DecisionMemoryServiceProtocol,
 )
@@ -78,6 +79,28 @@ class DecisionMemoryService(DecisionMemoryServiceProtocol):
             items=page_items,
             next_cursor=next_cursor,
         )
+
+    async def summarize_active_decisions(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+    ) -> MemoryCollectionSummary:
+        normalized_user_id = self._required_identifier(user_id, field_name="user_id")
+        normalized_project_id = self._required_identifier(
+            project_id,
+            field_name="project_id",
+        )
+        try:
+            return await self._decision_memory_store.summarize_active_decisions(
+                user_id=normalized_user_id,
+                project_id=normalized_project_id,
+            )
+        except Exception as exc:
+            raise DecisionMemoryServiceError(
+                error_code="MEMORY_STORE_UNAVAILABLE",
+                error_reason="Decision Memory 暂时无法读取，请稍后重试。",
+            ) from exc
 
     @staticmethod
     def _required_identifier(value: str, *, field_name: str) -> str:

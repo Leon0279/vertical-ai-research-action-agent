@@ -45,12 +45,14 @@ from app.domain.models.memory.decision_candidate_details import DecisionCandidat
 from app.domain.models.memory.decision_memory_page import DecisionMemoryPage
 from app.domain.models.memory.memory_candidate import MemoryCandidate
 from app.domain.models.memory.memory_candidate_details import MemoryCandidateDetails
+from app.domain.models.memory.memory_collection_summary import MemoryCollectionSummary
 from app.domain.models.memory.memory_page_cursor import MemoryPageCursor
 from app.domain.models.memory.memory_persistence_result import (
     MemoryPersistenceItemResult,
     MemoryPersistenceResult,
 )
 from app.domain.models.memory.memory_record import MemoryRecord
+from app.domain.models.memory.memory_summary import MemorySummary
 from app.domain.models.memory.preference_policy_memory_record import (
     PreferencePolicyMemoryRecord,
 )
@@ -195,10 +197,12 @@ __all__ = [
     "LlmsTxtDocsSearchToolResult",
     "MemoryCandidate",
     "MemoryCandidateDetails",
+    "MemoryCollectionSummary",
     "MemoryPageCursor",
     "MemoryPersistenceItemResult",
     "MemoryPersistenceResult",
     "MemoryRecord",
+    "MemorySummary",
     "PaperContentExtractionStatus",
     "PaperContentFetchRequest",
     "PaperContentFetchResult",

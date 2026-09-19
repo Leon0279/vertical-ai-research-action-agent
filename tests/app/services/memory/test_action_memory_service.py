@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.common.utils.memory_cursor import decode_memory_cursor, encode_memory_cursor
-from app.domain.models import ActionMemoryRecord
+from app.domain.models import ActionMemoryRecord, MemoryCollectionSummary
 from app.domain.models.memory.memory_page_cursor import MemoryPageCursor
 from app.services.memory.action_memory_service import ActionMemoryService
 from app.services.memory.action_memory_service_error import ActionMemoryServiceError
@@ -28,6 +28,12 @@ class _ActionStore:
         if self.error is not None:
             raise self.error
         return self.records
+
+    async def summarize_actions(self, **kwargs):
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
+        return MemoryCollectionSummary(count=3)
 
 
 def _record(
@@ -240,6 +246,26 @@ def test_action_service_converts_store_failure_to_safe_error() -> None:
 
     assert caught.value.error_code == "MEMORY_STORE_UNAVAILABLE"
     assert "secret" not in caught.value.error_reason
+
+
+def test_action_service_summarizes_default_pending_statuses() -> None:
+    store = _ActionStore()
+
+    summary = asyncio.run(
+        ActionMemoryService(store).summarize_actions(
+            user_id=" user-1 ",
+            project_id=" project-1 ",
+        )
+    )
+
+    assert summary.count == 3
+    assert store.calls == [
+        {
+            "user_id": "user-1",
+            "project_id": "project-1",
+            "action_statuses": ["todo", "in_progress", "blocked"],
+        }
+    ]
 
 
 def test_action_service_rejects_missing_cursor_timestamp_for_next_page() -> None:

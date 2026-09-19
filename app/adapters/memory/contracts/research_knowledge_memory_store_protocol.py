@@ -9,6 +9,7 @@ from app.domain.models import (
     ResearchKnowledgeRecallQuery,
     ResearchKnowledgeRecallResult,
     ResearchKnowledgeUnitRecord,
+    MemoryCollectionSummary,
 )
 from app.domain.models.memory.research_knowledge_visibility_scope import (
     ResearchKnowledgeVisibilityScope,
@@ -87,3 +88,12 @@ Protocol for the research_knowledge_units adapter."""
         after_knowledge_id: str | None = None,
     ) -> list[ResearchKnowledgeUnitRecord]:
         """分页浏览当前用户和项目上下文中可见的有效知识单元。"""
+
+    async def summarize_knowledge_units(
+        self,
+        *,
+        owner_user_id: str,
+        project_scope_id: str,
+        visibility_scopes: list[ResearchKnowledgeVisibilityScope],
+    ) -> MemoryCollectionSummary:
+        """Aggregate active canonical unmerged knowledge for the requested scopes."""

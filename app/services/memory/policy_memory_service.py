@@ -7,6 +7,7 @@ from app.adapters.memory.contracts.preference_policy_memory_store_protocol impor
 )
 from app.common.utils.memory_cursor import decode_memory_cursor, encode_memory_cursor
 from app.domain.models.memory.memory_page_cursor import MemoryPageCursor
+from app.domain.models.memory.memory_collection_summary import MemoryCollectionSummary
 from app.domain.models.memory.policy_memory_page import PolicyMemoryPage
 from app.services.memory.contracts.policy_memory_service_protocol import (
     PolicyMemoryServiceProtocol,
@@ -79,6 +80,28 @@ class PolicyMemoryService(PolicyMemoryServiceProtocol):
             items=page_items,
             next_cursor=next_cursor,
         )
+
+    async def summarize_policies(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+    ) -> MemoryCollectionSummary:
+        normalized_user_id = self._required_identifier(user_id, field_name="user_id")
+        normalized_project_id = self._required_identifier(
+            project_id,
+            field_name="project_id",
+        )
+        try:
+            return await self._preference_policy_store.summarize_policies(
+                user_id=normalized_user_id,
+                project_id=normalized_project_id,
+            )
+        except Exception as exc:
+            raise PolicyMemoryServiceError(
+                error_code="MEMORY_STORE_UNAVAILABLE",
+                error_reason="Policy Memory 暂时无法读取，请稍后重试。",
+            ) from exc
 
     @staticmethod
     def _required_identifier(value: str, *, field_name: str) -> str:

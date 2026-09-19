@@ -13,6 +13,7 @@ from app.api.routes.action_memories import router as action_memories_router
 from app.api.routes.agent import router as agent_router
 from app.api.routes.decision_memories import router as decision_memories_router
 from app.api.routes.health import router as health_router
+from app.api.routes.memory_summary import router as memory_summary_router
 from app.api.routes.policy_memories import router as policy_memories_router
 from app.api.routes.projects import router as projects_router
 from app.api.routes.research_knowledge_memories import (
@@ -51,6 +52,7 @@ def create_app(container: AsyncContainer | None = None) -> FastAPI:
     application.include_router(health_router)
     application.include_router(agent_router)
     application.include_router(projects_router)
+    application.include_router(memory_summary_router)
     application.include_router(decision_memories_router)
     application.include_router(action_memories_router)
     application.include_router(policy_memories_router)
