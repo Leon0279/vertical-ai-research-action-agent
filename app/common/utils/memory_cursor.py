@@ -27,7 +27,12 @@ def encode_memory_cursor(cursor: MemoryPageCursor) -> str:
 def decode_memory_cursor(
     value: str,
     *,
-    expected_collection: Literal["decisions", "actions", "policies"],
+    expected_collection: Literal[
+        "decisions",
+        "actions",
+        "policies",
+        "research_knowledge",
+    ],
 ) -> MemoryPageCursor:
     """Decode and validate a collection-bound versioned Memory cursor.
 

@@ -22,6 +22,9 @@ from app.adapters.memory.contracts.project_profile_memory_store_protocol import 
 from app.adapters.memory.contracts.preference_policy_memory_store_protocol import (
     PreferencePolicyMemoryStoreProtocol,
 )
+from app.adapters.memory.contracts.research_knowledge_memory_store_protocol import (
+    ResearchKnowledgeMemoryStoreProtocol,
+)
 from app.adapters.memory.postgres_pool_registry import PostgresPoolRegistry
 from app.adapters.memory.postgres_project_profile_memory_store import (
     PostgresProjectProfileMemoryStore,
@@ -51,6 +54,12 @@ from app.services.memory.contracts.policy_memory_service_protocol import (
     PolicyMemoryServiceProtocol,
 )
 from app.services.memory.policy_memory_service import PolicyMemoryService
+from app.services.memory.contracts.research_knowledge_memory_service_protocol import (
+    ResearchKnowledgeMemoryServiceProtocol,
+)
+from app.services.memory.research_knowledge_memory_service import (
+    ResearchKnowledgeMemoryService,
+)
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.output.conclusion_generator_service import ConclusionGeneratorService
 from app.services.planner.task_interpreter_service import TaskInterpreterService
@@ -73,6 +82,12 @@ from app.services.use_cases.contracts.list_policy_memories_use_case_service_prot
 )
 from app.services.use_cases.list_policy_memories_use_case_service import (
     ListPolicyMemoriesUseCaseService,
+)
+from app.services.use_cases.contracts.list_research_knowledge_memories_use_case_service_protocol import (
+    ListResearchKnowledgeMemoriesUseCaseServiceProtocol,
+)
+from app.services.use_cases.list_research_knowledge_memories_use_case_service import (
+    ListResearchKnowledgeMemoriesUseCaseService,
 )
 from app.services.use_cases.list_action_memories_use_case_service import (
     ListActionMemoriesUseCaseService,
@@ -132,6 +147,26 @@ def test_app_dependencies_are_singletons_and_protocol_aliases_share_instances() 
             assert not hasattr(policy_service, "_project_service")
             assert policy_service._preference_policy_store is await container.get(
                 PreferencePolicyMemoryStoreProtocol
+            )
+
+            knowledge_service = await container.get(ResearchKnowledgeMemoryService)
+            assert knowledge_service is await container.get(
+                ResearchKnowledgeMemoryServiceProtocol
+            )
+            knowledge_use_case_service = await container.get(
+                ListResearchKnowledgeMemoriesUseCaseService
+            )
+            assert knowledge_use_case_service is await container.get(
+                ListResearchKnowledgeMemoriesUseCaseServiceProtocol
+            )
+            assert knowledge_use_case_service._project_service is project_service
+            assert (
+                knowledge_use_case_service._research_knowledge_memory_service
+                is knowledge_service
+            )
+            assert not hasattr(knowledge_service, "_project_service")
+            assert knowledge_service._research_knowledge_store is await container.get(
+                ResearchKnowledgeMemoryStoreProtocol
             )
 
             project_store = await container.get(PostgresProjectProfileMemoryStore)

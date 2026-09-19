@@ -9,9 +9,13 @@ from app.services.use_cases.list_decision_memories_use_case_service import (
 from app.services.use_cases.list_policy_memories_use_case_service import (
     ListPolicyMemoriesUseCaseService,
 )
+from app.services.use_cases.list_research_knowledge_memories_use_case_service import (
+    ListResearchKnowledgeMemoriesUseCaseService,
+)
 
 __all__ = [
     "ListActionMemoriesUseCaseService",
     "ListDecisionMemoriesUseCaseService",
     "ListPolicyMemoriesUseCaseService",
+    "ListResearchKnowledgeMemoriesUseCaseService",
 ]

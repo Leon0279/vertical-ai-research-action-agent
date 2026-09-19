@@ -200,6 +200,7 @@ def test_memory_query_log_fields_are_structured_without_user_or_content(
             "event": "memory_query_completed",
             "memory_query_type": "decisions",
             "action_statuses": ["todo", "done"],
+            "visibility_scopes": ["project", "user"],
             "project_id": "project-1",
             "query_limit": 20,
             "cursor_present": True,
@@ -216,6 +217,7 @@ def test_memory_query_log_fields_are_structured_without_user_or_content(
     record = _json_lines(log_path)[-1]
     assert record["memory_query_type"] == "decisions"
     assert record["action_statuses"] == ["todo", "done"]
+    assert record["visibility_scopes"] == ["project", "user"]
     assert record["project_id"] == "project-1"
     assert record["query_limit"] == 20
     assert record["cursor_present"] is True

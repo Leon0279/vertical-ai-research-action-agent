@@ -14,6 +14,9 @@ from app.services.memory.contracts.memory_persistence_protocol import MemoryPers
 from app.services.memory.contracts.policy_memory_service_protocol import (
     PolicyMemoryServiceProtocol,
 )
+from app.services.memory.contracts.research_knowledge_memory_service_protocol import (
+    ResearchKnowledgeMemoryServiceProtocol,
+)
 from app.services.memory.contracts.semantic_resolver_protocol import SemanticResolverProtocol
 from app.services.memory.contracts.session_continuity_manager_protocol import SessionContinuityManagerProtocol
 
@@ -24,6 +27,7 @@ __all__ = [
     "MemoryDistillerProtocol",
     "MemoryPersistenceProtocol",
     "PolicyMemoryServiceProtocol",
+    "ResearchKnowledgeMemoryServiceProtocol",
     "SemanticResolverProtocol",
     "SessionContinuityManagerProtocol",
 ]

@@ -68,8 +68,14 @@ from app.domain.models.memory.research_knowledge_recall_query import (
 from app.domain.models.memory.research_knowledge_recall_result import (
     ResearchKnowledgeRecallResult,
 )
+from app.domain.models.memory.research_knowledge_memory_page import (
+    ResearchKnowledgeMemoryPage,
+)
 from app.domain.models.memory.research_knowledge_unit_record import (
     ResearchKnowledgeUnitRecord,
+)
+from app.domain.models.memory.research_knowledge_visibility_scope import (
+    ResearchKnowledgeVisibilityScope,
 )
 from app.domain.models.memory.research_knowledge_candidate_details import (
     ResearchKnowledgeCandidateDetails,
@@ -213,7 +219,9 @@ __all__ = [
     "RequestCompletionEvaluationResult",
     "ResearchKnowledgeRecallQuery",
     "ResearchKnowledgeRecallResult",
+    "ResearchKnowledgeMemoryPage",
     "ResearchKnowledgeUnitRecord",
+    "ResearchKnowledgeVisibilityScope",
     "ResearchKnowledgeCandidateDetails",
     "SemanticResolutionResult",
     "PlanStep",

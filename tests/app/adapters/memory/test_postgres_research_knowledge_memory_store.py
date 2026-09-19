@@ -426,6 +426,81 @@ def test_recall_knowledge_units_returns_empty_list_for_no_rows() -> None:
     assert results == []
 
 
+def test_list_knowledge_units_page_uses_scoped_keyset_query_without_vectors() -> None:
+    after = datetime(2026, 9, 19, 11, 30, tzinfo=UTC)
+    browse_row = _row()
+    for field in (
+        "embedding_text",
+        "embedding_vector",
+        "embedding_model",
+        "embedding_version",
+    ):
+        browse_row.pop(field)
+    connection = FakeConnection(rows=[browse_row])
+    store = PostgresResearchKnowledgeMemoryStore(
+        config=_config(),
+        pool=FakePool(connection),
+    )
+
+    records = asyncio.run(
+        store.list_knowledge_units_page(
+            owner_user_id="user-1",
+            project_scope_id="project-1",
+            visibility_scopes=["project", "user", "domain"],
+            limit=21,
+            after_updated_at=after,
+            after_knowledge_id="knowledge-9",
+        )
+    )
+
+    query, args = connection.fetch_calls[0]
+    assert "owner_user_id = $1" in query
+    assert "visibility_scope_effective = ANY($3::text[])" in query
+    assert "visibility_scope_effective = 'project' AND project_scope_id = $2" in query
+    assert "visibility_scope_effective IN ('user', 'domain', 'global')" in query
+    assert "project_scope_id IS NULL" in query
+    assert "status = 'active'" in query
+    assert "is_canonical = true" in query
+    assert "merged_into_id IS NULL" in query
+    assert "updated_at < $4" in query
+    assert "updated_at = $4 AND knowledge_id < $5" in query
+    assert "ORDER BY updated_at DESC, knowledge_id DESC" in query
+    assert "LIMIT $6" in query
+    assert "embedding_vector" not in query
+    assert "embedding_text" not in query
+    assert "<=>" not in query
+    assert args == (
+        "user-1",
+        "project-1",
+        ["project", "user", "domain"],
+        after,
+        "knowledge-9",
+        21,
+    )
+    assert records[0].knowledge_id == "knowledge-1"
+    assert records[0].embedding_vector is None
+
+
+def test_list_knowledge_units_page_wraps_fetch_failure() -> None:
+    store = PostgresResearchKnowledgeMemoryStore(
+        config=_config(),
+        pool=FakePool(FakeConnection(fetch_error=RuntimeError("db failed"))),
+    )
+
+    with pytest.raises(
+        PostgresResearchKnowledgeMemoryStoreError,
+        match="Failed to list",
+    ):
+        asyncio.run(
+            store.list_knowledge_units_page(
+                owner_user_id="user-1",
+                project_scope_id="project-1",
+                visibility_scopes=["project"],
+                limit=21,
+            )
+        )
+
+
 def test_fetch_errors_are_wrapped() -> None:
     store = PostgresResearchKnowledgeMemoryStore(
         config=_config(),

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from app.domain.models import (
     ResearchKnowledgeRecallQuery,
     ResearchKnowledgeRecallResult,
     ResearchKnowledgeUnitRecord,
+)
+from app.domain.models.memory.research_knowledge_visibility_scope import (
+    ResearchKnowledgeVisibilityScope,
 )
 
 
@@ -71,3 +75,15 @@ Protocol for the research_knowledge_units adapter."""
         Returns:
             list[ResearchKnowledgeRecallResult]: 按相关性返回的知识单元及其 adapter-level relevance score 列表。
         """
+
+    async def list_knowledge_units_page(
+        self,
+        *,
+        owner_user_id: str,
+        project_scope_id: str,
+        visibility_scopes: list[ResearchKnowledgeVisibilityScope],
+        limit: int,
+        after_updated_at: datetime | None = None,
+        after_knowledge_id: str | None = None,
+    ) -> list[ResearchKnowledgeUnitRecord]:
+        """分页浏览当前用户和项目上下文中可见的有效知识单元。"""

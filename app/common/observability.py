@@ -138,6 +138,7 @@ _STRUCTURED_FIELDS = (
     "open_question_count",
     "memory_query_type",
     "action_statuses",
+    "visibility_scopes",
     "project_id",
     "query_limit",
     "cursor_present",

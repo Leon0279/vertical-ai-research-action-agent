@@ -24,6 +24,9 @@ from app.domain.models import (
     ResearchKnowledgeUnitRecord,
     SourceReference,
 )
+from app.domain.models.memory.research_knowledge_visibility_scope import (
+    ResearchKnowledgeVisibilityScope,
+)
 
 
 class PostgresResearchKnowledgeMemoryStore(ResearchKnowledgeMemoryStoreProtocol):
@@ -115,6 +118,37 @@ Persist and recall research knowledge units in PostgreSQL + pgvector."""
             ) from exc
 
         return [self._row_to_recall_result(row) for row in rows]
+
+    async def list_knowledge_units_page(
+        self,
+        *,
+        owner_user_id: str,
+        project_scope_id: str,
+        visibility_scopes: list[ResearchKnowledgeVisibilityScope],
+        limit: int,
+        after_updated_at: datetime | None = None,
+        after_knowledge_id: str | None = None,
+    ) -> list[ResearchKnowledgeUnitRecord]:
+        pool = await self._ensure_pool()
+        query = self._build_list_knowledge_units_page_query()
+
+        try:
+            async with pool.acquire() as connection:
+                rows = await connection.fetch(
+                    query,
+                    owner_user_id,
+                    project_scope_id,
+                    visibility_scopes,
+                    after_updated_at,
+                    after_knowledge_id,
+                    limit,
+                )
+        except Exception as exc:
+            raise PostgresResearchKnowledgeMemoryStoreError(
+                "Failed to list research knowledge units."
+            ) from exc
+
+        return [self._row_to_record(row) for row in rows]
 
     @property
     def _table_ref(self) -> str:
@@ -215,6 +249,32 @@ ORDER BY
 LIMIT {limit_ref}
 """
         return sql, tuple(params)
+
+    def _build_list_knowledge_units_page_query(self) -> str:
+        return f"""
+SELECT
+    {self._browse_select_columns()}
+FROM {self._table_ref}
+WHERE owner_user_id = $1
+  AND visibility_scope_effective = ANY($3::text[])
+  AND status = 'active'
+  AND is_canonical = true
+  AND merged_into_id IS NULL
+  AND (
+      (visibility_scope_effective = 'project' AND project_scope_id = $2)
+      OR (
+          visibility_scope_effective IN ('user', 'domain', 'global')
+          AND project_scope_id IS NULL
+      )
+  )
+  AND (
+      $4::timestamptz IS NULL
+      OR updated_at < $4
+      OR (updated_at = $4 AND knowledge_id < $5)
+  )
+ORDER BY updated_at DESC, knowledge_id DESC
+LIMIT $6
+"""
 
     def _build_upsert_knowledge_unit_query(self) -> str:
         return f"""
@@ -331,6 +391,41 @@ SET
     embedding_version
 """
 
+    def _browse_select_columns(self) -> str:
+        """Return browse fields only; embedding data stays inside the store."""
+
+        return """
+    knowledge_id,
+    owner_user_id,
+    project_scope_id,
+    visibility_scope,
+    visibility_scope_effective,
+    title,
+    summary,
+    knowledge_type,
+    topic_tags,
+    confidence,
+    source_refs,
+    source_type,
+    derived_from_session_id,
+    derived_from_run_id,
+    created_by,
+    status,
+    created_at,
+    updated_at,
+    archived_at,
+    pruned_at,
+    freshness_sensitivity,
+    freshness_status,
+    last_verified_at,
+    freshness_checked_at,
+    staleness_reason,
+    dedupe_key,
+    canonical_knowledge_id,
+    is_canonical,
+    merged_into_id
+"""
+
     def _record_for_storage(
         self,
         unit: ResearchKnowledgeUnitRecord,
@@ -418,15 +513,24 @@ SET
                 canonical_knowledge_id=row["canonical_knowledge_id"],
                 is_canonical=row["is_canonical"],
                 merged_into_id=row["merged_into_id"],
-                embedding_text=row["embedding_text"],
-                embedding_vector=self._load_vector(row["embedding_vector"]),
-                embedding_model=row["embedding_model"],
-                embedding_version=row["embedding_version"],
+                embedding_text=self._optional_row_value(row, "embedding_text"),
+                embedding_vector=self._load_vector(
+                    self._optional_row_value(row, "embedding_vector")
+                ),
+                embedding_model=self._optional_row_value(row, "embedding_model"),
+                embedding_version=self._optional_row_value(row, "embedding_version"),
             )
         except Exception as exc:
             raise PostgresResearchKnowledgeMemoryStoreError(
                 "Failed to map research knowledge memory row."
             ) from exc
+
+    @staticmethod
+    def _optional_row_value(row: Any, key: str) -> Any:
+        try:
+            return row[key]
+        except (KeyError, IndexError):
+            return None
 
     def _dump_source_refs(self, source_refs: list[SourceReference]) -> list[dict[str, Any]]:
         return [source_ref.model_dump(mode="json") for source_ref in source_refs]

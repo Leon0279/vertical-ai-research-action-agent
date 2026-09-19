@@ -15,6 +15,12 @@ from app.api.schemas.policy_memory_item_response import PolicyMemoryItemResponse
 from app.api.schemas.policy_memory_list_response import PolicyMemoryListResponse
 from app.api.schemas.project_details_response import ProjectDetailsResponse
 from app.api.schemas.project_error_response import ProjectErrorResponse
+from app.api.schemas.research_knowledge_memory_item_response import (
+    ResearchKnowledgeMemoryItemResponse,
+)
+from app.api.schemas.research_knowledge_memory_list_response import (
+    ResearchKnowledgeMemoryListResponse,
+)
 
 __all__ = [
     "AgentRunRequest",
@@ -32,4 +38,6 @@ __all__ = [
     "PolicyMemoryListResponse",
     "ProjectDetailsResponse",
     "ProjectErrorResponse",
+    "ResearchKnowledgeMemoryItemResponse",
+    "ResearchKnowledgeMemoryListResponse",
 ]

@@ -58,6 +58,25 @@ def test_policy_memory_cursor_round_trip_is_collection_bound() -> None:
         decode_memory_cursor(encoded, expected_collection="actions")
 
 
+def test_research_knowledge_cursor_round_trip_preserves_visibility_scopes() -> None:
+    cursor = MemoryPageCursor(
+        collection="research_knowledge",
+        updated_at=datetime(2026, 9, 19, 10, 30, tzinfo=UTC),
+        record_id="knowledge-2",
+        visibility_scopes=["user", "project"],
+    )
+
+    encoded = encode_memory_cursor(cursor)
+    decoded = decode_memory_cursor(
+        encoded,
+        expected_collection="research_knowledge",
+    )
+
+    assert decoded == cursor
+    with pytest.raises(ValueError, match="collection mismatch"):
+        decode_memory_cursor(encoded, expected_collection="policies")
+
+
 @pytest.mark.parametrize(
     "value",
     [
@@ -129,4 +148,27 @@ def test_memory_cursor_rejects_collection_specific_filter_mismatch() -> None:
             updated_at=datetime(2026, 9, 18, 10, 30, tzinfo=UTC),
             record_id="policy-2",
             action_statuses=["todo"],
+        )
+
+    with pytest.raises(ValueError, match="at least one"):
+        MemoryPageCursor(
+            collection="research_knowledge",
+            updated_at=datetime(2026, 9, 18, 10, 30, tzinfo=UTC),
+            record_id="knowledge-2",
+        )
+
+    with pytest.raises(ValueError, match="unique"):
+        MemoryPageCursor(
+            collection="research_knowledge",
+            updated_at=datetime(2026, 9, 18, 10, 30, tzinfo=UTC),
+            record_id="knowledge-2",
+            visibility_scopes=["project", "project"],
+        )
+
+    with pytest.raises(ValueError, match="decision cursors"):
+        MemoryPageCursor(
+            collection="decisions",
+            updated_at=datetime(2026, 9, 18, 10, 30, tzinfo=UTC),
+            record_id="decision-2",
+            visibility_scopes=["project"],
         )
