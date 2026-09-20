@@ -1,0 +1,2993 @@
+{
+  "components": {
+    "schemas": {
+      "ActionItemSchema": {
+        "description": "定义行动条目的传输与校验模式。\n\nUser-facing action item structure.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。行动项的执行说明、前置条件或预期结果；没有补充时为 None。",
+            "title": "Description"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "可选字段，默认空字典。行动项的扩展展示信息；不包含原始工具响应或内部调试数据。",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "priority": {
+            "default": "medium",
+            "description": "行动项优先级标签。当前默认 medium，供客户端排序或突出展示使用。",
+            "title": "Priority",
+            "type": "string"
+          },
+          "title": {
+            "description": "必填字段。向 API 调用方展示的行动项标题，说明用户下一步可执行的事项。",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "ActionItemSchema",
+        "type": "object"
+      },
+      "ActionMemoryItemResponse": {
+        "additionalProperties": false,
+        "description": "公开一条 Action Memory 的业务字段，不暴露内部治理信息。",
+        "properties": {
+          "action_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Description"
+          },
+          "action_id": {
+            "minLength": 1,
+            "title": "Action Id",
+            "type": "string"
+          },
+          "action_status": {
+            "enum": [
+              "todo",
+              "in_progress",
+              "blocked",
+              "done",
+              "cancelled"
+            ],
+            "title": "Action Status",
+            "type": "string"
+          },
+          "action_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Title"
+          },
+          "blocking_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocking Reason"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "derived_from_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Run Id"
+          },
+          "derived_from_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Session Id"
+          },
+          "due_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due At"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner"
+          },
+          "parent_decision_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Decision Id"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "result_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Summary"
+          },
+          "source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "action_id",
+          "action_status"
+        ],
+        "title": "ActionMemoryItemResponse",
+        "type": "object"
+      },
+      "ActionMemoryListResponse": {
+        "additionalProperties": false,
+        "description": "返回一个项目范围内按业务状态过滤的一页 Action Memory。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActionMemoryItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "project_id": {
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "ActionMemoryListResponse",
+        "type": "object"
+      },
+      "AgentRunRequest": {
+        "description": "表示智能体运行的输入请求。\n\nSingle-entry request payload for the run endpoint.",
+        "properties": {
+          "iteration_budget": {
+            "default": 2,
+            "description": "可选字段。当前请求允许执行的最大 research iteration 数量。",
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Iteration Budget",
+            "type": "integer"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。请求关联的项目标识，用于加载和写回项目范围 memory。",
+            "title": "Project Id"
+          },
+          "query": {
+            "description": "必填字段。用户提交的原始问题或请求文本，是本次 agent run 的输入。",
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。调用方提供的连续会话标识；缺失时由服务端生成。",
+            "title": "Session Id"
+          },
+          "user_id": {
+            "description": "必填字段。请求所属用户标识，用于运行时隔离与 memory 访问边界。",
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query",
+          "user_id"
+        ],
+        "title": "AgentRunRequest",
+        "type": "object"
+      },
+      "AgentRunResponse": {
+        "description": "表示智能体运行的响应数据。\n\nSingle-entry response payload for the run endpoint.",
+        "properties": {
+          "action_items": {
+            "description": "可选字段，默认空列表。结构化行动项。",
+            "items": {
+              "$ref": "#/components/schemas/ActionItemSchema"
+            },
+            "title": "Action Items",
+            "type": "array"
+          },
+          "answer": {
+            "description": "必填字段。最终给用户阅读的完整自然语言答案。",
+            "title": "Answer",
+            "type": "string"
+          },
+          "caveats": {
+            "description": "可选字段，默认空列表。最终答案的限制、风险或未解决问题。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "citations": {
+            "description": "可选字段，默认空列表。最终答案引用的来源。",
+            "items": {
+              "$ref": "#/components/schemas/CitationSchema"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。最终答案整体置信度分数。",
+            "title": "Confidence"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "可选字段，默认空 dict。最终响应的轻量运行 metadata。",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。结构化主推荐、主判断或主结论短句。",
+            "title": "Recommendation"
+          },
+          "stage_history": {
+            "description": "可选字段，默认空列表。本次 run 执行过的 stage。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Stage History",
+            "type": "array"
+          },
+          "summary": {
+            "description": "必填字段。最终答案的短摘要或预览文案。",
+            "title": "Summary",
+            "type": "string"
+          },
+          "task_type": {
+            "description": "必填字段。当前请求的任务类型。",
+            "title": "Task Type",
+            "type": "string"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。当前请求的 trace id。",
+            "title": "Trace Id"
+          },
+          "workflow_pattern": {
+            "description": "必填字段。当前请求实际采用的 workflow pattern。",
+            "title": "Workflow Pattern",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_type",
+          "workflow_pattern",
+          "answer",
+          "summary"
+        ],
+        "title": "AgentRunResponse",
+        "type": "object"
+      },
+      "CitationSchema": {
+        "description": "定义引用的传输与校验模式。\n\nUser-facing citation structure.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。说明该来源支撑何种结论或需注意何种限制的简短备注。",
+            "title": "Note"
+          },
+          "source": {
+            "description": "必填字段。最终回答中展示的引用来源句柄，例如 URL、论文 ID 或文档标题。",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "CitationSchema",
+        "type": "object"
+      },
+      "CreateProjectRequest": {
+        "additionalProperties": false,
+        "description": "表示创建一个项目及其初始项目档案的 API 请求。",
+        "properties": {
+          "constraints": {
+            "description": "可选字段，默认空列表。需要跨 session 保留的项目约束，最多 20 条。",
+            "items": {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Constraints",
+            "type": "array"
+          },
+          "current_stage": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。项目创建时所处阶段。",
+            "title": "Current Stage"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。项目所属业务、技术或研究领域。",
+            "title": "Domain"
+          },
+          "important_context": {
+            "anyOf": [
+              {
+                "maxLength": 5000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。未来运行仍需持续了解的重要项目上下文。",
+            "title": "Important Context"
+          },
+          "project_description": {
+            "description": "必填字段。项目的基础背景描述，将写入初始 Project Profile。",
+            "maxLength": 5000,
+            "minLength": 1,
+            "title": "Project Description",
+            "type": "string"
+          },
+          "project_goal": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。项目希望长期达成的主要目标。",
+            "title": "Project Goal"
+          },
+          "project_name": {
+            "description": "必填字段。项目名称；同一用户可以创建名称相同但 project_id 不同的项目。",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Project Name",
+            "type": "string"
+          },
+          "user_id": {
+            "description": "必填字段。新项目所属用户的标识；当前尚无 user 表，因此只校验非空，不验证用户是否存在。",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "project_name",
+          "project_description"
+        ],
+        "title": "CreateProjectRequest",
+        "type": "object"
+      },
+      "CreateProjectResponse": {
+        "description": "表示项目创建成功后的 API 响应。",
+        "properties": {
+          "project_id": {
+            "description": "必填字段。新项目的稳定逻辑标识，可传给后续 agent run 请求。",
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "CreateProjectResponse",
+        "type": "object"
+      },
+      "DecisionMemoryItemResponse": {
+        "additionalProperties": false,
+        "description": "公开一条 Decision Memory 的业务字段，不暴露内部治理信息。",
+        "properties": {
+          "alternatives": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Alternatives",
+            "type": "array"
+          },
+          "chosen_option": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chosen Option"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decision_id": {
+            "minLength": 1,
+            "title": "Decision Id",
+            "type": "string"
+          },
+          "decision_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Question"
+          },
+          "decision_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision State"
+          },
+          "decision_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Title"
+          },
+          "derived_from_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Run Id"
+          },
+          "derived_from_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Session Id"
+          },
+          "impact_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact Scope"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale"
+          },
+          "source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "tradeoffs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tradeoffs",
+            "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "decision_id"
+        ],
+        "title": "DecisionMemoryItemResponse",
+        "type": "object"
+      },
+      "DecisionMemoryListResponse": {
+        "additionalProperties": false,
+        "description": "返回一个项目范围内的一页 active Decision Memory。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionMemoryItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "project_id": {
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "DecisionMemoryListResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "description": "Represent process liveness without checking external dependencies.",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "description": "API process liveness status.",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "JsonValue": {},
+      "ListProjectIdsResponse": {
+        "description": "表示指定用户当前所有项目标识的 API 响应。",
+        "properties": {
+          "project_ids": {
+            "description": "可选字段，默认空列表。该用户当前拥有 active Project Profile 的项目标识，按最近更新时间倒序排列。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Project Ids",
+            "type": "array"
+          }
+        },
+        "title": "ListProjectIdsResponse",
+        "type": "object"
+      },
+      "MemoryCollectionSummaryResponse": {
+        "additionalProperties": false,
+        "description": "公开单类长期 Memory 的数量和最近更新时间。",
+        "properties": {
+          "count": {
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "last_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Updated At"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "MemoryCollectionSummaryResponse",
+        "type": "object"
+      },
+      "MemoryQueryErrorResponse": {
+        "additionalProperties": false,
+        "description": "Memory 查询接口对外暴露的安全错误结构。",
+        "properties": {
+          "error_code": {
+            "minLength": 1,
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_reason": {
+            "minLength": 1,
+            "title": "Error Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error_code",
+          "error_reason"
+        ],
+        "title": "MemoryQueryErrorResponse",
+        "type": "object"
+      },
+      "MemorySummaryResponse": {
+        "additionalProperties": false,
+        "description": "公开当前项目上下文中各类长期 Memory 的概览。",
+        "properties": {
+          "actions": {
+            "$ref": "#/components/schemas/MemoryCollectionSummaryResponse"
+          },
+          "decisions": {
+            "$ref": "#/components/schemas/MemoryCollectionSummaryResponse"
+          },
+          "policies": {
+            "$ref": "#/components/schemas/MemoryCollectionSummaryResponse"
+          },
+          "project_id": {
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_profile": {
+            "$ref": "#/components/schemas/MemoryCollectionSummaryResponse"
+          },
+          "research_knowledge": {
+            "$ref": "#/components/schemas/MemoryCollectionSummaryResponse"
+          }
+        },
+        "required": [
+          "project_id",
+          "project_profile",
+          "decisions",
+          "actions",
+          "policies",
+          "research_knowledge"
+        ],
+        "title": "MemorySummaryResponse",
+        "type": "object"
+      },
+      "PolicyMemoryItemResponse": {
+        "additionalProperties": false,
+        "description": "公开一条 Policy Memory 的业务字段，不暴露内部 owner 标识或治理信息。",
+        "properties": {
+          "conditions": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Conditions",
+            "type": "object"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "derived_from_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Run Id"
+          },
+          "derived_from_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Session Id"
+          },
+          "enforcement_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enforcement Level"
+          },
+          "owner_scope_type": {
+            "enum": [
+              "project",
+              "user",
+              "global"
+            ],
+            "title": "Owner Scope Type",
+            "type": "string"
+          },
+          "policy_id": {
+            "minLength": 1,
+            "title": "Policy Id",
+            "type": "string"
+          },
+          "policy_text": {
+            "minLength": 1,
+            "title": "Policy Text",
+            "type": "string"
+          },
+          "policy_type": {
+            "minLength": 1,
+            "title": "Policy Type",
+            "type": "string"
+          },
+          "priority": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority"
+          },
+          "source_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "target_scope_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "task_type",
+                  "memory_type"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Scope Type"
+          },
+          "target_scope_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Scope Value"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "policy_id",
+          "owner_scope_type",
+          "policy_type",
+          "policy_text"
+        ],
+        "title": "PolicyMemoryItemResponse",
+        "type": "object"
+      },
+      "PolicyMemoryListResponse": {
+        "additionalProperties": false,
+        "description": "返回一个项目上下文内的一页 active Policy Memory。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PolicyMemoryItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "project_id": {
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "PolicyMemoryListResponse",
+        "type": "object"
+      },
+      "ProjectDetailsResponse": {
+        "description": "表示指定项目当前业务信息的 API 响应。",
+        "properties": {
+          "constraints": {
+            "description": "可选字段，默认空列表。当前有效的项目约束。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Constraints",
+            "type": "array"
+          },
+          "current_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。项目当前阶段。",
+            "title": "Current Stage"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。项目所属领域。",
+            "title": "Domain"
+          },
+          "important_context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。继续理解和推进项目所需的重要上下文摘要。",
+            "title": "Important Context"
+          },
+          "profile_created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。当前 active Project Profile 版本的创建时间。",
+            "title": "Profile Created At"
+          },
+          "profile_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。当前 active Project Profile 版本最近更新时间。",
+            "title": "Profile Updated At"
+          },
+          "project_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。当前项目档案中的项目背景描述。",
+            "title": "Project Description"
+          },
+          "project_goal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。项目目标。",
+            "title": "Project Goal"
+          },
+          "project_id": {
+            "description": "必填字段。跨 Project Profile 版本保持稳定的逻辑项目标识。",
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          },
+          "project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。项目名称。",
+            "title": "Project Name"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "ProjectDetailsResponse",
+        "type": "object"
+      },
+      "ProjectErrorResponse": {
+        "description": "表示项目创建或查询请求未成功完成时的稳定错误响应。",
+        "properties": {
+          "error_code": {
+            "description": "必填字段。供客户端稳定判断错误类别的机器可读错误码。",
+            "minLength": 1,
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_reason": {
+            "description": "必填字段。可安全展示或记录的错误原因，不包含数据库连接或 SQL 细节。",
+            "minLength": 1,
+            "title": "Error Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error_code",
+          "error_reason"
+        ],
+        "title": "ProjectErrorResponse",
+        "type": "object"
+      },
+      "ReadinessResponse": {
+        "additionalProperties": false,
+        "description": "Expose only safe aggregate dependency states.",
+        "properties": {
+          "checks": {
+            "additionalProperties": {
+              "enum": [
+                "ok",
+                "error"
+              ],
+              "type": "string"
+            },
+            "description": "Redis, PostgreSQL, schema, and pgvector check results.",
+            "title": "Checks",
+            "type": "object"
+          },
+          "status": {
+            "description": "Aggregate readiness status.",
+            "enum": [
+              "ready",
+              "not_ready"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ],
+        "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "ResearchKnowledgeMemoryItemResponse": {
+        "additionalProperties": false,
+        "description": "Expose reusable knowledge while hiding ownership and governance internals.",
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "created_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created By"
+          },
+          "derived_from_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Run Id"
+          },
+          "derived_from_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Session Id"
+          },
+          "freshness_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness Checked At"
+          },
+          "freshness_sensitivity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness Sensitivity"
+          },
+          "freshness_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fresh",
+                  "aging",
+                  "stale"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness Status"
+          },
+          "knowledge_id": {
+            "minLength": 1,
+            "title": "Knowledge Id",
+            "type": "string"
+          },
+          "knowledge_type": {
+            "minLength": 1,
+            "title": "Knowledge Type",
+            "type": "string"
+          },
+          "last_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Verified At"
+          },
+          "source_refs": {
+            "items": {
+              "$ref": "#/components/schemas/SourceReference"
+            },
+            "title": "Source Refs",
+            "type": "array"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "staleness_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staleness Reason"
+          },
+          "summary": {
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "topic_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topic Tags",
+            "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "visibility_scope": {
+            "enum": [
+              "user",
+              "project",
+              "domain",
+              "global"
+            ],
+            "title": "Visibility Scope",
+            "type": "string"
+          },
+          "visibility_scope_effective": {
+            "enum": [
+              "user",
+              "project",
+              "domain",
+              "global"
+            ],
+            "title": "Visibility Scope Effective",
+            "type": "string"
+          }
+        },
+        "required": [
+          "knowledge_id",
+          "visibility_scope",
+          "visibility_scope_effective",
+          "title",
+          "summary",
+          "knowledge_type"
+        ],
+        "title": "ResearchKnowledgeMemoryItemResponse",
+        "type": "object"
+      },
+      "ResearchKnowledgeMemoryListResponse": {
+        "additionalProperties": false,
+        "description": "Return one page of knowledge visible from a project context.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchKnowledgeMemoryItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "project_id": {
+            "minLength": 1,
+            "title": "Project Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id"
+        ],
+        "title": "ResearchKnowledgeMemoryListResponse",
+        "type": "object"
+      },
+      "SessionMemoryResponse": {
+        "additionalProperties": false,
+        "description": "Expose compact continuity state without ownership or scratchpad internals.",
+        "properties": {
+          "current_local_task_framing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Local Task Framing"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "latest_action_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Latest Action Items",
+            "type": "array"
+          },
+          "latest_recommendation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Recommendation"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Open Questions",
+            "type": "array"
+          },
+          "recent_turn_summaries": {
+            "items": {
+              "$ref": "#/components/schemas/SessionTurnSummaryResponse"
+            },
+            "title": "Recent Turn Summaries",
+            "type": "array"
+          },
+          "session_id": {
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "session_working_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Working Summary"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "SessionMemoryResponse",
+        "type": "object"
+      },
+      "SessionTurnSummaryResponse": {
+        "additionalProperties": false,
+        "description": "Expose a compressed turn summary, never the original message body.",
+        "properties": {
+          "content_summary": {
+            "minLength": 1,
+            "title": "Content Summary",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "role": {
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content_summary"
+        ],
+        "title": "SessionTurnSummaryResponse",
+        "type": "object"
+      },
+      "SourceEvidenceSpan": {
+        "description": "描述 evidence 在原始 source 内部的位置。",
+        "properties": {
+          "char_end": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段，当前暂不使用。source 原始内容中的 0-based 结束字符 offset，Python slice 风格，不包含该位置。当前 adapter 会做 normalize/snippet extraction，无法可靠回推 offset；未来 docs/web extraction 如果保留 raw content offset，可填充该字段。",
+            "title": "Char End"
+          },
+          "char_start": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段，当前暂不使用。source 原始内容中的 0-based 起始字符 offset。当前 adapter 会做 normalize/snippet extraction，无法可靠回推 offset；未来 docs/web extraction 如果保留 raw content offset，可填充该字段。",
+            "title": "Char Start"
+          },
+          "line_end": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段，当前暂不使用。文本、代码、日志等 line-addressable source 中的 1-based 结束行号，包含该行。当前相关 adapter 暂不返回 line range；未来 code/file source adapter 可填充该字段。",
+            "title": "Line End"
+          },
+          "line_start": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段，当前暂不使用。文本、代码、日志等 line-addressable source 中的 1-based 起始行号。当前相关 adapter 暂不返回 line range；未来 code/file source adapter 可填充该字段。",
+            "title": "Line Start"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "可选字段，默认空 dict。span-specific 扩展定位信息，例如 chunk_index、anchor、heading_path、pdf_page_label、provider span id。用于承接尚未标准化、但确实属于片段定位的信息。",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段，当前暂不使用。PDF、论文、文档等分页来源中的 1-based 页码。当前相关 adapter 暂不保留 page-level mapping，因此不要在迁移时伪造该值；未来 paper_content_fetch 如果保留 PDF page mapping，可填充该字段。",
+            "title": "Page"
+          },
+          "paragraph": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段，当前暂不使用。来源正文中的 1-based 段落序号。当前 adapter 暂不保存 paragraph index，因此不要根据 snippet 反推；未来 docs/web extraction 如果保留段落索引，可填充该字段。",
+            "title": "Paragraph"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。来源中的章节、标题、anchor、docs section 或语义 section label。当前 docs_search adapter 可由 DocsSearchResult.section 填充；其它 adapter 如果没有可靠 section 信息，应保持为空。",
+            "title": "Section"
+          }
+        },
+        "title": "SourceEvidenceSpan",
+        "type": "object"
+      },
+      "SourceReference": {
+        "description": "表示 memory、knowledge 或 retrieved material 所依赖的原始 evidence 来源。",
+        "properties": {
+          "authors": {
+            "description": "可选字段，默认空列表。原始来源作者列表。paper_search 可由 PaperSearchResult.authors 填充；web/docs 通常为空，除非原始 source metadata 明确提供 author；research_knowledge_memory 应透传 distill 前 source_refs 中的 authors。不要用 owner_user_id、created_by 或 provider 名称伪造 authors。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Authors",
+            "type": "array"
+          },
+          "citation_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。用于展示的短 citation label，例如论文引用、网页标题、docs section label。该字段只服务展示和解释，不应用作唯一标识。",
+            "title": "Citation Text"
+          },
+          "evidence_span": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceEvidenceSpan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。该引用指向的 source 内部证据片段位置；如果引用整个 source，则为空。当前 docs_search 可由 DocsSearchResult.section 填充 section；其它 adapter 多数暂不使用。"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "description": "可选字段，默认空 dict。source-specific/provider-specific 附加信息，例如 score、rank、favicon、pdf_url、doi_url、categories、download_bytes、page_fetch_error。不要把可稳定建模的主字段长期塞在这里。",
+            "title": "Metadata",
+            "type": "object"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。原始 source 的发布时间或更新发布时间。web_search 和 paper_search 可能可填；它不是系统检索时间，也不是 knowledge record 的 updated_at 或 last_verified_at。",
+            "title": "Published At"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。原始来源发布方、机构、网站或文档所属组织。docs/web 只有在语义明确时才填；不要把 retrieval provider 名称伪装成 publisher，provider 信息应放 metadata；research_knowledge_memory 应透传 distill 前 source ref 的 publisher。",
+            "title": "Publisher"
+          },
+          "retrieved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段，当前多数 live adapters 暂不使用。系统获取或验证该 source 的时间。当前 web_search、docs_search、paper_search 等 adapter 多数暂不显式返回 retrieved_at，因此通常为空；不要用 published_at 或 knowledge updated_at 伪造。",
+            "title": "Retrieved At"
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。来源在其命名空间内的稳定逻辑 ID，例如 arxiv_id、doi、docs entry id、run id、conversation id、repo path、file path。paper_search 可填 arxiv_id 或 paper_id；web_search 可填 URL hash/item_id；当来源只有 URL、没有稳定 ID 时可为空。",
+            "title": "Source Id"
+          },
+          "source_id_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段，但依赖 source_id。source_id 的命名空间或 ID 类型，例如 arxiv_id、doi、semantic_scholar_id、openalex_id、docs_entry_id、url_sha1、run_id、conversation_id、repo_path。若填写该字段，必须同时填写 source_id；第一版不强制 source_id 非空时必须填写该字段，以兼容旧 embedded source_refs。",
+            "title": "Source Id Type"
+          },
+          "source_ref_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段，当前暂不使用。未来如果 Source Reference 独立成表时使用的稳定 ID。当前没有 source reference 表，因此本轮通常保持为空。",
+            "title": "Source Ref Id"
+          },
+          "source_type": {
+            "description": "必填字段。原始来源类型，例如 web_page、paper、document、conversation、run_output、code_repo。当前 web_search/web_content_fetch 可填 web_page，paper_search/paper_content_fetch 可填 paper，docs_search 可填 document。不使用 enum，以保持未来来源类型可扩展。",
+            "minLength": 1,
+            "title": "Source Type",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。可访问的来源 URL，例如网页 URL、docs URL、paper abstract URL、PDF URL、DOI URL。web_search/web_content_fetch 可填 url，docs_search 可填 url 或 source_ref，paper_content_fetch 可填 source_url；当来源只有内部稳定 ID 或非 URL 定位符时可为空。",
+            "title": "Source Url"
+          },
+          "sub_source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。source_type 之下的子来源类型或子来源标识，例如 docs_search 中的 openai_api、anthropic_api、claude_code。当前主要用于区分同一大类来源下的具体子来源；本轮 docs_search adapter 会填充该字段，其它 adapter 当前可为空。",
+            "title": "Sub Source Type"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。原始来源标题，例如网页标题、论文标题、docs 页面标题。web_search、docs_search、paper_search 通常可填；research_knowledge_memory 场景下应来自 distill 前原始 source ref，而不是 knowledge unit 标题。",
+            "title": "Title"
+          }
+        },
+        "required": [
+          "source_type"
+        ],
+        "title": "SourceReference",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Vertical AI Research Action Agent",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/healthz": {
+      "get": {
+        "description": "Return process liveness without touching external services.",
+        "operationId": "health_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/readyz": {
+      "get": {
+        "description": "Return dependency readiness without exposing connection details.",
+        "operationId": "readiness_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            },
+            "description": "One or more required local state stores are unavailable."
+          }
+        },
+        "summary": "Readiness",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/v1/agent/run": {
+      "post": {
+        "description": "Single entrypoint for architecture skeleton execution.",
+        "operationId": "run_agent_v1_agent_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRunResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Agent",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/v1/memories/actions": {
+      "get": {
+        "description": "按业务状态列出指定用户和项目范围内的 Action Memory。",
+        "operationId": "list_action_memories_v1_memories_actions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "要返回的 Action 业务状态；可重复传入。缺省时返回 todo、in_progress 和 blocked。",
+            "in": "query",
+            "name": "action_status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "todo",
+                      "in_progress",
+                      "blocked",
+                      "done",
+                      "cancelled"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "要返回的 Action 业务状态；可重复传入。缺省时返回 todo、in_progress 和 blocked。",
+              "title": "Action Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "pattern": ".*\\S.*",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionMemoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "指定用户范围内不存在该项目。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Action Memory 查询参数不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Action Memory 查询发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Memory 存储暂时不可用。"
+          }
+        },
+        "summary": "List Action Memories",
+        "tags": [
+          "action-memory"
+        ]
+      }
+    },
+    "/v1/memories/decisions": {
+      "get": {
+        "description": "列出指定用户和项目范围内当前 active 的 Decision Memory。",
+        "operationId": "list_decision_memories_v1_memories_decisions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "pattern": ".*\\S.*",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionMemoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "指定用户范围内不存在该项目。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Decision Memory 查询参数不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Decision Memory 查询发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Memory 存储暂时不可用。"
+          }
+        },
+        "summary": "List Decision Memories",
+        "tags": [
+          "decision-memory"
+        ]
+      }
+    },
+    "/v1/memories/policies": {
+      "get": {
+        "description": "列出当前项目上下文中可见的全部 active Policy Memory。",
+        "operationId": "list_policy_memories_v1_memories_policies_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "pattern": ".*\\S.*",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyMemoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "指定用户范围内不存在该项目。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Policy Memory 查询参数不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Policy Memory 查询发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Memory 存储暂时不可用。"
+          }
+        },
+        "summary": "List Policy Memories",
+        "tags": [
+          "policy-memory"
+        ]
+      }
+    },
+    "/v1/memories/research-knowledge": {
+      "get": {
+        "description": "浏览项目上下文中指定可见性范围的有效 Research Knowledge。",
+        "operationId": "list_research_knowledge_memories_v1_memories_research_knowledge_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "要浏览的知识可见性范围；可重复传入。缺省时仅返回当前项目级知识。",
+            "in": "query",
+            "name": "visibility_scope",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "user",
+                      "project",
+                      "domain",
+                      "global"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "要浏览的知识可见性范围；可重复传入。缺省时仅返回当前项目级知识。",
+              "title": "Visibility Scope"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "pattern": ".*\\S.*",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchKnowledgeMemoryListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "指定用户范围内不存在该项目。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Research Knowledge Memory 查询参数不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Research Knowledge Memory 查询发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Memory 存储暂时不可用。"
+          }
+        },
+        "summary": "List Research Knowledge Memories",
+        "tags": [
+          "research-knowledge-memory"
+        ]
+      }
+    },
+    "/v1/memories/sessions/{session_id}": {
+      "get": {
+        "description": "读取一个用户和 session 边界内的 compact working memory。",
+        "operationId": "get_session_memory_v1_memories_sessions__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionMemoryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "指定用户范围内不存在该 Session Memory，或记录已过期。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Session Memory 查询参数不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Session Memory 查询发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Memory 存储暂时不可用。"
+          }
+        },
+        "summary": "Get Session Memory",
+        "tags": [
+          "session-memory"
+        ]
+      }
+    },
+    "/v1/memories/summary": {
+      "get": {
+        "description": "返回当前项目上下文的长期 Memory 数量与最近更新时间。",
+        "operationId": "get_memory_summary_v1_memories_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "Project Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemorySummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "指定用户范围内不存在该项目。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Memory 概览查询参数不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Memory 概览查询发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryQueryErrorResponse"
+                }
+              }
+            },
+            "description": "Memory 存储暂时不可用。"
+          }
+        },
+        "summary": "Get Memory Summary",
+        "tags": [
+          "memory-summary"
+        ]
+      }
+    },
+    "/v1/projects": {
+      "get": {
+        "description": "查询指定用户当前拥有的所有项目标识。\n\nArgs:\n    user_id (str): 必填查询参数。项目所属用户标识。\n\nReturns:\n    ListProjectIdsResponse | JSONResponse: 成功时返回项目标识列表；失败时返回稳定项目错误响应。",
+        "operationId": "list_project_ids_v1_projects_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListProjectIdsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectErrorResponse"
+                }
+              }
+            },
+            "description": "项目列表查询参数不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectErrorResponse"
+                }
+              }
+            },
+            "description": "项目列表查询发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectErrorResponse"
+                }
+              }
+            },
+            "description": "项目列表暂时无法读取。"
+          }
+        },
+        "summary": "List Project Ids",
+        "tags": [
+          "projects"
+        ]
+      },
+      "post": {
+        "description": "创建项目并返回后续 agent run 可使用的稳定项目标识。\n\nArgs:\n    payload (CreateProjectRequest): 用户标识和项目名称、描述、目标、约束等基础信息。\n\nReturns:\n    CreateProjectResponse | JSONResponse: 成功时返回项目标识；失败时返回带错误码和安全原因的 HTTP 错误响应。",
+        "operationId": "create_project_v1_projects_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateProjectResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectErrorResponse"
+                }
+              }
+            },
+            "description": "项目创建请求不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectErrorResponse"
+                }
+              }
+            },
+            "description": "项目创建发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectErrorResponse"
+                }
+              }
+            },
+            "description": "Project Profile 暂时无法持久化。"
+          }
+        },
+        "summary": "Create Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}": {
+      "get": {
+        "description": "查询指定用户和项目范围的当前项目业务信息。\n\nArgs:\n    project_id (str): 必填路径参数。需要读取的稳定逻辑项目标识。\n    user_id (str): 必填查询参数。项目所属用户标识，用于隔离读取范围。\n\nReturns:\n    ProjectDetailsResponse | JSONResponse: 成功时返回当前项目详情；不存在或失败时返回稳定项目错误响应。",
+        "operationId": "get_project_v1_projects__project_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectDetailsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectErrorResponse"
+                }
+              }
+            },
+            "description": "指定用户范围内不存在该项目。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectErrorResponse"
+                }
+              }
+            },
+            "description": "项目详情查询参数不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectErrorResponse"
+                }
+              }
+            },
+            "description": "项目详情查询发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectErrorResponse"
+                }
+              }
+            },
+            "description": "项目详情暂时无法读取。"
+          }
+        },
+        "summary": "Get Project",
+        "tags": [
+          "projects"
+        ]
+      }
+    }
+  }
+}

@@ -17,6 +17,7 @@
 - Docker Desktop，且支持 Docker Compose。
 - 可用的 `ZHIPU_API_KEY` 和 `TAVILY_API_KEY`。
 - arXiv 请求使用的真实联系邮箱标识。
+- 如需在宿主机运行前端热更新，安装 Node.js 24 LTS 和 npm 11；纯 Compose 运行不需要宿主机 Node.js。
 
 ### 新环境启动
 
@@ -43,12 +44,13 @@ make dev
 
 服务地址：
 
+- 前端调试台：<http://127.0.0.1:3000>
 - API：<http://127.0.0.1:8000>
 - Swagger：<http://127.0.0.1:8000/docs>
 - Health：<http://127.0.0.1:8000/healthz>
 - Readiness：<http://127.0.0.1:8000/readyz>
 
-如果在 `.env` 中修改了 `API_PORT`，请使用对应端口。
+如果在 `.env` 中修改了 `FRONTEND_PORT` 或 `API_PORT`，请使用对应端口。
 
 ### 从旧手工容器迁移
 
@@ -75,6 +77,8 @@ make dev           # 构建并启动全部后端服务
 make status        # 查看容器和健康状态
 make logs          # 跟踪 API、Redis、PostgreSQL 日志
 make smoke         # 免费检查 health、readiness、OpenAPI 和 docs
+make smoke-frontend # 免费检查前端、SPA fallback 和 API 代理
+make smoke-all     # 运行全部免费 smoke checks
 make down          # 停止服务，保留 Redis/PostgreSQL 数据
 make test-docker   # 在 API 容器环境运行自动化测试
 ```
@@ -104,6 +108,30 @@ make run
 ```
 
 本机运行使用 `.env` 中的 `localhost` DSN；Compose 会在 API 容器内自动覆盖为 `postgres` 和 `redis` 服务地址。
+
+## 前端开发调试台
+
+前端位于独立的 `frontend/` 目录，使用 React、TypeScript、Vite、Ant Design 和 TanStack Query。它与 FastAPI 仍是两个独立应用，通过 `/api` 代理通信，因此本地开发不需要修改后端 CORS。
+
+首次在宿主机开发前端：
+
+```bash
+make frontend-install
+make dev
+make frontend-dev
+```
+
+Compose 前端运行在 `http://127.0.0.1:3000`；Vite 热更新开发服务器运行在 `http://127.0.0.1:5173`，并代理到 `http://127.0.0.1:8000`。
+
+常用前端命令：
+
+```bash
+make frontend-generate  # 从 FastAPI OpenAPI 重新生成 TypeScript 客户端
+make frontend-check     # 类型检查、Lint、测试和生产构建
+make frontend-build     # 单独执行生产构建
+```
+
+生成后的 OpenAPI 快照和 TypeScript 客户端会提交到仓库，Docker 构建不依赖一个正在运行的 API 服务。自动化测试使用 mock API，不会调用真实 Agent 或消耗外部 Provider 额度。
 
 ## API
 

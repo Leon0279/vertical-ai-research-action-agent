@@ -1,0 +1,403 @@
+:root {
+  color: #101828;
+  background: #f4f7fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 80% -20%, rgb(37 99 235 / 10%), transparent 38rem),
+    #f4f7fb;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.app-layout {
+  min-height: 100vh;
+  background: transparent;
+}
+
+.app-sider {
+  position: sticky !important;
+  top: 0;
+  height: 100vh;
+  overflow: auto;
+  background: #101828 !important;
+  box-shadow: 4px 0 24px rgb(16 24 40 / 12%);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 84px;
+  padding: 18px 20px;
+  color: white;
+}
+
+.brand-mark {
+  display: grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #60a5fa, #2563eb 55%, #7c3aed);
+  box-shadow: 0 8px 24px rgb(37 99 235 / 45%);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.brand-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.brand-subtitle {
+  margin-top: 2px;
+  color: #98a2b3;
+  font-size: 12px;
+}
+
+.app-menu {
+  border-inline-end: 0 !important;
+  background: transparent !important;
+}
+
+.app-menu .ant-menu-item {
+  height: 46px;
+  margin-block: 6px;
+  line-height: 46px;
+}
+
+.sider-footnote {
+  position: absolute;
+  right: 20px;
+  bottom: 24px;
+  left: 20px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.app-header {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 64px;
+  padding: 0 28px;
+  border-bottom: 1px solid #e4e7ec;
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 1px 2px rgb(16 24 40 / 3%);
+  backdrop-filter: blur(14px);
+}
+
+.header-context {
+  flex: 1;
+  min-width: 0;
+}
+
+.health-tag {
+  margin-inline-end: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.health-popover {
+  min-width: 260px;
+}
+
+.app-content {
+  width: 100%;
+  max-width: 1640px;
+  margin: 0 auto;
+  padding: 34px 36px 22px;
+}
+
+.app-footer {
+  padding: 36px 0 4px;
+  text-align: center;
+}
+
+.route-loading {
+  display: grid;
+  min-height: 45vh;
+  place-items: center;
+}
+
+.page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.page-heading .ant-typography {
+  margin-top: 0;
+}
+
+.page-heading h2.ant-typography {
+  margin-bottom: 6px;
+  color: #101828;
+  letter-spacing: -0.025em;
+}
+
+.page-heading-extra {
+  flex: 0 0 auto;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.section-gap {
+  margin-top: 20px;
+}
+
+.request-card,
+.context-card,
+.memory-tabs-card,
+.recommendation-card,
+.confidence-card,
+.summary-card {
+  border: 1px solid #eaecf0;
+  box-shadow: 0 3px 14px rgb(16 24 40 / 4%);
+}
+
+.context-card .ant-card-body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.result-loading {
+  display: flex;
+  margin-top: 20px;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.result-loading .ant-card-body {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.result-loading .ant-typography {
+  margin: 0 0 4px;
+}
+
+.confidence-card .ant-card-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.recommendation-card {
+  border-left: 4px solid #2563eb;
+  background: linear-gradient(135deg, #fff, #f5f9ff);
+}
+
+.recommendation-card .ant-typography {
+  margin-bottom: 0;
+  font-size: 16px;
+}
+
+.compact-list {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.list-icon {
+  color: #2563eb;
+  font-size: 18px;
+}
+
+.record-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.record-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 6px;
+  border-bottom: 1px solid #eaecf0;
+}
+
+.record-list-item:last-child {
+  border-bottom: 0;
+}
+
+.record-list-title {
+  margin-bottom: 4px;
+}
+
+.markdown-output {
+  max-width: 920px;
+  color: #344054;
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.markdown-output h1,
+.markdown-output h2,
+.markdown-output h3 {
+  color: #101828;
+  line-height: 1.3;
+}
+
+.markdown-output pre,
+.json-viewer pre {
+  overflow: auto;
+  margin: 0;
+  padding: 18px;
+  border-radius: 10px;
+  background: #101828;
+  color: #e4e7ec;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.markdown-output code:not(pre code) {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #f2f4f7;
+  color: #b42318;
+}
+
+.markdown-output table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.markdown-output th,
+.markdown-output td {
+  padding: 8px 12px;
+  border: 1px solid #d0d5dd;
+  text-align: left;
+}
+
+.json-viewer {
+  position: relative;
+}
+
+.json-copy {
+  position: absolute;
+  z-index: 1;
+  top: 10px;
+  right: 10px;
+}
+
+.runtime-metadata-title {
+  margin-top: 24px !important;
+}
+
+.project-search {
+  width: min(560px, 100%);
+}
+
+.project-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  padding-inline: 8px !important;
+  padding-block: 12px;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 160ms ease;
+}
+
+.project-list-item .ant-tag,
+.project-list-item > :last-child {
+  margin-left: auto;
+}
+
+.project-list-item:hover,
+.project-list-item-active {
+  background: #eff6ff;
+}
+
+.summary-card {
+  min-height: 132px;
+}
+
+.summary-card .ant-statistic-content {
+  color: #2563eb;
+}
+
+.filter-select {
+  width: min(520px, 100%);
+}
+
+.empty-icon {
+  color: #98a2b3;
+  font-size: 52px;
+}
+
+@media (max-width: 991px) {
+  .app-sider {
+    position: fixed !important;
+    z-index: 20;
+  }
+
+  .app-header {
+    padding: 0 16px 0 84px;
+  }
+
+  .app-content {
+    padding: 28px 20px 18px 92px;
+  }
+}
+
+@media (max-width: 640px) {
+  .header-context {
+    display: none;
+  }
+
+  .app-content {
+    padding-right: 14px;
+    padding-left: 86px;
+  }
+
+  .page-heading {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .page-heading-extra,
+  .page-heading-extra .ant-btn {
+    width: 100%;
+  }
+
+  .context-card .ant-form-inline .ant-form-item {
+    width: 100%;
+    margin-inline-end: 0;
+  }
+}
