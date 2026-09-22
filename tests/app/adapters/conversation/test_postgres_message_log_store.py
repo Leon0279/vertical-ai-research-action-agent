@@ -28,15 +28,23 @@ class FakeConnection:
         *,
         rows: list[dict[str, object]] | None = None,
         error: Exception | None = None,
+        fail_on_execute_number: int | None = None,
     ) -> None:
         self.rows = rows or []
         self.error = error
+        self.fail_on_execute_number = fail_on_execute_number
         self.execute_calls: list[tuple[str, tuple[object, ...]]] = []
         self.fetch_calls: list[tuple[str, tuple[object, ...]]] = []
+        self.transaction_enter_count = 0
+        self.transaction_commit_count = 0
+        self.transaction_rollback_count = 0
 
     async def execute(self, query: str, *args: object) -> str:
         self.execute_calls.append((query, args))
-        if self.error:
+        if self.error and (
+            self.fail_on_execute_number is None
+            or self.fail_on_execute_number == len(self.execute_calls)
+        ):
             raise self.error
         return "INSERT 0 1"
 
@@ -45,6 +53,26 @@ class FakeConnection:
         if self.error:
             raise self.error
         return self.rows
+
+    def transaction(self) -> "FakeTransaction":
+        return FakeTransaction(self)
+
+
+class FakeTransaction:
+    """Track transaction completion and rollback in adapter tests."""
+
+    def __init__(self, connection: FakeConnection) -> None:
+        self.connection = connection
+
+    async def __aenter__(self) -> None:
+        self.connection.transaction_enter_count += 1
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        del exc, tb
+        if exc_type is None:
+            self.connection.transaction_commit_count += 1
+        else:
+            self.connection.transaction_rollback_count += 1
 
 
 class FakeAcquire:
@@ -153,6 +181,46 @@ def test_append_message_wraps_duplicate_or_database_errors() -> None:
 
     assert "Failed to append" in str(exc_info.value)
     assert "secret" not in str(exc_info.value)
+
+
+def test_append_messages_writes_the_batch_in_one_transaction() -> None:
+    connection = FakeConnection()
+    store = PostgresMessageLogStore(_config(), pool=FakePool(connection))
+    second_message = _message().model_copy(update={"message_id": "message-2"})
+
+    asyncio.run(store.append_messages([_message(), second_message]))
+
+    assert len(connection.execute_calls) == 2
+    assert connection.transaction_enter_count == 1
+    assert connection.transaction_commit_count == 1
+    assert connection.transaction_rollback_count == 0
+
+
+def test_append_messages_rolls_back_when_any_insert_fails() -> None:
+    connection = FakeConnection(
+        error=RuntimeError("second insert failed"),
+        fail_on_execute_number=2,
+    )
+    store = PostgresMessageLogStore(_config(), pool=FakePool(connection))
+    second_message = _message().model_copy(update={"message_id": "message-2"})
+
+    with pytest.raises(PostgresMessageLogStoreError):
+        asyncio.run(store.append_messages([_message(), second_message]))
+
+    assert len(connection.execute_calls) == 2
+    assert connection.transaction_enter_count == 1
+    assert connection.transaction_commit_count == 0
+    assert connection.transaction_rollback_count == 1
+
+
+def test_append_messages_accepts_an_empty_batch_without_opening_a_connection() -> None:
+    connection = FakeConnection()
+    store = PostgresMessageLogStore(_config(), pool=FakePool(connection))
+
+    asyncio.run(store.append_messages([]))
+
+    assert connection.execute_calls == []
+    assert connection.transaction_enter_count == 0
 
 
 def test_list_session_messages_uses_stable_keyset_query() -> None:

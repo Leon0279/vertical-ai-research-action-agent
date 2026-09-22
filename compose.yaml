@@ -75,6 +75,8 @@ services:
       POSTGRES_ACTION_MEMORY_DSN: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-vertical_ai_research_action_agent}
       POSTGRES_PREFERENCE_POLICY_MEMORY_DSN: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-vertical_ai_research_action_agent}
       POSTGRES_RESEARCH_KNOWLEDGE_MEMORY_DSN: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-vertical_ai_research_action_agent}
+      POSTGRES_CONVERSATION_SESSION_DSN: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-vertical_ai_research_action_agent}
+      POSTGRES_MESSAGE_LOG_DSN: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-vertical_ai_research_action_agent}
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:

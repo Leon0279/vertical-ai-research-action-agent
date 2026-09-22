@@ -7,6 +7,10 @@ import logging
 import pytest
 from dishka import Provider, Scope, provide
 
+from app.adapters.conversation.contracts import (
+    ConversationSessionStoreProtocol,
+    MessageLogStoreProtocol,
+)
 from app.adapters.docs_search.contracts.docs_search_client_protocol import (
     DocsSearchClientProtocol,
 )
@@ -47,7 +51,7 @@ from app.adapters.web_search.contracts.web_search_client_protocol import (
 )
 from app.bootstrap import build_application_container
 from app.common.observability import current_trace_id
-from app.domain.enums import FamilyName
+from app.domain.enums import FamilyName, TaskType, WorkflowPattern
 from app.domain.models import (
     ContextItem,
     ExecutionContext,
@@ -57,6 +61,7 @@ from app.domain.models import (
     RunningState,
     RuntimeContext,
     SourceReference,
+    StructuredOutput,
     SupplementalContext,
 )
 from app.orchestration.pipeline_dependencies import PipelineDependencies
@@ -267,6 +272,19 @@ class _FakeMemoryStore:
         return []
 
 
+class _FakeConversationSessionStore:
+    async def ensure_session(self, session):
+        return session
+
+    async def record_message_activity(self, **kwargs) -> None:
+        del kwargs
+
+
+class _FakeMessageLogStore:
+    async def append_messages(self, messages) -> None:
+        del messages
+
+
 class _PipelineTestProvider(Provider):
     """Replace external dependencies while retaining the production object graph."""
 
@@ -324,6 +342,14 @@ class _PipelineTestProvider(Provider):
     def knowledge_store(self) -> ResearchKnowledgeMemoryStoreProtocol:
         return _FakeMemoryStore()
 
+    @provide(override=True)
+    def conversation_session_store(self) -> ConversationSessionStoreProtocol:
+        return _FakeConversationSessionStore()
+
+    @provide(override=True)
+    def message_log_store(self) -> MessageLogStoreProtocol:
+        return _FakeMessageLogStore()
+
 
 class _FailingMemoryDistiller:
     async def distill(self, context: ExecutionContext):
@@ -339,6 +365,157 @@ class _RecordingMemoryPersistence:
         del context, candidates
         self.called = True
         raise AssertionError("Persistence must not run after distillation failure.")
+
+
+class _RecordingResponseAssembler:
+    def __init__(
+        self,
+        events: list[str],
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        self._events = events
+        self._error = error
+        self.output = StructuredOutput(
+            task_type=TaskType.TOPIC_EXPLORATION,
+            workflow_pattern=WorkflowPattern.TOPIC_EXPLORATION,
+            answer="Recorded answer.",
+            summary="Recorded summary.",
+        )
+
+    async def assemble(self, context: ExecutionContext) -> StructuredOutput:
+        del context
+        self._events.append("assemble")
+        if self._error:
+            raise self._error
+        return self.output
+
+
+class _RecordingContinuityManager:
+    def __init__(self, events: list[str]) -> None:
+        self._events = events
+
+    async def update(self, context: ExecutionContext) -> None:
+        del context
+        self._events.append("continuity")
+
+
+class _RecordingConversationHistory:
+    def __init__(
+        self,
+        events: list[str],
+        *,
+        error: Exception | None = None,
+    ) -> None:
+        self._events = events
+        self._error = error
+        self.received_output: StructuredOutput | None = None
+
+    async def record_completed_run(
+        self,
+        context: ExecutionContext,
+        output: StructuredOutput,
+    ) -> None:
+        del context
+        self._events.append("history")
+        self.received_output = output
+        if self._error:
+            raise self._error
+
+
+def _output_test_pipeline(
+    *,
+    assembler: object,
+    continuity: object,
+    history: object,
+) -> ResearchActionPipeline:
+    return ResearchActionPipeline(
+        dependencies=PipelineDependencies(
+            request_intake=object(),
+            task_interpreter=object(),
+            workflow_router=object(),
+            decomposition_planner=object(),
+            context_memory_loader=object(),
+            research_executor=object(),
+            conclusion_generator=object(),
+            memory_distiller=object(),
+            memory_persistence=object(),
+            session_continuity_manager=continuity,
+            conversation_history=history,
+            response_assembler=assembler,
+        )
+    )
+
+
+def _output_test_context() -> ExecutionContext:
+    return ExecutionContext(
+        running_state=RunningState(original_query="Record this successful run."),
+        runtime_context=RuntimeContext(
+            request_id="trace-output",
+            user_id="user-output",
+            session_id="session-output",
+        ),
+    )
+
+
+def test_output_assembles_before_continuity_and_conversation_history() -> None:
+    events: list[str] = []
+    assembler = _RecordingResponseAssembler(events)
+    history = _RecordingConversationHistory(events)
+    pipeline = _output_test_pipeline(
+        assembler=assembler,
+        continuity=_RecordingContinuityManager(events),
+        history=history,
+    )
+
+    output = asyncio.run(pipeline._output(_output_test_context()))
+
+    assert output is assembler.output
+    assert history.received_output is output
+    assert events == ["assemble", "continuity", "history"]
+
+
+def test_conversation_history_failure_does_not_block_output(caplog) -> None:
+    caplog.set_level(
+        logging.WARNING,
+        logger="app.orchestration.research_action_pipeline",
+    )
+    events: list[str] = []
+    assembler = _RecordingResponseAssembler(events)
+    pipeline = _output_test_pipeline(
+        assembler=assembler,
+        continuity=_RecordingContinuityManager(events),
+        history=_RecordingConversationHistory(
+            events,
+            error=RuntimeError("history unavailable"),
+        ),
+    )
+
+    output = asyncio.run(pipeline._output(_output_test_context()))
+
+    assert output is assembler.output
+    assert events == ["assemble", "continuity", "history"]
+    assert any(
+        getattr(record, "event", None) == "conversation_history_write_failed"
+        for record in caplog.records
+    )
+
+
+def test_response_assembly_failure_does_not_write_conversation_history() -> None:
+    events: list[str] = []
+    pipeline = _output_test_pipeline(
+        assembler=_RecordingResponseAssembler(
+            events,
+            error=RuntimeError("assembly failed"),
+        ),
+        continuity=_RecordingContinuityManager(events),
+        history=_RecordingConversationHistory(events),
+    )
+
+    with pytest.raises(RuntimeError, match="assembly failed"):
+        asyncio.run(pipeline._output(_output_test_context()))
+
+    assert events == ["assemble"]
 
 
 async def _resolve_test_pipeline() -> tuple[ResearchActionPipeline, object]:
@@ -496,6 +673,7 @@ def test_pipeline_failure_logs_provider_diagnostics_and_clears_trace(caplog) -> 
             memory_distiller=object(),
             memory_persistence=object(),
             session_continuity_manager=object(),
+            conversation_history=object(),
             response_assembler=object(),
         )
     )
@@ -661,6 +839,7 @@ def test_research_stage_projects_input_and_applies_result() -> None:
             memory_distiller=object(),
             memory_persistence=object(),
             session_continuity_manager=object(),
+            conversation_history=object(),
             response_assembler=object(),
         )
     )
@@ -736,6 +915,7 @@ def test_empty_research_stage_result_does_not_clear_existing_state() -> None:
             memory_distiller=object(),
             memory_persistence=object(),
             session_continuity_manager=object(),
+            conversation_history=object(),
             response_assembler=object(),
         )
     )
@@ -769,6 +949,7 @@ def test_research_stage_failure_becomes_a_structured_failed_result() -> None:
             memory_distiller=object(),
             memory_persistence=object(),
             session_continuity_manager=object(),
+            conversation_history=object(),
             response_assembler=object(),
         )
     )
@@ -821,6 +1002,7 @@ def test_research_stage_result_deduplicates_typed_source_ids() -> None:
             memory_distiller=object(),
             memory_persistence=object(),
             session_continuity_manager=object(),
+            conversation_history=object(),
             response_assembler=object(),
         )
     )

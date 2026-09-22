@@ -4,6 +4,9 @@ from dishka import Provider, Scope, provide
 
 from app.orchestration.pipeline_dependencies import PipelineDependencies
 from app.orchestration.research_action_pipeline import ResearchActionPipeline
+from app.services.conversation.contracts.conversation_history_service_protocol import (
+    ConversationHistoryServiceProtocol,
+)
 from app.services.executor.contracts.research_executor_protocol import (
     ResearchExecutorProtocol,
 )
@@ -54,6 +57,7 @@ class OrchestrationProvider(Provider):
         memory_distiller: MemoryDistillerProtocol,
         memory_persistence: MemoryPersistenceProtocol,
         session_continuity_manager: SessionContinuityManagerProtocol,
+        conversation_history: ConversationHistoryServiceProtocol,
         response_assembler: ResponseAssemblerProtocol,
     ) -> PipelineDependencies:
         return PipelineDependencies(
@@ -67,5 +71,6 @@ class OrchestrationProvider(Provider):
             memory_distiller=memory_distiller,
             memory_persistence=memory_persistence,
             session_continuity_manager=session_continuity_manager,
+            conversation_history=conversation_history,
             response_assembler=response_assembler,
         )

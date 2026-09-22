@@ -2,6 +2,12 @@
 
 import asyncio
 
+import pytest
+
+from app.adapters.conversation.contracts import (
+    ConversationSessionStoreProtocol,
+    MessageLogStoreProtocol,
+)
 from app.api.app import app
 from app.adapters.embedding.zhipu_embedding_client import ZhipuEmbeddingClient
 from app.adapters.memory.postgres_action_memory_store import PostgresActionMemoryStore
@@ -24,6 +30,18 @@ from app.services.project import ProjectService
 from app.services.project.contracts import ProjectServiceProtocol
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
 from app.services.planner.contracts.task_interpreter_protocol import TaskInterpreterProtocol
+
+
+@pytest.fixture(autouse=True)
+def _conversation_store_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        "POSTGRES_CONVERSATION_SESSION_DSN",
+        "postgresql://sessions.example.test/db",
+    )
+    monkeypatch.setenv(
+        "POSTGRES_MESSAGE_LOG_DSN",
+        "postgresql://messages.example.test/db",
+    )
 
 
 def test_app_importable() -> None:
@@ -69,6 +87,12 @@ def test_default_dependencies_satisfy_pipeline_protocols() -> None:
 
     assert isinstance(pipeline._dependencies.request_intake, RequestIntakeProtocol)
     assert isinstance(pipeline._dependencies.task_interpreter, TaskInterpreterProtocol)
+    history = pipeline._dependencies.conversation_history
+    assert isinstance(
+        history._conversation_session_store,
+        ConversationSessionStoreProtocol,
+    )
+    assert isinstance(history._message_log_store, MessageLogStoreProtocol)
     loader = pipeline._dependencies.context_memory_loader
     assert isinstance(loader._session_store, RedisSessionMemoryStore)
     assert isinstance(loader._project_profile_store, PostgresProjectProfileMemoryStore)

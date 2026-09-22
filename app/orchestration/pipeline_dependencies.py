@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.services.conversation.contracts.conversation_history_service_protocol import (
+    ConversationHistoryServiceProtocol,
+)
 from app.services.executor.contracts.research_executor_protocol import (
     ResearchExecutorProtocol,
 )
@@ -59,5 +62,7 @@ class PipelineDependencies:
     memory_persistence: MemoryPersistenceProtocol
     # 滚动更新短期 session continuity memory 的 service。
     session_continuity_manager: SessionContinuityManagerProtocol
+    # 将成功完成的 run 写入持久化 conversation history 的 service。
+    conversation_history: ConversationHistoryServiceProtocol
     # 将 ExecutionContext 映射为 API 层 StructuredOutput 的输出组装 service。
     response_assembler: ResponseAssemblerProtocol

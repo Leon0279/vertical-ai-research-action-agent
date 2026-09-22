@@ -153,6 +153,12 @@ from app.services.evidence.contracts.evidence_processing_service_protocol import
     EvidenceProcessingServiceProtocol,
 )
 from app.services.evidence.evidence_processing_service import EvidenceProcessingService
+from app.services.conversation.contracts.conversation_history_service_protocol import (
+    ConversationHistoryServiceProtocol,
+)
+from app.services.conversation.conversation_history_service import (
+    ConversationHistoryService,
+)
 from app.services.memory.context_memory_loader_service import ContextMemoryLoaderService
 from app.services.memory.contracts.context_memory_loader_protocol import ContextMemoryLoaderProtocol
 from app.services.memory.contracts.memory_persistence_protocol import MemoryPersistenceProtocol
@@ -321,6 +327,13 @@ def test_adapter_protocol_conformance() -> None:
 
 
 def test_service_protocol_conformance() -> None:
+    assert isinstance(
+        ConversationHistoryService(
+            conversation_session_store=object(),
+            message_log_store=object(),
+        ),
+        ConversationHistoryServiceProtocol,
+    )
     assert isinstance(TaskInterpreterService(), TaskInterpreterProtocol)
     assert isinstance(DecompositionPlannerService(), DecompositionPlannerProtocol)
     assert isinstance(

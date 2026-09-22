@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.common.utils.ids import generate_session_id, generate_trace_id
 from app.domain.enums import FamilyName
 from app.domain.models import ExecutionContext, RequestContext, RunningState, RuntimeContext
@@ -63,6 +65,7 @@ class RequestIntakeService(RequestIntakeProtocol):
         )
         runtime_context = RuntimeContext(
             request_id=generate_trace_id(),
+            request_started_at=datetime.now(UTC),
             user_id=user_id,
             session_id=session_id,
             session_id_generated=session_id_generated,

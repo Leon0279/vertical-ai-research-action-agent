@@ -25,6 +25,12 @@ from app.adapters.memory.contracts.session_memory_store_protocol import (
     SessionMemoryStoreProtocol,
 )
 from app.domain.enums import FamilyName
+from app.services.conversation.contracts.conversation_history_service_protocol import (
+    ConversationHistoryServiceProtocol,
+)
+from app.services.conversation.conversation_history_service import (
+    ConversationHistoryService,
+)
 from app.services.evidence.contracts.evidence_processing_service_protocol import (
     EvidenceProcessingServiceProtocol,
 )
@@ -159,6 +165,11 @@ class ApplicationServiceProvider(Provider):
     response_assembler_protocol = alias(
         ResponseAssemblerService,
         provides=ResponseAssemblerProtocol,
+    )
+    conversation_history = provide(ConversationHistoryService)
+    conversation_history_protocol = alias(
+        ConversationHistoryService,
+        provides=ConversationHistoryServiceProtocol,
     )
     context_memory_loader = provide(ContextMemoryLoaderService)
     context_memory_loader_protocol = alias(

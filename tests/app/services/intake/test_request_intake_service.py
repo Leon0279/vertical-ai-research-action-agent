@@ -1,6 +1,7 @@
 """Request intake service tests."""
 
 import asyncio
+from datetime import UTC
 
 import pytest
 
@@ -27,6 +28,7 @@ def test_request_intake_service_normalizes_and_generates_session_id() -> None:
     assert state.running_state.project_scope_id == "project-1"
     assert state.running_state.constraints == []
     assert state.runtime_context.request_id.startswith("trace-")
+    assert state.runtime_context.request_started_at.tzinfo == UTC
     assert state.runtime_context.user_id == "user-1"
     assert state.runtime_context.session_id.startswith("session-")
     assert state.runtime_context.session_id_generated is True

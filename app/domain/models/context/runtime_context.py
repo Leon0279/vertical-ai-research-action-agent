@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, Field
 
 from app.domain.enums import FamilyName
@@ -19,6 +21,14 @@ class RuntimeContext(BaseModel):
             "必填字段，不能为空字符串。当前 request run 的唯一标识。当前项目中有用：RequestIntakeService "
             "会初始化该字段；ResponseAssembler 会把它作为 StructuredOutput.trace_id；日志、trace、memory candidate "
             "和后续排查也可用它关联同一次运行。"
+        ),
+    )
+    request_started_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
+        description=(
+            "可选字段，默认使用创建 RuntimeContext 时的 UTC 时间。表示当前 request run 开始接入系统的时间。"
+            "当前项目中有用：ConversationHistoryService 将它作为本轮 user message 的创建时间，"
+            "从而与 output 阶段产生的 assistant message 保持真实的先后顺序。"
         ),
     )
     user_id: str = Field(

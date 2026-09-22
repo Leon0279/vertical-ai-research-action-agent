@@ -37,17 +37,25 @@ class PostgresMessageLogStore(MessageLogStoreProtocol):
         self._pool_registry = pool_registry
 
     async def append_message(self, message: MessageLogRecord) -> None:
-        stored_message = self._record_for_storage(message)
+        await self.append_messages([message])
+
+    async def append_messages(self, messages: list[MessageLogRecord]) -> None:
+        if not messages:
+            return
+
+        stored_messages = [self._record_for_storage(message) for message in messages]
         pool = await self._ensure_pool()
         try:
             async with pool.acquire() as connection:
-                await connection.execute(
-                    self._build_append_message_query(),
-                    *self._record_params(stored_message),
-                )
+                async with connection.transaction():
+                    for stored_message in stored_messages:
+                        await connection.execute(
+                            self._build_append_message_query(),
+                            *self._record_params(stored_message),
+                        )
         except Exception as exc:
             raise PostgresMessageLogStoreError(
-                "Failed to append conversation message."
+                "Failed to append conversation messages."
             ) from exc
 
     async def list_session_messages(

@@ -23,6 +23,17 @@ class MessageLogStoreProtocol(Protocol):
         """
         ...
 
+    async def append_messages(self, messages: list[MessageLogRecord]) -> None:
+        """在同一存储事务中追加一批不可变消息。
+
+        Args:
+            messages (list[MessageLogRecord]): 按业务顺序排列的待持久化消息；空列表表示无需写入。
+
+        Returns:
+            None: 整批写入成功后无返回值；任一消息写入失败时回滚整批并抛出异常。
+        """
+        ...
+
     async def list_session_messages(
         self,
         *,

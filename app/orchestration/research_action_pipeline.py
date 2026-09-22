@@ -452,11 +452,28 @@ Fixed outer workflow with stage-by-stage execution."""
         return result
 
     async def _output(self, context: ExecutionContext) -> StructuredOutput:
-        """Update session continuity and build final response."""
+        """Build final response, update continuity, and persist conversation history."""
 
         context.runtime_context.stage_history.append("output")
+        output = await self._dependencies.response_assembler.assemble(context)
         await self._dependencies.session_continuity_manager.update(context)
-        return await self._dependencies.response_assembler.assemble(context)
+        try:
+            await self._dependencies.conversation_history.record_completed_run(
+                context,
+                output,
+            )
+        except Exception as error:
+            logger.warning(
+                "Conversation history write failed without blocking the response.",
+                extra={
+                    "event": "conversation_history_write_failed",
+                    "session_id": context.runtime_context.session_id,
+                    "project_id": context.running_state.project_scope_id,
+                    **exception_diagnostic_fields(error),
+                },
+                exc_info=True,
+            )
+        return output
 
 
 def _elapsed_ms(started_at: float) -> int:

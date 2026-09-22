@@ -2,8 +2,13 @@
 
 import asyncio
 
+import pytest
 from redis import asyncio as redis_asyncio
 
+from app.adapters.conversation.contracts import (
+    ConversationSessionStoreProtocol,
+    MessageLogStoreProtocol,
+)
 from app.adapters.docs_search.llms_txt_docs_search_client import (
     LlmsTxtDocsSearchClient,
 )
@@ -43,6 +48,12 @@ from app.adapters.web_content_fetch.tavily_web_content_fetch_client import (
 from app.adapters.web_search.tavily_web_search_client import TavilyWebSearchClient
 from app.bootstrap import build_application_container
 from app.orchestration.research_action_pipeline import ResearchActionPipeline
+from app.services.conversation.contracts.conversation_history_service_protocol import (
+    ConversationHistoryServiceProtocol,
+)
+from app.services.conversation.conversation_history_service import (
+    ConversationHistoryService,
+)
 from app.services.memory.memory_distiller_service import MemoryDistillerService
 from app.services.memory.action_memory_service import ActionMemoryService
 from app.services.memory.contracts.action_memory_service_protocol import (
@@ -107,6 +118,20 @@ from app.services.use_cases.memory_summary_use_case_service import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _conversation_store_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide lazy conversation Store configs without opening database connections."""
+
+    monkeypatch.setenv(
+        "POSTGRES_CONVERSATION_SESSION_DSN",
+        "postgresql://sessions.example.test/db",
+    )
+    monkeypatch.setenv(
+        "POSTGRES_MESSAGE_LOG_DSN",
+        "postgresql://messages.example.test/db",
+    )
+
+
 def test_app_dependencies_are_singletons_and_protocol_aliases_share_instances() -> None:
     async def verify() -> None:
         container = build_application_container()
@@ -117,6 +142,11 @@ def test_app_dependencies_are_singletons_and_protocol_aliases_share_instances() 
 
             project_service = await container.get(ProjectService)
             assert project_service is await container.get(ProjectServiceProtocol)
+
+            conversation_history = await container.get(ConversationHistoryService)
+            assert conversation_history is await container.get(
+                ConversationHistoryServiceProtocol
+            )
 
             action_service = await container.get(ActionMemoryService)
             assert action_service is await container.get(ActionMemoryServiceProtocol)
@@ -255,6 +285,26 @@ def test_project_api_and_pipeline_share_project_profile_store() -> None:
             assert project_service._project_profile_store is project_store
             assert loader._project_profile_store is project_store
             assert persistence._project_profile_store is project_store
+        finally:
+            await container.close()
+
+    asyncio.run(verify())
+
+
+def test_pipeline_conversation_history_reuses_the_registered_stores() -> None:
+    async def verify() -> None:
+        container = build_application_container()
+        try:
+            pipeline = await container.get(ResearchActionPipeline)
+            history = await container.get(ConversationHistoryService)
+
+            assert pipeline._dependencies.conversation_history is history
+            assert history._conversation_session_store is await container.get(
+                ConversationSessionStoreProtocol
+            )
+            assert history._message_log_store is await container.get(
+                MessageLogStoreProtocol
+            )
         finally:
             await container.close()
 
