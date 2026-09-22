@@ -60,7 +60,7 @@ class ConversationSessionStoreProtocol(Protocol):
             user_id (str): 会话所属用户标识，用于隔离读取范围。
             project_id (str | None): 可选项目过滤；None 表示读取该用户全部项目范围。
             session_statuses (list[ConversationSessionStatus]): 允许返回的会话状态集合。
-            limit (int): 最大返回记录数，取值范围为 1 到 100。
+            limit (int): 内部最大读取记录数，取值范围为 1 到 101；101 用于公开 100 条分页的 lookahead。
             before_updated_at (datetime | None): 上一页末项更新时间；首页为 None。
             before_session_id (str | None): 上一页末项会话标识；首页为 None。
 

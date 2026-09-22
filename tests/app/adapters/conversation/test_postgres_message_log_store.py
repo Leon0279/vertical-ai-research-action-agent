@@ -272,7 +272,22 @@ def test_list_project_messages_reads_message_table_directly() -> None:
     assert args == ("user-1", "project-1", None, None, 20)
 
 
-@pytest.mark.parametrize("limit", [0, 101])
+def test_message_queries_accept_internal_lookahead_limit() -> None:
+    connection = FakeConnection()
+    store = PostgresMessageLogStore(_config(), pool=FakePool(connection))
+
+    asyncio.run(
+        store.list_session_messages(
+            user_id="user-1",
+            session_id="session-1",
+            limit=101,
+        )
+    )
+
+    assert connection.fetch_calls[0][1][-1] == 101
+
+
+@pytest.mark.parametrize("limit", [0, 102])
 def test_message_queries_reject_invalid_limit(limit: int) -> None:
     store = PostgresMessageLogStore(_config(), pool=FakePool(FakeConnection()))
 

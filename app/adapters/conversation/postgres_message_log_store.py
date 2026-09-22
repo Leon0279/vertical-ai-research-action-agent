@@ -247,7 +247,7 @@ LIMIT $5
         cursor_time: datetime | None,
         cursor_id: str | None,
     ) -> None:
-        if not 1 <= limit <= 100:
-            raise ValueError("limit must be between 1 and 100")
+        if not 1 <= limit <= 101:
+            raise ValueError("limit must be between 1 and 101")
         if (cursor_time is None) != (cursor_id is None):
             raise ValueError("pagination cursor fields must be provided together")

@@ -48,7 +48,7 @@ class MessageLogStoreProtocol(Protocol):
         Args:
             user_id (str): 消息所属用户标识，用于隔离读取范围。
             session_id (str): 需要读取消息的会话标识。
-            limit (int): 最大返回消息数，取值范围为 1 到 100。
+            limit (int): 内部最大读取消息数，取值范围为 1 到 101；101 用于公开 100 条分页的 lookahead。
             before_created_at (datetime | None): 上一页末项创建时间；首页为 None。
             before_message_id (str | None): 上一页末项消息标识；首页为 None。
 
@@ -71,7 +71,7 @@ class MessageLogStoreProtocol(Protocol):
         Args:
             user_id (str): 消息所属用户标识，用于隔离读取范围。
             project_id (str): 需要读取消息的稳定项目标识。
-            limit (int): 最大返回消息数，取值范围为 1 到 100。
+            limit (int): 内部最大读取消息数，取值范围为 1 到 101；101 用于公开 100 条分页的 lookahead。
             before_created_at (datetime | None): 上一页末项创建时间；首页为 None。
             before_message_id (str | None): 上一页末项消息标识；首页为 None。
 

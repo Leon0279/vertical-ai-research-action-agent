@@ -214,7 +214,23 @@ def test_list_sessions_uses_project_status_and_keyset_order() -> None:
     )
 
 
-@pytest.mark.parametrize("limit", [0, 101])
+def test_list_sessions_accepts_internal_lookahead_limit() -> None:
+    connection = FakeConnection()
+    store = PostgresConversationSessionStore(_config(), pool=FakePool(connection))
+
+    asyncio.run(
+        store.list_sessions(
+            user_id="user-1",
+            project_id=None,
+            session_statuses=[ConversationSessionStatus.ACTIVE],
+            limit=101,
+        )
+    )
+
+    assert connection.fetch_calls[0][1][-1] == 101
+
+
+@pytest.mark.parametrize("limit", [0, 102])
 def test_list_sessions_rejects_invalid_limit(limit: int) -> None:
     store = PostgresConversationSessionStore(_config(), pool=FakePool(FakeConnection()))
 
