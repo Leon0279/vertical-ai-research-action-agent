@@ -2,6 +2,12 @@
 
 from dishka import Provider, Scope, provide
 
+from app.adapters.conversation.postgres_conversation_session_store_config import (
+    PostgresConversationSessionStoreConfig,
+)
+from app.adapters.conversation.postgres_message_log_store_config import (
+    PostgresMessageLogStoreConfig,
+)
 from app.adapters.docs_search.llms_txt_docs_search_client_config import (
     LlmsTxtDocsSearchClientConfig,
 )
@@ -77,6 +83,16 @@ class ApplicationConfigProvider(Provider):
     @provide
     def redis_config(self) -> RedisSessionMemoryStoreConfig:
         return RedisSessionMemoryStoreConfig.from_env()
+
+    @provide
+    def conversation_session_config(
+        self,
+    ) -> PostgresConversationSessionStoreConfig:
+        return PostgresConversationSessionStoreConfig.from_env()
+
+    @provide
+    def message_log_config(self) -> PostgresMessageLogStoreConfig:
+        return PostgresMessageLogStoreConfig.from_env()
 
     @provide
     def project_profile_config(self) -> PostgresProjectProfileMemoryStoreConfig:

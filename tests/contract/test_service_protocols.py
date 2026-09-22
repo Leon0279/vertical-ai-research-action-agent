@@ -1,5 +1,21 @@
 """Contract tests for protocol compliance."""
 
+from app.adapters.conversation.contracts import (
+    ConversationSessionStoreProtocol,
+    MessageLogStoreProtocol,
+)
+from app.adapters.conversation.postgres_conversation_session_store import (
+    PostgresConversationSessionStore,
+)
+from app.adapters.conversation.postgres_conversation_session_store_config import (
+    PostgresConversationSessionStoreConfig,
+)
+from app.adapters.conversation.postgres_message_log_store import (
+    PostgresMessageLogStore,
+)
+from app.adapters.conversation.postgres_message_log_store_config import (
+    PostgresMessageLogStoreConfig,
+)
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.adapters.llm.stub_llm_client import StubLLMClient
 from app.adapters.llm.zhipu_llm_client import ZhipuLLMClient
@@ -185,6 +201,24 @@ from app.services.tool_execution_layer.tool_execution_layer_service import (
 
 
 def test_adapter_protocol_conformance() -> None:
+    assert isinstance(
+        PostgresConversationSessionStore(
+            config=PostgresConversationSessionStoreConfig(
+                dsn="postgresql://sessions.example.test/db"
+            ),
+            pool=object(),
+        ),
+        ConversationSessionStoreProtocol,
+    )
+    assert isinstance(
+        PostgresMessageLogStore(
+            config=PostgresMessageLogStoreConfig(
+                dsn="postgresql://messages.example.test/db"
+            ),
+            pool=object(),
+        ),
+        MessageLogStoreProtocol,
+    )
     assert isinstance(StubLLMClient(), LLMClientProtocol)
     assert isinstance(
         ZhipuLLMClient(

@@ -15,6 +15,12 @@ def generate_session_id() -> str:
     return f"session-{uuid4().hex}"
 
 
+def generate_message_id() -> str:
+    """生成单条持久化 conversation message 的稳定标识。"""
+
+    return f"message-{uuid4().hex}"
+
+
 def generate_project_id() -> str:
     """生成跨 Project Profile 版本保持稳定的逻辑项目标识。"""
 

@@ -8,6 +8,7 @@ from app.domain.models.memory.action_memory_page import ActionMemoryPage
 from app.domain.models.memory.action_memory_record import ActionMemoryRecord
 from app.domain.models.memory.action_memory_status import ActionMemoryStatus
 from app.domain.models.citation import Citation
+from app.domain.models.conversation import ConversationSessionRecord, MessageLogRecord
 from app.domain.models.conclusion.conclusion_result import ConclusionResult
 from app.domain.models.conclusion.final_recommendation import FinalRecommendation
 from app.domain.models.context import (
@@ -171,6 +172,7 @@ __all__ = [
     "ArxivPaperSearchToolResult",
     "BaseFamilyExecutionResult",
     "Citation",
+    "ConversationSessionRecord",
     "ConclusionResult",
     "ContextItem",
     "DecisionMemoryRecord",
@@ -203,6 +205,7 @@ __all__ = [
     "MemoryPersistenceResult",
     "MemoryRecord",
     "MemorySummary",
+    "MessageLogRecord",
     "PaperContentExtractionStatus",
     "PaperContentFetchRequest",
     "PaperContentFetchResult",

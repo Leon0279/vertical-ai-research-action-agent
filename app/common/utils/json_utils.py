@@ -59,3 +59,18 @@ def load_json_string_list(value: Any) -> list[str]:
             raise TypeError("Expected a JSON array.")
         return [str(item) for item in parsed]
     raise TypeError("Expected a list-like JSON field.")
+
+
+def load_json_object(value: Any) -> dict[str, Any]:
+    """将数据库返回的 JSON object 规范化为普通字符串键字典。"""
+
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return {str(key): item for key, item in value.items()}
+    if isinstance(value, str):
+        parsed = json.loads(value)
+        if not isinstance(parsed, dict):
+            raise TypeError("Expected a JSON object.")
+        return {str(key): item for key, item in parsed.items()}
+    raise TypeError("Expected a dict-like JSON field.")

@@ -7,6 +7,24 @@ from collections.abc import AsyncIterator
 import httpx
 from dishka import Provider, Scope, alias, provide
 
+from app.adapters.conversation.contracts.conversation_session_store_protocol import (
+    ConversationSessionStoreProtocol,
+)
+from app.adapters.conversation.contracts.message_log_store_protocol import (
+    MessageLogStoreProtocol,
+)
+from app.adapters.conversation.postgres_conversation_session_store import (
+    PostgresConversationSessionStore,
+)
+from app.adapters.conversation.postgres_conversation_session_store_config import (
+    PostgresConversationSessionStoreConfig,
+)
+from app.adapters.conversation.postgres_message_log_store import (
+    PostgresMessageLogStore,
+)
+from app.adapters.conversation.postgres_message_log_store_config import (
+    PostgresMessageLogStoreConfig,
+)
 from app.adapters.docs_search.contracts.docs_search_client_protocol import (
     DocsSearchClientProtocol,
 )
@@ -154,6 +172,14 @@ class InfrastructureProvider(Provider):
         RedisSessionMemoryStore,
         provides=SessionMemoryStoreProtocol,
     )
+    conversation_session_store_protocol = alias(
+        PostgresConversationSessionStore,
+        provides=ConversationSessionStoreProtocol,
+    )
+    message_log_store_protocol = alias(
+        PostgresMessageLogStore,
+        provides=MessageLogStoreProtocol,
+    )
 
     @provide
     async def postgres_pool_registry(self) -> AsyncIterator[PostgresPoolRegistry]:
@@ -263,6 +289,28 @@ class InfrastructureProvider(Provider):
         pool_registry: PostgresPoolRegistry,
     ) -> PostgresProjectProfileMemoryStore:
         return PostgresProjectProfileMemoryStore(
+            config=config,
+            pool_registry=pool_registry,
+        )
+
+    @provide
+    def conversation_session_store(
+        self,
+        config: PostgresConversationSessionStoreConfig,
+        pool_registry: PostgresPoolRegistry,
+    ) -> PostgresConversationSessionStore:
+        return PostgresConversationSessionStore(
+            config=config,
+            pool_registry=pool_registry,
+        )
+
+    @provide
+    def message_log_store(
+        self,
+        config: PostgresMessageLogStoreConfig,
+        pool_registry: PostgresPoolRegistry,
+    ) -> PostgresMessageLogStore:
+        return PostgresMessageLogStore(
             config=config,
             pool_registry=pool_registry,
         )

@@ -2,6 +2,9 @@
 
 from app.domain.enums.action_mode import ActionMode
 from app.domain.enums.acquisition_status import AcquisitionStatus
+from app.domain.enums.conversation_content_format import ConversationContentFormat
+from app.domain.enums.conversation_message_role import ConversationMessageRole
+from app.domain.enums.conversation_session_status import ConversationSessionStatus
 from app.domain.enums.family_name import FamilyName
 from app.domain.enums.memory_type import MemoryType
 from app.domain.enums.planning_depth import PlanningDepth
@@ -13,6 +16,9 @@ from app.domain.enums.workflow_pattern import WorkflowPattern
 __all__ = [
     "ActionMode",
     "AcquisitionStatus",
+    "ConversationContentFormat",
+    "ConversationMessageRole",
+    "ConversationSessionStatus",
     "FamilyName",
     "MemoryType",
     "PlanningDepth",
