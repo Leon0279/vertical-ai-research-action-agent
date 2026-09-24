@@ -17,7 +17,7 @@ Produce deterministic MVP planning artifacts."""
     async def plan(self, context: ExecutionContext) -> None:
         state = context.running_state
         task_type = self._task_type_from_state(state.task_type)
-        planning_depth = self._planning_depth_for(context=context, task_type=task_type)
+        planning_depth = self._planning_depth_for(task_type=task_type)
         state.planning_depth = planning_depth
 
         if planning_depth == PlanningDepth.NONE:
@@ -70,13 +70,8 @@ Produce deterministic MVP planning artifacts."""
     def _planning_depth_for(
         self,
         *,
-        context: ExecutionContext,
         task_type: TaskType,
     ) -> PlanningDepth:
-        policy = context.running_state.execution_policy
-        if policy is not None:
-            return policy.planning_depth
-
         if task_type in {
             TaskType.COMPARISON,
             TaskType.RECOMMENDATION,
@@ -208,11 +203,6 @@ Produce deterministic MVP planning artifacts."""
     ) -> list[str]:
         state = context.running_state
         strategy: list[str] = []
-        if state.execution_policy is not None:
-            strategy.append(
-                f"Use {state.execution_policy.evidence_strategy} as the initial evidence posture."
-            )
-
         if state.active_decision_summary:
             strategy.append("Review active project decisions before shaping the answer.")
         if state.current_action_status and task_type in {

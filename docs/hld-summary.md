@@ -764,7 +764,6 @@ Select the workflow pattern for the current task, such as topic exploration, com
 **Key outputs**
 
 - selected workflow pattern
-- downstream execution policy
 
 ---
 
@@ -895,4 +894,3 @@ At a high level, the system operates as follows:
 7. The **Conclusion Generator** produces the structured result.
 8. The **Memory Distillation and Persistence Component** updates long-term memory.
 9. The **Session Continuity Manager** preserves session-level continuity.
-

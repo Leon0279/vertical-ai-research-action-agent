@@ -1250,7 +1250,6 @@ Select the workflow pattern for the current task, such as topic exploration, com
 **Key outputs**
 
 - selected workflow pattern
-- downstream execution policy
 
 ---
 
@@ -2288,9 +2287,9 @@ The Context and Memory Loader retrieves the task-relevant short-term and long-te
 
 ### Purpose
 
-The Workflow Router is responsible for selecting the most appropriate workflow pattern for the current request. Its purpose is to translate the interpreted task type and loaded context into an execution path that best fits the current task.
+The Workflow Router is responsible for mapping the interpreted task type to the supported workflow pattern for the current request.
 
-This component does not perform deep reasoning or evidence retrieval by itself. Instead, it determines how downstream stages should be configured, emphasized, or constrained.
+This component does not perform deep reasoning, evidence retrieval, planning-depth selection, or downstream policy generation. The outer pipeline remains fixed; the selected pattern is a semantic routing label used by downstream conclusion generation, response assembly, and observability.
 
 ---
 
@@ -2299,36 +2298,21 @@ This component does not perform deep reasoning or evidence retrieval by itself. 
 The Workflow Router is responsible for:
 
 - selecting the workflow pattern for the current request
-- mapping `task_type` into a downstream execution path
-- determining which downstream stages should be emphasized
-- determining the default execution policy for planning, research, conclusion generation, and memory write-back
-- providing routing outputs that guide later stage-specific behavior
+- mapping `task_type` to a supported `workflow_pattern`
+- applying a conservative fallback when the task type is missing or unsupported
+- making the selected pattern available to downstream consumers
 
 ---
 
 ### Inputs
 
-The component typically receives:
-
-- `user_goal`
-- `task_type`
-- `project_context`
-- `constraints`
-- `task_framing` (if available)
+The component receives the interpreted `task_type` from the Task Interpretation Component. Other task context remains available in the shared execution context but is not used to create a separate routing policy.
 
 Example input:
 
 ```
 {
-  "user_goal":"Decide which improvement should be prioritized next for the current Agentic RAG MVP",
-  "task_type":"recommendation",
-  "project_context": {
-    "project_name":"Agentic RAG MVP",
-    "project_stage":"MVP",
-    "current_bottlenecks": ["lack of measurable baseline"]
-  },
-  "constraints": ["single developer","limited time"],
-  "task_framing":"This is a project-specific prioritization request rather than a generic technical explanation."
+  "task_type":"recommendation"
 }
 ```
 
@@ -2336,26 +2320,15 @@ Example input:
 
 ### Outputs
 
-The component produces a selected workflow pattern and the corresponding downstream execution policy.
-
-Typical outputs include:
+The component produces one routing output:
 
 - `workflow_pattern`
-- `execution_policy`
-- optional stage emphasis signals
 
 Example output:
 
 ```
 {
-  "workflow_pattern":"recommendation_flow",
-  "execution_policy": {
-    "planning_depth":"lightweight",
-    "comparison_needed":true,
-    "recommendation_needed":true,
-    "action_generation_needed":true,
-    "memory_writeback_focus": ["Decision Memory","Action / Execution Memory"]
-  }
+  "workflow_pattern":"recommendation_flow"
 }
 ```
 
@@ -2365,16 +2338,14 @@ Example output:
 
 The Workflow Router typically performs the following steps:
 
-1. **Read interpreted task signals**
-Use the semantic interpretation outputs, including `task_type`, `user_goal`, `project_context`, and `constraints`.
+1. **Read the interpreted task type**
+Use the normalized `task_type` produced by Task Interpretation.
 2. **Map task type to workflow pattern**
 Select the most appropriate workflow pattern for the current request.
-3. **Determine downstream execution emphasis**
-Identify which downstream behaviors should be emphasized, such as comparison, recommendation, action planning, or update tracking.
-4. **Produce execution policy**
-Generate a routing result that can guide later stages, including planning depth defaults, evidence strategy emphasis, output structure emphasis, and memory write-back focus.
-5. **Forward routing result to downstream stages**
-Make the selected workflow pattern and execution policy available to Planning and Decomposition, Research Executor, and Conclusion Generator.
+3. **Apply fallback when needed**
+Use topic exploration when the task type is missing or unsupported, and record the fallback in observability logs.
+4. **Write the routing result**
+Make the selected workflow pattern available to Conclusion Generator, Response Assembler, and observability.
 
 ---
 
@@ -2406,45 +2377,31 @@ For example:
 - a **recommendation** request should emphasize project-specific decision support
 - an **action planning** request should emphasize execution artifacts such as task breakdown and roadmap
 
-Without explicit routing, the system would be forced to handle all requests through one generic path, which would reduce specialization and make outputs more uniform and less task-appropriate.
+The outer workflow remains shared across task types. The routing label preserves the task-specific semantic mode without introducing a second policy object or separate pipeline implementation.
 
 ---
 
 ### State Interaction
 
-This component reads the following state fields:
+This component reads:
 
-- `user_goal`
 - `task_type`
-- `project_context`
-- `constraints`
-- optional `task_framing`
 
 It typically writes:
 
 - `workflow_pattern`
-- `execution_policy`
 
-These outputs are later consumed by:
+The output is later consumed by:
 
-- Planning and Decomposition Component
-- Research Executor
 - Conclusion Generator
-- Memory Distillation and Persistence Component
+- Response Assembler
+- observability
 
 ---
 
 ### Memory Interaction
 
-The Workflow Router does not directly read or write memory stores.
-
-However, its output influences downstream memory behavior by determining:
-
-- which memory types are likely to be most relevant
-- which memory types should be emphasized in write-back
-- whether prior decisions, action records, or research knowledge should be prioritized later in execution
-
-So while it is not a memory access component, it shapes later memory usage.
+The Workflow Router does not read or write memory stores and does not determine memory retrieval or write-back policy. Those decisions belong to the relevant context, research, and memory components.
 
 ---
 
@@ -2461,28 +2418,20 @@ The component receives input from:
 
 The component passes its output to:
 
-- Planning and Decomposition Component
-- Research Executor
 - Conclusion Generator
-- Memory Distillation and Persistence Component
+- Response Assembler
+- observability
 
 ---
 
 ### Failure Handling
 
-The Workflow Router should gracefully handle cases such as:
+The Workflow Router should gracefully handle:
 
-- ambiguous task type
-- mixed-intent requests
-- unclear routing boundaries between comparison and recommendation
-- unsupported or unrecognized task categories
+- a missing task type
+- an unsupported or unrecognized task type
 
-Typical failure behavior:
-
-- choose the closest supported workflow pattern
-- fall back to a conservative default flow
-- attach routing ambiguity signals if needed
-- avoid hard failure unless routing is impossible for the current system scope
+It falls back to the topic exploration pattern and records the reason in logs. Mixed-intent interpretation and ambiguity resolution remain responsibilities of Task Interpretation rather than the Router.
 
 The component should prefer best-effort routing over blocking execution.
 
@@ -2494,9 +2443,8 @@ For observability and debugging, the component should log:
 
 - selected `workflow_pattern`
 - input `task_type`
-- whether routing was confident or ambiguous
+- whether fallback occurred
 - any fallback routing behavior
-- stage emphasis decisions in `execution_policy`
 
 This is useful for diagnosing misrouted requests and for evaluating whether workflow specialization is improving downstream quality.
 
@@ -2511,21 +2459,20 @@ For the MVP, the Workflow Router may support a small set of workflow patterns, s
 - recommendation
 - action planning
 
-The MVP may use a simple mapping from `task_type` to workflow pattern, with only lightweight adjustments from `project_context` and `constraints`.
+The MVP uses a direct mapping from `task_type` to `workflow_pattern`.
 
 Future extensions may include:
 
 - mixed-intent routing
 - confidence-aware routing
 - dynamic workflow composition
-- richer execution policy generation
 - stage-specific routing refinement
 
 ---
 
 ### Summary
 
-The Workflow Router maps the interpreted request into an appropriate workflow pattern and produces the execution policy that shapes downstream behavior. It enables workflow specialization while preserving a shared outer architecture.
+The Workflow Router maps the interpreted task type into an appropriate workflow pattern. It preserves a task-specific semantic label while the system continues to use a shared outer architecture.
 
 ## Planning and Decomposition Component
 

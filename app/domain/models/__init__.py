@@ -169,7 +169,6 @@ from app.domain.models.web_search import (
     WebSearchResponse,
     WebSearchResult,
 )
-from app.domain.models.workflow_execution_policy import WorkflowExecutionPolicy
 
 __all__ = [
     "ActionItem",
@@ -287,7 +286,6 @@ __all__ = [
     "WebSearchQuery",
     "WebSearchResponse",
     "WebSearchResult",
-    "WorkflowExecutionPolicy",
     "WebSearchFamilyRequest",
     "WebSearchFamilyResult",
 ]

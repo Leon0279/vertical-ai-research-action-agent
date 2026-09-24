@@ -19,7 +19,6 @@ def test_running_state_defaults_follow_context_construction_lld() -> None:
 
     assert state.task_type is None
     assert state.workflow_pattern is None
-    assert state.execution_policy is None
     assert state.constraints == []
     assert state.planning_depth == PlanningDepth.NONE
     assert state.plan == []

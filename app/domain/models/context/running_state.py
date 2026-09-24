@@ -9,7 +9,6 @@ from app.domain.enums.workflow_pattern import WorkflowPattern
 from app.domain.models.citation import Citation
 from app.domain.models.research_stage.research_stage_result import ResearchStageStatus
 from app.domain.models.source import SourceReference
-from app.domain.models.workflow_execution_policy import WorkflowExecutionPolicy
 
 
 class RunningState(BaseModel):
@@ -111,20 +110,12 @@ class RunningState(BaseModel):
             "recommendation、action planning 或 tracking 变体。路由前为 None。"
         ),
     )
-    execution_policy: WorkflowExecutionPolicy | None = Field(
-        default=None,
-        description=(
-            "可选字段。WorkflowRouter 选择的轻量执行策略对象。当前项目中有用：Planner 会读取其中的 planning_depth、"
-            "evidence_strategy 等字段来决定规划深度和初始证据姿态。该对象不是完整 workflow definition，"
-            "只表达当前 run 的轻量执行偏好。"
-        ),
-    )
-
     planning_depth: PlanningDepth = Field(
         default=PlanningDepth.NONE,
         description=(
             "可选字段，默认 PlanningDepth.NONE。当前 run 的规划深度。当前项目中有用：DecompositionPlannerService "
-            "会根据 task_type / execution_policy 设置该字段，并据此决定是否生成 plan、sub_questions、comparison_candidates 等。"
+            "会根据 task_type 设置该字段，并据此决定是否生成 plan、sub_questions、comparison_candidates 等。"
+            "该字段属于 Planning 阶段，不由 WorkflowRouter 生成。"
         ),
     )
     plan: list[str] = Field(

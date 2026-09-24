@@ -177,14 +177,9 @@ Fixed outer workflow with stage-by-stage execution."""
                 "research_support_count": len(supplemental.research_support),
             }
         if stage_name == "workflow_routing":
-            policy = state.execution_policy
             return {
+                "task_type": state.task_type,
                 "workflow_pattern": state.workflow_pattern,
-                "planning_depth": policy.planning_depth if policy else None,
-                "evidence_strategy": policy.evidence_strategy if policy else None,
-                "memory_writeback_focus": (
-                    list(policy.memory_writeback_focus) if policy else []
-                ),
             }
         if stage_name == "planning":
             return {
