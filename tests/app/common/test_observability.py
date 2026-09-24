@@ -97,6 +97,13 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                 "attempt_error_info": "Authorization: Bearer attempt-secret",
                 "provider_http_status": 504,
                 "retryable": True,
+                "interpretation_source": "deterministic_fallback",
+                "fallback_reason": "invalid_output",
+                "user_goal": "Choose a safe option with api_key=goal-secret",
+                "task_framing": "Project-specific recommendation",
+                "constraints": ["local deployment", "password=constraint-secret"],
+                "project_context_summary": "Internal retrieval MVP",
+                "current_bottleneck_summary": "Evaluation coverage is incomplete",
                 "memory_persistence_items": [
                     {
                         "memory_type": "RESEARCH_KNOWLEDGE",
@@ -130,6 +137,13 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert record["error_category"] == "timeout"
     assert record["provider_http_status"] == 504
     assert record["retryable"] is True
+    assert record["interpretation_source"] == "deterministic_fallback"
+    assert record["fallback_reason"] == "invalid_output"
+    assert record["user_goal"] == "Choose a safe option with api_key=[REDACTED]"
+    assert record["task_framing"] == "Project-specific recommendation"
+    assert record["constraints"] == ["local deployment", "password=[REDACTED]"]
+    assert record["project_context_summary"] == "Internal retrieval MVP"
+    assert record["current_bottleneck_summary"] == "Evaluation coverage is incomplete"
     assert record["memory_persistence_items"] == [
         {
             "memory_type": "RESEARCH_KNOWLEDGE",
@@ -145,6 +159,8 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert "rationale-secret" not in serialized
     assert "attempt-secret" not in serialized
     assert "nested-secret" not in serialized
+    assert "goal-secret" not in serialized
+    assert "constraint-secret" not in serialized
     assert "[REDACTED]" in serialized
 
 

@@ -99,6 +99,20 @@ class _FailingTaskInterpreter:
 
 class _FakeZhipuLLMClient:
     async def generate_text(self, prompt: str) -> str:
+        if "无状态的任务理解调用" in prompt:
+            return json.dumps(
+                {
+                    "user_goal": "Compare RAG and agentic retrieval for production systems.",
+                    "task_type": "COMPARISON",
+                    "task_framing": "Production retrieval architecture comparison.",
+                    "constraints": ["production reliability"],
+                    "project_context_summary": "A production retrieval system is being evaluated.",
+                    "current_bottleneck_summary": (
+                        "The selection criteria have not yet been validated."
+                    ),
+                },
+                ensure_ascii=False,
+            )
         if "长期记忆候选提取任务" in prompt:
             return json.dumps({"candidates": []}, ensure_ascii=False)
         if "最终结论生成调用" in prompt:
@@ -595,6 +609,24 @@ def test_pipeline_stage_order(caplog) -> None:
     assert [record.stage_name for record in stage_started] == expected_observed_stages
     assert [record.stage_name for record in stage_completed] == expected_observed_stages
     assert all(record.duration_ms >= 0 for record in stage_completed)
+    interpretation_record = next(
+        record for record in stage_completed if record.stage_name == "task_interpretation"
+    )
+    assert interpretation_record.task_type == "COMPARISON"
+    assert interpretation_record.user_goal == (
+        "Compare RAG and agentic retrieval for production systems."
+    )
+    assert interpretation_record.task_framing == (
+        "Production retrieval architecture comparison."
+    )
+    assert interpretation_record.constraints == ["production reliability"]
+    assert interpretation_record.constraint_count == 1
+    assert interpretation_record.project_context_summary == (
+        "A production retrieval system is being evaluated."
+    )
+    assert interpretation_record.current_bottleneck_summary == (
+        "The selection criteria have not yet been validated."
+    )
     planning_record = next(
         record for record in stage_completed if record.stage_name == "planning"
     )
@@ -606,6 +638,47 @@ def test_pipeline_stage_order(caplog) -> None:
     )
     assert memory_record.written_count == 0
     assert current_trace_id() is None
+
+
+def test_task_interpretation_stage_summary_redacts_and_bounds_semantic_content() -> None:
+    pipeline = _output_test_pipeline(
+        assembler=object(),
+        continuity=object(),
+        history=object(),
+    )
+    context = ExecutionContext(
+        running_state=RunningState(
+            original_query="This original query must not enter the stage summary.",
+            task_type=TaskType.RECOMMENDATION.value,
+            user_goal="api_key=goal-secret " + ("g" * 600),
+            task_framing="f" * 600,
+            constraints=[
+                "password=constraint-secret " + (str(index) * 400)
+                for index in range(25)
+            ],
+            project_context_summary="p" * 1_200,
+            current_bottleneck_summary="b" * 600,
+        ),
+        runtime_context=RuntimeContext(
+            request_id="trace-summary",
+            user_id="user-summary",
+            session_id="session-summary",
+        ),
+    )
+
+    summary = pipeline._stage_summary(context, "task_interpretation", None)
+
+    assert summary["task_type"] == TaskType.RECOMMENDATION.value
+    assert len(summary["user_goal"]) <= 500
+    assert "goal-secret" not in summary["user_goal"]
+    assert len(summary["task_framing"]) == 500
+    assert len(summary["constraints"]) == 20
+    assert all(len(item) <= 300 for item in summary["constraints"])
+    assert all("constraint-secret" not in item for item in summary["constraints"])
+    assert len(summary["project_context_summary"]) == 1_000
+    assert len(summary["current_bottleneck_summary"]) == 500
+    assert summary["constraint_count"] == 25
+    assert "original_query" not in summary
 
 
 def test_memory_distillation_failure_is_best_effort_and_not_logged_as_completed(

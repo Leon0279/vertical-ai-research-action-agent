@@ -2,9 +2,11 @@
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.adapters.llm.zhipu_llm_client_error import ZhipuLLMClientError
 from app.domain.enums.task_type import TaskType
 from app.domain.models import ExecutionContext, RunningState, RuntimeContext
 from app.services.planner.task_interpreter_service import TaskInterpreterService
@@ -46,7 +48,8 @@ def _context(query: str) -> ExecutionContext:
     )
 
 
-def test_task_interpreter_uses_fallback_without_llm() -> None:
+def test_task_interpreter_uses_fallback_without_llm(caplog) -> None:
+    caplog.set_level(logging.INFO, logger="app.services.planner.task_interpreter_service")
     context = _context("Compare vector search and hybrid search for my MVP.")
 
     asyncio.run(TaskInterpreterService().interpret(context))
@@ -57,9 +60,20 @@ def test_task_interpreter_uses_fallback_without_llm() -> None:
     assert context.running_state.constraints == []
     assert context.running_state.project_context_summary is None
     assert context.running_state.project_scope_id == "project-1"
+    record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "task_interpretation_completed"
+    )
+    assert record.interpretation_source == "deterministic_fallback"
+    assert record.fallback_reason == "llm_client_not_configured"
+    assert record.task_type == TaskType.COMPARISON.value
+    assert record.has_user_goal is True
+    assert not any(record.levelno >= logging.WARNING for record in caplog.records)
 
 
-def test_task_interpreter_calls_llm_and_maps_valid_json() -> None:
+def test_task_interpreter_calls_llm_and_maps_valid_json(caplog) -> None:
+    caplog.set_level(logging.INFO, logger="app.services.planner.task_interpreter_service")
     llm_client = FakeLLMClient(
         """
         {
@@ -92,6 +106,16 @@ def test_task_interpreter_calls_llm_and_maps_valid_json() -> None:
     assert context.running_state.current_bottleneck_summary == (
         "当前评测结果不足以支持下一步优先级判断。"
     )
+    record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "task_interpretation_completed"
+    )
+    assert record.interpretation_source == "llm"
+    assert record.fallback_reason is None
+    assert record.has_task_framing is True
+    assert record.has_project_context is True
+    assert record.has_current_bottleneck is True
 
 
 def test_task_interpreter_accepts_json_object_from_adapter() -> None:
@@ -115,7 +139,8 @@ def test_task_interpreter_accepts_json_object_from_adapter() -> None:
     assert context.running_state.task_framing == "Implementation planning request."
 
 
-def test_task_interpreter_falls_back_on_invalid_json() -> None:
+def test_task_interpreter_falls_back_on_invalid_json(caplog) -> None:
+    caplog.set_level(logging.INFO, logger="app.services.planner.task_interpreter_service")
     context = _context("Recommend a retrieval baseline.")
     llm_client = FakeLLMClient("not json")
 
@@ -124,6 +149,17 @@ def test_task_interpreter_falls_back_on_invalid_json() -> None:
     assert context.running_state.user_goal == "Recommend a retrieval baseline."
     assert context.running_state.task_type == TaskType.RECOMMENDATION.value
     assert context.running_state.constraints == []
+    events = [getattr(record, "event", None) for record in caplog.records]
+    assert events == [
+        "task_interpretation_llm_invalid_output",
+        "task_interpretation_completed",
+    ]
+    warning = caplog.records[0]
+    assert warning.fallback_reason == "invalid_output"
+    assert warning.exception_type == "ValueError"
+    completed = caplog.records[1]
+    assert completed.interpretation_source == "deterministic_fallback"
+    assert completed.fallback_reason == "invalid_output"
 
 
 def test_task_interpreter_falls_back_on_missing_required_fields() -> None:
@@ -166,14 +202,36 @@ def test_task_interpreter_falls_back_on_unsupported_task_type() -> None:
     assert context.running_state.task_type == TaskType.TOPIC_EXPLORATION.value
 
 
-def test_task_interpreter_falls_back_when_llm_raises() -> None:
+def test_task_interpreter_falls_back_when_llm_raises(caplog) -> None:
+    caplog.set_level(logging.INFO, logger="app.services.planner.task_interpreter_service")
     context = _context("Create a roadmap for evaluation.")
-    llm_client = FakeLLMClient(error=RuntimeError("provider failed"))
+    llm_client = FakeLLMClient(
+        error=ZhipuLLMClientError(
+            "provider failed with api_key=secret-value",
+            status_code=503,
+            provider_code="service_unavailable",
+            request_id="provider-request-1",
+            finish_reason="error",
+        )
+    )
 
     asyncio.run(TaskInterpreterService(llm_client=llm_client).interpret(context))
 
     assert context.running_state.user_goal == "Create a roadmap for evaluation."
     assert context.running_state.task_type == TaskType.ACTION_PLANNING.value
+    warning = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "task_interpretation_llm_failed"
+    )
+    assert warning.fallback_reason == "llm_call_failed"
+    assert warning.provider_http_status == 503
+    assert warning.provider_error_code == "service_unavailable"
+    assert warning.provider_request_id == "provider-request-1"
+    assert warning.finish_reason == "error"
+    serialized_records = " ".join(record.getMessage() for record in caplog.records)
+    assert "Create a roadmap for evaluation." not in serialized_records
+    assert "secret-value" not in serialized_records
 
 
 def test_task_interpreter_fallback_recognizes_chinese_task_keywords() -> None:

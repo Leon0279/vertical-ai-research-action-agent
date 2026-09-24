@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from pydantic import ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.observability import exception_diagnostic_fields
 from app.domain.enums.task_type import TaskType
 from app.domain.models import ExecutionContext, TaskInterpretationResult
 from app.services.planner.contracts.task_interpreter_protocol import TaskInterpreterProtocol
+
+logger = logging.getLogger(__name__)
 
 
 class TaskInterpreterService(TaskInterpreterProtocol):
@@ -21,19 +25,30 @@ Interpret task intent with an optional LLM and deterministic fallback."""
         self._llm_client = llm_client
 
     async def interpret(self, context: ExecutionContext) -> None:
+        fallback_reason = "llm_client_not_configured"
         if self._llm_client:
-            result = await self._try_llm_interpretation(context)
+            result, fallback_reason = await self._try_llm_interpretation(context)
             if result:
                 self._apply_result(context, result)
+                self._log_interpretation_completed(
+                    context,
+                    interpretation_source="llm",
+                    fallback_reason=None,
+                )
                 return
 
         self._apply_fallback(context)
+        self._log_interpretation_completed(
+            context,
+            interpretation_source="deterministic_fallback",
+            fallback_reason=fallback_reason,
+        )
 
     async def _try_llm_interpretation(
         self,
         context: ExecutionContext,
-    ) -> TaskInterpretationResult | None:
-        """Return a parsed LLM interpretation, or None when fallback is safer."""
+    ) -> tuple[TaskInterpretationResult | None, str | None]:
+        """Return a parsed LLM interpretation and an optional fallback reason."""
 
         try:
             prompt = self._build_prompt(context)
@@ -43,11 +58,27 @@ Interpret task intent with an optional LLM and deterministic fallback."""
                 else {}
             )
             payload["task_type"] = self._normalize_task_type(payload.get("task_type"))
-            return TaskInterpretationResult.model_validate(payload)
-        except (KeyError, TypeError, ValueError, ValidationError):
-            return None
-        except Exception:
-            return None
+            return TaskInterpretationResult.model_validate(payload), None
+        except (KeyError, TypeError, ValueError, ValidationError) as error:
+            logger.warning(
+                "Task interpretation LLM output was invalid; using deterministic fallback.",
+                extra={
+                    "event": "task_interpretation_llm_invalid_output",
+                    "fallback_reason": "invalid_output",
+                    **exception_diagnostic_fields(error),
+                },
+            )
+            return None, "invalid_output"
+        except Exception as error:
+            logger.warning(
+                "Task interpretation LLM call failed; using deterministic fallback.",
+                extra={
+                    "event": "task_interpretation_llm_failed",
+                    "fallback_reason": "llm_call_failed",
+                    **exception_diagnostic_fields(error),
+                },
+            )
+            return None, "llm_call_failed"
 
     def _build_prompt(self, context: ExecutionContext) -> str:
         """Build a narrow interpretation prompt from current request state only."""
@@ -129,3 +160,28 @@ Interpret task intent with an optional LLM and deterministic fallback."""
             state.task_type = TaskType.TRACKING.value
         else:
             state.task_type = TaskType.TOPIC_EXPLORATION.value
+
+    @staticmethod
+    def _log_interpretation_completed(
+        context: ExecutionContext,
+        *,
+        interpretation_source: str,
+        fallback_reason: str | None,
+    ) -> None:
+        """记录任务理解采用的执行路径和结构化结果概况。"""
+
+        state = context.running_state
+        logger.info(
+            "Task interpretation completed.",
+            extra={
+                "event": "task_interpretation_completed",
+                "interpretation_source": interpretation_source,
+                "fallback_reason": fallback_reason,
+                "task_type": state.task_type,
+                "constraint_count": len(state.constraints),
+                "has_user_goal": bool(state.user_goal),
+                "has_task_framing": bool(state.task_framing),
+                "has_project_context": bool(state.project_context_summary),
+                "has_current_bottleneck": bool(state.current_bottleneck_summary),
+            },
+        )

@@ -11,6 +11,7 @@ from app.common.observability import (
     bind_trace_id,
     exception_diagnostic_fields,
     reset_trace_id,
+    sanitize_sensitive_text,
 )
 from app.domain.models import (
     ExecutionContext,
@@ -158,14 +159,31 @@ Fixed outer workflow with stage-by-stage execution."""
         stage_name: str,
         result: object,
     ) -> dict[str, Any]:
-        """Return allow-listed structural diagnostics without stage payload content."""
+        """Return allow-listed and bounded diagnostics for one completed stage."""
 
         state = context.running_state
         supplemental = context.supplemental_context
         if stage_name == "task_interpretation":
             return {
                 "task_type": state.task_type,
+                "user_goal": self._bounded_log_text(state.user_goal, limit=500),
+                "task_framing": self._bounded_log_text(
+                    state.task_framing,
+                    limit=500,
+                ),
+                "constraints": [
+                    self._bounded_log_text(item, limit=300)
+                    for item in state.constraints[:20]
+                ],
                 "constraint_count": len(state.constraints),
+                "project_context_summary": self._bounded_log_text(
+                    state.project_context_summary,
+                    limit=1_000,
+                ),
+                "current_bottleneck_summary": self._bounded_log_text(
+                    state.current_bottleneck_summary,
+                    limit=500,
+                ),
             }
         if stage_name == "context_memory_load":
             return {
@@ -225,6 +243,14 @@ Fixed outer workflow with stage-by-stage execution."""
                 "confidence": result.confidence,
             }
         return {}
+
+    @staticmethod
+    def _bounded_log_text(value: str | None, *, limit: int) -> str | None:
+        """返回经过凭据脱敏和长度限制的日志文本。"""
+
+        if value is None:
+            return None
+        return sanitize_sensitive_text(value, max_length=limit)
 
     async def _request_intake(self, request: RequestContext) -> ExecutionContext:
         """Initialize execution context from the incoming request."""
