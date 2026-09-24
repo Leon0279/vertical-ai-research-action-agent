@@ -6,7 +6,10 @@ import { MemoryRouter } from 'react-router-dom';
 
 import { WorkspaceProvider } from '../state/workspace';
 
-export function renderWithProviders(ui: ReactElement) {
+export function renderWithProviders(
+  ui: ReactElement,
+  options: { initialEntries?: string[] } = {},
+) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -19,7 +22,7 @@ export function renderWithProviders(ui: ReactElement) {
       <AntApp>
         <QueryClientProvider client={queryClient}>
           <WorkspaceProvider>
-            <MemoryRouter>{ui}</MemoryRouter>
+            <MemoryRouter initialEntries={options.initialEntries}>{ui}</MemoryRouter>
           </WorkspaceProvider>
         </QueryClientProvider>
       </AntApp>

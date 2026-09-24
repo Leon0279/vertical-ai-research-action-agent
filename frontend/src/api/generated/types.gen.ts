@@ -283,6 +283,229 @@ export type CitationSchema = {
 };
 
 /**
+ * ConversationAssistantDetailsResponse
+ *
+ * 返回 assistant 历史消息附带的用户可见结构化信息。
+ */
+export type ConversationAssistantDetailsResponse = {
+    /**
+     * Action Items
+     *
+     * 可选字段。该次回答提供的行动项。
+     */
+    action_items?: Array<ActionItemSchema>;
+    /**
+     * Caveats
+     *
+     * 可选字段。该次回答的限制、风险或未解决事项。
+     */
+    caveats?: Array<string>;
+    /**
+     * Citations
+     *
+     * 可选字段。该次回答展示的来源引用。
+     */
+    citations?: Array<CitationSchema>;
+    /**
+     * Confidence
+     *
+     * 可选字段。该次回答的整体置信度分数。
+     */
+    confidence?: number | null;
+    /**
+     * Recommendation
+     *
+     * 可选字段。该次回答的主推荐或主判断。
+     */
+    recommendation?: string | null;
+    /**
+     * Summary
+     *
+     * 可选字段。该次回答的简短摘要。
+     */
+    summary?: string | null;
+};
+
+/**
+ * ConversationContentFormat
+ *
+ * 表示持久化 conversation message 正文采用的编码格式。
+ */
+export type ConversationContentFormat = 'text' | 'markdown' | 'json';
+
+/**
+ * ConversationHistoryErrorResponse
+ *
+ * 表示 conversation history 查询未成功完成时的稳定错误响应。
+ */
+export type ConversationHistoryErrorResponse = {
+    /**
+     * Error Code
+     *
+     * 必填字段。供客户端判断错误类别的机器可读错误码。
+     */
+    error_code: string;
+    /**
+     * Error Reason
+     *
+     * 必填字段。可安全展示或记录且不包含底层存储细节的错误原因。
+     */
+    error_reason: string;
+};
+
+/**
+ * ConversationMessageListResponse
+ *
+ * 返回一个 session 的一页历史对话消息。
+ */
+export type ConversationMessageListResponse = {
+    /**
+     * Messages
+     *
+     * 可选字段。按创建时间从旧到新排列的本页消息。
+     */
+    messages?: Array<ConversationMessageResponse>;
+    /**
+     * Next Cursor
+     *
+     * 可选字段。继续读取更早消息的 opaque cursor。
+     */
+    next_cursor?: string | null;
+    /**
+     * Session Id
+     *
+     * 必填字段。本页消息所属会话标识。
+     */
+    session_id: string;
+};
+
+/**
+ * ConversationMessageResponse
+ *
+ * 返回一条可供前端还原历史对话的消息。
+ */
+export type ConversationMessageResponse = {
+    /**
+     * 可选字段。assistant 消息的结构化展示信息；其它角色或不可解析旧数据为 None。
+     */
+    assistant_details?: ConversationAssistantDetailsResponse | null;
+    /**
+     * Content
+     *
+     * 必填字段。向用户展示的消息正文。
+     */
+    content: string;
+    /**
+     * 必填字段。消息正文格式。
+     */
+    content_format: ConversationContentFormat;
+    /**
+     * Created At
+     *
+     * 必填字段。消息创建时间。
+     */
+    created_at: string;
+    /**
+     * Message Id
+     *
+     * 必填字段。消息的稳定唯一标识。
+     */
+    message_id: string;
+    /**
+     * Parent Message Id
+     *
+     * 可选字段。父消息标识。
+     */
+    parent_message_id?: string | null;
+    /**
+     * 必填字段。消息发送方角色。
+     */
+    role: ConversationMessageRole;
+};
+
+/**
+ * ConversationMessageRole
+ *
+ * 表示一条持久化 conversation message 的发送方角色。
+ */
+export type ConversationMessageRole = 'user' | 'assistant' | 'system' | 'tool';
+
+/**
+ * ConversationSessionListResponse
+ *
+ * 返回指定用户的一页可回看 conversation sessions。
+ */
+export type ConversationSessionListResponse = {
+    /**
+     * Next Cursor
+     *
+     * 可选字段。继续读取更早会话的 opaque cursor。
+     */
+    next_cursor?: string | null;
+    /**
+     * Sessions
+     *
+     * 可选字段。按最近更新时间从新到旧排列的会话。
+     */
+    sessions?: Array<ConversationSessionSummaryResponse>;
+};
+
+/**
+ * ConversationSessionStatus
+ *
+ * 表示持久化 conversation session 的生命周期状态。
+ */
+export type ConversationSessionStatus = 'active' | 'archived' | 'deleted';
+
+/**
+ * ConversationSessionSummaryResponse
+ *
+ * 返回历史列表展示所需的 session 基本信息。
+ */
+export type ConversationSessionSummaryResponse = {
+    /**
+     * Created At
+     *
+     * 必填字段。会话创建时间。
+     */
+    created_at: string;
+    /**
+     * Last Message At
+     *
+     * 可选字段。最近一条消息的创建时间。
+     */
+    last_message_at?: string | null;
+    /**
+     * Project Id
+     *
+     * 可选字段。会话所属项目标识。
+     */
+    project_id?: string | null;
+    /**
+     * Session Id
+     *
+     * 必填字段。稳定会话标识。
+     */
+    session_id: string;
+    /**
+     * 必填字段。会话生命周期状态。
+     */
+    session_status: ConversationSessionStatus;
+    /**
+     * Title
+     *
+     * 可选字段。会话历史列表标题。
+     */
+    title?: string | null;
+    /**
+     * Updated At
+     *
+     * 必填字段。会话最近更新时间。
+     */
+    updated_at: string;
+};
+
+/**
  * CreateProjectRequest
  *
  * 表示创建一个项目及其初始项目档案的 API 请求。
@@ -1148,6 +1371,107 @@ export type RunAgentV1AgentRunPostResponses = {
 };
 
 export type RunAgentV1AgentRunPostResponse = RunAgentV1AgentRunPostResponses[keyof RunAgentV1AgentRunPostResponses];
+
+export type ListConversationsV1ConversationsGetData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * User Id
+         */
+        user_id: string;
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Cursor
+         */
+        cursor?: string | null;
+    };
+    url: '/v1/conversations';
+};
+
+export type ListConversationsV1ConversationsGetErrors = {
+    /**
+     * 会话列表查询参数不合法。
+     */
+    422: ConversationHistoryErrorResponse;
+    /**
+     * 会话列表查询发生未预期错误。
+     */
+    500: ConversationHistoryErrorResponse;
+    /**
+     * 会话历史存储暂时不可用。
+     */
+    503: ConversationHistoryErrorResponse;
+};
+
+export type ListConversationsV1ConversationsGetError = ListConversationsV1ConversationsGetErrors[keyof ListConversationsV1ConversationsGetErrors];
+
+export type ListConversationsV1ConversationsGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ConversationSessionListResponse;
+};
+
+export type ListConversationsV1ConversationsGetResponse = ListConversationsV1ConversationsGetResponses[keyof ListConversationsV1ConversationsGetResponses];
+
+export type ListConversationMessagesV1ConversationsSessionIdMessagesGetData = {
+    body?: never;
+    path: {
+        /**
+         * Session Id
+         */
+        session_id: string;
+    };
+    query: {
+        /**
+         * User Id
+         */
+        user_id: string;
+        /**
+         * Limit
+         */
+        limit?: number;
+        /**
+         * Cursor
+         */
+        cursor?: string | null;
+    };
+    url: '/v1/conversations/{session_id}/messages';
+};
+
+export type ListConversationMessagesV1ConversationsSessionIdMessagesGetErrors = {
+    /**
+     * 指定用户范围内不存在该会话。
+     */
+    404: ConversationHistoryErrorResponse;
+    /**
+     * 会话消息查询参数不合法。
+     */
+    422: ConversationHistoryErrorResponse;
+    /**
+     * 会话消息查询发生未预期错误。
+     */
+    500: ConversationHistoryErrorResponse;
+    /**
+     * 会话历史存储暂时不可用。
+     */
+    503: ConversationHistoryErrorResponse;
+};
+
+export type ListConversationMessagesV1ConversationsSessionIdMessagesGetError = ListConversationMessagesV1ConversationsSessionIdMessagesGetErrors[keyof ListConversationMessagesV1ConversationsSessionIdMessagesGetErrors];
+
+export type ListConversationMessagesV1ConversationsSessionIdMessagesGetResponses = {
+    /**
+     * Successful Response
+     */
+    200: ConversationMessageListResponse;
+};
+
+export type ListConversationMessagesV1ConversationsSessionIdMessagesGetResponse = ListConversationMessagesV1ConversationsSessionIdMessagesGetResponses[keyof ListConversationMessagesV1ConversationsSessionIdMessagesGetResponses];
 
 export type ListActionMemoriesV1MemoriesActionsGetData = {
     body?: never;

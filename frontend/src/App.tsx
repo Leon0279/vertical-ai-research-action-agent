@@ -40,6 +40,14 @@ export function App() {
           }
         />
         <Route
+          path="agent/:sessionId"
+          element={
+            <Suspense fallback={routeFallback}>
+              <AgentPlaygroundPage />
+            </Suspense>
+          }
+        />
+        <Route
           path="projects"
           element={
             <Suspense fallback={routeFallback}>

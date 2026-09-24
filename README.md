@@ -123,6 +123,8 @@ make frontend-dev
 
 Compose 前端运行在 `http://127.0.0.1:3000`；Vite 热更新开发服务器运行在 `http://127.0.0.1:5173`，并代理到 `http://127.0.0.1:8000`。
 
+调试台侧栏可以切换全局 User ID、分页查看该用户的历史 Session 及其所属项目。点击 Session 会进入 `/agent/{session_id}`，在 Agent Playground 中按时间查看历史消息并继续当前会话。
+
 常用前端命令：
 
 ```bash
@@ -142,6 +144,8 @@ POST /v1/agent/run
 POST /v1/projects
 GET  /v1/projects?user_id=...
 GET  /v1/projects/{project_id}?user_id=...
+GET  /v1/conversations?user_id=...
+GET  /v1/conversations/{session_id}/messages?user_id=...
 GET  /healthz
 GET  /readyz
 ```

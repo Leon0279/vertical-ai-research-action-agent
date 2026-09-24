@@ -72,4 +72,39 @@ describe('typed API services', () => {
     );
     expect(page.next_cursor).toBeNull();
   });
+
+  it('serializes conversation list and message cursor requests', async () => {
+    server.use(
+      http.get('http://localhost/api/v1/conversations', ({ request }) => {
+        const url = new URL(request.url);
+        expect(url.searchParams.get('user_id')).toBe('user-1');
+        expect(url.searchParams.get('limit')).toBe('20');
+        expect(url.searchParams.get('cursor')).toBe('session-cursor');
+        return HttpResponse.json({ sessions: [], next_cursor: null });
+      }),
+      http.get(
+        'http://localhost/api/v1/conversations/session-1/messages',
+        ({ request }) => {
+          const url = new URL(request.url);
+          expect(url.searchParams.get('user_id')).toBe('user-1');
+          expect(url.searchParams.get('limit')).toBe('50');
+          expect(url.searchParams.get('cursor')).toBe('message-cursor');
+          return HttpResponse.json({
+            session_id: 'session-1',
+            messages: [],
+            next_cursor: null,
+          });
+        },
+      ),
+    );
+
+    await api.listConversations('user-1', 'session-cursor');
+    const messages = await api.listConversationMessages(
+      'user-1',
+      'session-1',
+      'message-cursor',
+    );
+
+    expect(messages.session_id).toBe('session-1');
+  });
 });

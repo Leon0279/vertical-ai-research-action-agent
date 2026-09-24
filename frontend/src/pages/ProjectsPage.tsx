@@ -33,7 +33,14 @@ const formatDate = (value?: string | null) =>
 
 export function ProjectsPage() {
   const workspace = useWorkspace();
-  const [lookupUserId, setLookupUserId] = useState(workspace.userId);
+  const [lookupUser, setLookupUser] = useState({
+    owner: workspace.userId,
+    value: workspace.userId,
+  });
+  const lookupUserId =
+    lookupUser.owner === workspace.userId
+      ? lookupUser.value
+      : workspace.userId;
   const [createOpen, setCreateOpen] = useState(false);
   const [form] = Form.useForm<CreateProjectRequest>();
   const queryClient = useQueryClient();
@@ -98,7 +105,12 @@ export function ProjectsPage() {
           <Input
             aria-label="查询用户 ID"
             value={lookupUserId}
-            onChange={(event) => setLookupUserId(event.target.value)}
+            onChange={(event) =>
+              setLookupUser({
+                owner: workspace.userId,
+                value: event.target.value,
+              })
+            }
             onPressEnter={search}
             prefix={<SearchOutlined />}
             placeholder="输入 User ID"

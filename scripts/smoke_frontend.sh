@@ -21,8 +21,12 @@ curl --fail --silent --show-error --max-time 10 "$base_url/" >/dev/null
 printf 'frontend index: ok\n'
 curl --fail --silent --show-error --max-time 10 "$base_url/projects" >/dev/null
 printf 'frontend SPA fallback: ok\n'
+curl --fail --silent --show-error --max-time 10 "$base_url/agent/smoke-session" >/dev/null
+printf 'frontend conversation route fallback: ok\n'
 curl --fail --silent --show-error --max-time 10 "$base_url/api/healthz" >/dev/null
 printf 'frontend API proxy healthz: ok\n'
 curl --fail --silent --show-error --max-time 10 "$base_url/api/readyz" >/dev/null
 printf 'frontend API proxy readyz: ok\n'
+curl --fail --silent --show-error --max-time 10 "$base_url/api/v1/conversations?user_id=frontend-smoke" >/dev/null
+printf 'frontend conversation API proxy: ok\n'
 printf 'Frontend smoke checks passed. No external provider request was sent.\n'

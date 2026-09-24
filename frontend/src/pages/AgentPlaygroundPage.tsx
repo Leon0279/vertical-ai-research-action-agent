@@ -4,7 +4,7 @@ import {
   PlayCircleOutlined,
   PlusOutlined,
 } from '@ant-design/icons';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
   Button,
@@ -19,6 +19,7 @@ import {
   Typography,
 } from 'antd';
 import { useEffect, useRef } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import type {
   AgentRunRequest,
@@ -26,6 +27,7 @@ import type {
 } from '../api/generated/types.gen';
 import { api } from '../api/services';
 import { AgentResult } from '../components/AgentResult';
+import { ConversationHistory } from '../components/ConversationHistory';
 import { PageHeading } from '../components/PageHeading';
 import { RequestError } from '../components/RequestError';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
@@ -42,7 +44,14 @@ interface AgentFormValues {
 export function AgentPlaygroundPage() {
   const [form] = Form.useForm<AgentFormValues>();
   const abortController = useRef<AbortController | null>(null);
+  const sessionTransitionToKeep = useRef<string | null>(null);
   const workspace = useWorkspace();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { sessionId: routeSessionId } = useParams<{ sessionId: string }>();
+  const activeSessionId = routeSessionId ?? workspace.sessionId;
+  const activeContext = `${workspace.userId}\u0000${activeSessionId}`;
+  const previousContext = useRef(activeContext);
 
   const mutation = useMutation<
     AgentRunResponse,
@@ -50,12 +59,59 @@ export function AgentPlaygroundPage() {
     { payload: AgentRunRequest; signal: AbortSignal }
   >({
     mutationFn: ({ payload, signal }) => api.runAgent(payload, signal),
+    onSuccess: async (_result, { payload }) => {
+      const completedSessionId = payload.session_id || workspace.sessionId;
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ['conversations', payload.user_id],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: [
+            'conversation-messages',
+            payload.user_id,
+            completedSessionId,
+          ],
+        }),
+      ]);
+      navigate(`/agent/${encodeURIComponent(completedSessionId)}`);
+    },
   });
   const elapsed = useElapsedSeconds(mutation.isPending);
 
   useEffect(() => {
-    form.setFieldValue('session_id', workspace.sessionId);
-  }, [form, workspace.sessionId]);
+    form.setFieldsValue({
+      user_id: workspace.userId,
+      project_id: workspace.projectId,
+      session_id: activeSessionId,
+      iteration_budget: workspace.iterationBudget,
+    });
+  }, [
+    activeSessionId,
+    form,
+    workspace.iterationBudget,
+    workspace.projectId,
+    workspace.userId,
+  ]);
+
+  useEffect(() => {
+    if (routeSessionId && routeSessionId !== workspace.sessionId) {
+      workspace.updateWorkspace({ sessionId: routeSessionId });
+    }
+  }, [routeSessionId, workspace]);
+
+  useEffect(() => {
+    if (previousContext.current === activeContext) {
+      return;
+    }
+    previousContext.current = activeContext;
+    if (activeSessionId === sessionTransitionToKeep.current) {
+      sessionTransitionToKeep.current = null;
+      return;
+    }
+    abortController.current?.abort();
+    abortController.current = null;
+    mutation.reset();
+  }, [activeContext, activeSessionId, mutation]);
 
   const submit = (values: AgentFormValues) => {
     const payload: AgentRunRequest = {
@@ -65,6 +121,7 @@ export function AgentPlaygroundPage() {
       project_id: values.project_id?.trim() || null,
       iteration_budget: values.iteration_budget,
     };
+    sessionTransitionToKeep.current = payload.session_id ?? null;
     workspace.updateWorkspace({
       userId: payload.user_id,
       projectId: payload.project_id ?? '',
@@ -92,8 +149,11 @@ export function AgentPlaygroundPage() {
   };
 
   const createSession = () => {
+    abortController.current?.abort();
+    abortController.current = null;
     workspace.newSession();
     mutation.reset();
+    navigate('/agent');
   };
 
   return (
@@ -108,14 +168,24 @@ export function AgentPlaygroundPage() {
         }
       />
 
-      <Card className="request-card" title="运行参数">
+      {routeSessionId ? (
+        <ConversationHistory
+          userId={workspace.userId}
+          sessionId={routeSessionId}
+        />
+      ) : null}
+
+      <Card
+        className={routeSessionId ? 'request-card section-gap' : 'request-card'}
+        title={routeSessionId ? '继续当前 Session' : '运行参数'}
+      >
         <Form<AgentFormValues>
           form={form}
           layout="vertical"
           initialValues={{
             query: '',
             user_id: workspace.userId,
-            session_id: workspace.sessionId,
+            session_id: activeSessionId,
             project_id: workspace.projectId,
             iteration_budget: workspace.iterationBudget,
           }}

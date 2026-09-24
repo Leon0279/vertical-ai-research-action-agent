@@ -20,6 +20,7 @@ export interface WorkspaceState {
 interface WorkspaceContextValue extends WorkspaceState {
   updateWorkspace: (patch: Partial<WorkspaceState>) => void;
   newSession: () => void;
+  switchUser: (userId: string) => void;
 }
 
 const createSessionId = () => {
@@ -85,6 +86,18 @@ export function WorkspaceProvider({ children }: PropsWithChildren) {
       newSession: () => {
         setWorkspace((current) => {
           const next = { ...current, sessionId: createSessionId() };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          return next;
+        });
+      },
+      switchUser: (userId) => {
+        setWorkspace((current) => {
+          const next = {
+            ...current,
+            userId,
+            projectId: '',
+            sessionId: createSessionId(),
+          };
           localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
           return next;
         });

@@ -7,6 +7,8 @@ import {
   getSessionMemoryV1MemoriesSessionsSessionIdGet,
   healthHealthzGet,
   listActionMemoriesV1MemoriesActionsGet,
+  listConversationMessagesV1ConversationsSessionIdMessagesGet,
+  listConversationsV1ConversationsGet,
   listDecisionMemoriesV1MemoriesDecisionsGet,
   listPolicyMemoriesV1MemoriesPoliciesGet,
   listProjectIdsV1ProjectsGet,
@@ -21,6 +23,8 @@ import type {
   CreateProjectRequest,
   CreateProjectResponse,
   DecisionMemoryListResponse,
+  ConversationMessageListResponse,
+  ConversationSessionListResponse,
   HealthResponse,
   ListProjectIdsResponse,
   MemorySummaryResponse,
@@ -68,6 +72,34 @@ export const api = {
   ): Promise<AgentRunResponse> {
     return unwrapApiResult<AgentRunResponse>(
       await runAgentV1AgentRunPost({ body, signal }),
+    );
+  },
+
+  async listConversations(
+    userId: string,
+    cursor?: string,
+    signal?: AbortSignal,
+  ): Promise<ConversationSessionListResponse> {
+    return unwrapApiResult<ConversationSessionListResponse>(
+      await listConversationsV1ConversationsGet({
+        query: { user_id: userId, limit: 20, cursor },
+        signal,
+      }),
+    );
+  },
+
+  async listConversationMessages(
+    userId: string,
+    sessionId: string,
+    cursor?: string,
+    signal?: AbortSignal,
+  ): Promise<ConversationMessageListResponse> {
+    return unwrapApiResult<ConversationMessageListResponse>(
+      await listConversationMessagesV1ConversationsSessionIdMessagesGet({
+        path: { session_id: sessionId },
+        query: { user_id: userId, limit: 50, cursor },
+        signal,
+      }),
     );
   },
 

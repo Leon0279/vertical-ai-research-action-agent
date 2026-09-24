@@ -2,7 +2,6 @@ import {
   AppstoreOutlined,
   DatabaseOutlined,
   ExperimentOutlined,
-  GithubOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
@@ -11,6 +10,7 @@ import { useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 
 import { useWorkspace } from '../state/workspace';
+import { ConversationSidebar } from './ConversationSidebar';
 import { HealthStatus } from './HealthStatus';
 
 const { Header, Sider, Content } = Layout;
@@ -26,6 +26,9 @@ export function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { userId, projectId } = useWorkspace();
+  const selectedNavigation = location.pathname.startsWith('/agent')
+    ? '/agent'
+    : location.pathname;
 
   return (
     <Layout className="app-layout">
@@ -35,7 +38,7 @@ export function AppShell() {
         collapsed={collapsed}
         onCollapse={setCollapsed}
         className="app-sider"
-        width={248}
+        width={300}
       >
         <div className="brand">
           <div className="brand-mark">V</div>
@@ -49,16 +52,12 @@ export function AppShell() {
         <Menu
           mode="inline"
           theme="dark"
-          selectedKeys={[location.pathname]}
+          selectedKeys={[selectedNavigation]}
           items={navigation}
           onClick={({ key }) => navigate(key)}
           className="app-menu"
         />
-        {!collapsed ? (
-          <div className="sider-footnote">
-            <GithubOutlined /> 本地开发调试台
-          </div>
-        ) : null}
+        <ConversationSidebar key={userId} collapsed={collapsed} />
       </Sider>
       <Layout>
         <Header className="app-header">

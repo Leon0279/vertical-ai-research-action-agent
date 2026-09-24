@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CreateProjectV1ProjectsPostData, CreateProjectV1ProjectsPostErrors, CreateProjectV1ProjectsPostResponses, GetMemorySummaryV1MemoriesSummaryGetData, GetMemorySummaryV1MemoriesSummaryGetErrors, GetMemorySummaryV1MemoriesSummaryGetResponses, GetProjectV1ProjectsProjectIdGetData, GetProjectV1ProjectsProjectIdGetErrors, GetProjectV1ProjectsProjectIdGetResponses, GetSessionMemoryV1MemoriesSessionsSessionIdGetData, GetSessionMemoryV1MemoriesSessionsSessionIdGetErrors, GetSessionMemoryV1MemoriesSessionsSessionIdGetResponses, HealthHealthzGetData, HealthHealthzGetResponses, ListActionMemoriesV1MemoriesActionsGetData, ListActionMemoriesV1MemoriesActionsGetErrors, ListActionMemoriesV1MemoriesActionsGetResponses, ListDecisionMemoriesV1MemoriesDecisionsGetData, ListDecisionMemoriesV1MemoriesDecisionsGetErrors, ListDecisionMemoriesV1MemoriesDecisionsGetResponses, ListPolicyMemoriesV1MemoriesPoliciesGetData, ListPolicyMemoriesV1MemoriesPoliciesGetErrors, ListPolicyMemoriesV1MemoriesPoliciesGetResponses, ListProjectIdsV1ProjectsGetData, ListProjectIdsV1ProjectsGetErrors, ListProjectIdsV1ProjectsGetResponses, ListResearchKnowledgeMemoriesV1MemoriesResearchKnowledgeGetData, ListResearchKnowledgeMemoriesV1MemoriesResearchKnowledgeGetErrors, ListResearchKnowledgeMemoriesV1MemoriesResearchKnowledgeGetResponses, ReadinessReadyzGetData, ReadinessReadyzGetErrors, ReadinessReadyzGetResponses, RunAgentV1AgentRunPostData, RunAgentV1AgentRunPostErrors, RunAgentV1AgentRunPostResponses } from './types.gen';
+import type { CreateProjectV1ProjectsPostData, CreateProjectV1ProjectsPostErrors, CreateProjectV1ProjectsPostResponses, GetMemorySummaryV1MemoriesSummaryGetData, GetMemorySummaryV1MemoriesSummaryGetErrors, GetMemorySummaryV1MemoriesSummaryGetResponses, GetProjectV1ProjectsProjectIdGetData, GetProjectV1ProjectsProjectIdGetErrors, GetProjectV1ProjectsProjectIdGetResponses, GetSessionMemoryV1MemoriesSessionsSessionIdGetData, GetSessionMemoryV1MemoriesSessionsSessionIdGetErrors, GetSessionMemoryV1MemoriesSessionsSessionIdGetResponses, HealthHealthzGetData, HealthHealthzGetResponses, ListActionMemoriesV1MemoriesActionsGetData, ListActionMemoriesV1MemoriesActionsGetErrors, ListActionMemoriesV1MemoriesActionsGetResponses, ListConversationMessagesV1ConversationsSessionIdMessagesGetData, ListConversationMessagesV1ConversationsSessionIdMessagesGetErrors, ListConversationMessagesV1ConversationsSessionIdMessagesGetResponses, ListConversationsV1ConversationsGetData, ListConversationsV1ConversationsGetErrors, ListConversationsV1ConversationsGetResponses, ListDecisionMemoriesV1MemoriesDecisionsGetData, ListDecisionMemoriesV1MemoriesDecisionsGetErrors, ListDecisionMemoriesV1MemoriesDecisionsGetResponses, ListPolicyMemoriesV1MemoriesPoliciesGetData, ListPolicyMemoriesV1MemoriesPoliciesGetErrors, ListPolicyMemoriesV1MemoriesPoliciesGetResponses, ListProjectIdsV1ProjectsGetData, ListProjectIdsV1ProjectsGetErrors, ListProjectIdsV1ProjectsGetResponses, ListResearchKnowledgeMemoriesV1MemoriesResearchKnowledgeGetData, ListResearchKnowledgeMemoriesV1MemoriesResearchKnowledgeGetErrors, ListResearchKnowledgeMemoriesV1MemoriesResearchKnowledgeGetResponses, ReadinessReadyzGetData, ReadinessReadyzGetErrors, ReadinessReadyzGetResponses, RunAgentV1AgentRunPostData, RunAgentV1AgentRunPostErrors, RunAgentV1AgentRunPostResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -45,6 +45,39 @@ export const runAgentV1AgentRunPost = <ThrowOnError extends boolean = false>(opt
         ...options.headers
     }
 });
+
+/**
+ * List Conversations
+ *
+ * 分页返回指定用户的 active 和 archived conversation sessions。
+ *
+ * Args:
+ * user_id (str): 必填查询参数。会话所属用户标识。
+ * conversation_history (ConversationHistoryServiceProtocol): 由 Dishka 注入的对话历史应用服务。
+ * limit (int): 可选查询参数。本页最多返回的会话数，默认为 20。
+ * cursor (str | None): 可选查询参数。上一页返回的 opaque cursor。
+ *
+ * Returns:
+ * ConversationSessionListResponse | JSONResponse: 成功时返回会话分页；失败时返回稳定错误响应。
+ */
+export const listConversationsV1ConversationsGet = <ThrowOnError extends boolean = false>(options: Options<ListConversationsV1ConversationsGetData, ThrowOnError>) => (options.client ?? client).get<ListConversationsV1ConversationsGetResponses, ListConversationsV1ConversationsGetErrors, ThrowOnError>({ url: '/v1/conversations', ...options });
+
+/**
+ * List Conversation Messages
+ *
+ * 分页返回指定用户 session 的历史对话消息。
+ *
+ * Args:
+ * session_id (str): 必填路径参数。需要读取的稳定会话标识。
+ * user_id (str): 必填查询参数。会话所属用户标识。
+ * conversation_history (ConversationHistoryServiceProtocol): 由 Dishka 注入的对话历史应用服务。
+ * limit (int): 可选查询参数。本页最多返回的消息数，默认为 50。
+ * cursor (str | None): 可选查询参数。上一页返回的 opaque cursor。
+ *
+ * Returns:
+ * ConversationMessageListResponse | JSONResponse: 成功时返回页内按旧到新排列的消息；失败时返回稳定错误响应。
+ */
+export const listConversationMessagesV1ConversationsSessionIdMessagesGet = <ThrowOnError extends boolean = false>(options: Options<ListConversationMessagesV1ConversationsSessionIdMessagesGetData, ThrowOnError>) => (options.client ?? client).get<ListConversationMessagesV1ConversationsSessionIdMessagesGetResponses, ListConversationMessagesV1ConversationsSessionIdMessagesGetErrors, ThrowOnError>({ url: '/v1/conversations/{session_id}/messages', ...options });
 
 /**
  * List Action Memories

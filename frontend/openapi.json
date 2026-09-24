@@ -456,6 +456,331 @@
         "title": "CitationSchema",
         "type": "object"
       },
+      "ConversationAssistantDetailsResponse": {
+        "additionalProperties": false,
+        "description": "返回 assistant 历史消息附带的用户可见结构化信息。",
+        "properties": {
+          "action_items": {
+            "description": "可选字段。该次回答提供的行动项。",
+            "items": {
+              "$ref": "#/components/schemas/ActionItemSchema"
+            },
+            "title": "Action Items",
+            "type": "array"
+          },
+          "caveats": {
+            "description": "可选字段。该次回答的限制、风险或未解决事项。",
+            "items": {
+              "type": "string"
+            },
+            "title": "Caveats",
+            "type": "array"
+          },
+          "citations": {
+            "description": "可选字段。该次回答展示的来源引用。",
+            "items": {
+              "$ref": "#/components/schemas/CitationSchema"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。该次回答的整体置信度分数。",
+            "title": "Confidence"
+          },
+          "recommendation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。该次回答的主推荐或主判断。",
+            "title": "Recommendation"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。该次回答的简短摘要。",
+            "title": "Summary"
+          }
+        },
+        "title": "ConversationAssistantDetailsResponse",
+        "type": "object"
+      },
+      "ConversationContentFormat": {
+        "description": "表示持久化 conversation message 正文采用的编码格式。",
+        "enum": [
+          "text",
+          "markdown",
+          "json"
+        ],
+        "title": "ConversationContentFormat",
+        "type": "string"
+      },
+      "ConversationHistoryErrorResponse": {
+        "additionalProperties": false,
+        "description": "表示 conversation history 查询未成功完成时的稳定错误响应。",
+        "properties": {
+          "error_code": {
+            "description": "必填字段。供客户端判断错误类别的机器可读错误码。",
+            "minLength": 1,
+            "title": "Error Code",
+            "type": "string"
+          },
+          "error_reason": {
+            "description": "必填字段。可安全展示或记录且不包含底层存储细节的错误原因。",
+            "minLength": 1,
+            "title": "Error Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error_code",
+          "error_reason"
+        ],
+        "title": "ConversationHistoryErrorResponse",
+        "type": "object"
+      },
+      "ConversationMessageListResponse": {
+        "additionalProperties": false,
+        "description": "返回一个 session 的一页历史对话消息。",
+        "properties": {
+          "messages": {
+            "description": "可选字段。按创建时间从旧到新排列的本页消息。",
+            "items": {
+              "$ref": "#/components/schemas/ConversationMessageResponse"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。继续读取更早消息的 opaque cursor。",
+            "title": "Next Cursor"
+          },
+          "session_id": {
+            "description": "必填字段。本页消息所属会话标识。",
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id"
+        ],
+        "title": "ConversationMessageListResponse",
+        "type": "object"
+      },
+      "ConversationMessageResponse": {
+        "additionalProperties": false,
+        "description": "返回一条可供前端还原历史对话的消息。",
+        "properties": {
+          "assistant_details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ConversationAssistantDetailsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。assistant 消息的结构化展示信息；其它角色或不可解析旧数据为 None。"
+          },
+          "content": {
+            "description": "必填字段。向用户展示的消息正文。",
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "content_format": {
+            "$ref": "#/components/schemas/ConversationContentFormat",
+            "description": "必填字段。消息正文格式。"
+          },
+          "created_at": {
+            "description": "必填字段。消息创建时间。",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "message_id": {
+            "description": "必填字段。消息的稳定唯一标识。",
+            "minLength": 1,
+            "title": "Message Id",
+            "type": "string"
+          },
+          "parent_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。父消息标识。",
+            "title": "Parent Message Id"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ConversationMessageRole",
+            "description": "必填字段。消息发送方角色。"
+          }
+        },
+        "required": [
+          "message_id",
+          "role",
+          "content",
+          "content_format",
+          "created_at"
+        ],
+        "title": "ConversationMessageResponse",
+        "type": "object"
+      },
+      "ConversationMessageRole": {
+        "description": "表示一条持久化 conversation message 的发送方角色。",
+        "enum": [
+          "user",
+          "assistant",
+          "system",
+          "tool"
+        ],
+        "title": "ConversationMessageRole",
+        "type": "string"
+      },
+      "ConversationSessionListResponse": {
+        "additionalProperties": false,
+        "description": "返回指定用户的一页可回看 conversation sessions。",
+        "properties": {
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。继续读取更早会话的 opaque cursor。",
+            "title": "Next Cursor"
+          },
+          "sessions": {
+            "description": "可选字段。按最近更新时间从新到旧排列的会话。",
+            "items": {
+              "$ref": "#/components/schemas/ConversationSessionSummaryResponse"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "title": "ConversationSessionListResponse",
+        "type": "object"
+      },
+      "ConversationSessionStatus": {
+        "description": "表示持久化 conversation session 的生命周期状态。",
+        "enum": [
+          "active",
+          "archived",
+          "deleted"
+        ],
+        "title": "ConversationSessionStatus",
+        "type": "string"
+      },
+      "ConversationSessionSummaryResponse": {
+        "additionalProperties": false,
+        "description": "返回历史列表展示所需的 session 基本信息。",
+        "properties": {
+          "created_at": {
+            "description": "必填字段。会话创建时间。",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "last_message_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。最近一条消息的创建时间。",
+            "title": "Last Message At"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。会话所属项目标识。",
+            "title": "Project Id"
+          },
+          "session_id": {
+            "description": "必填字段。稳定会话标识。",
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          },
+          "session_status": {
+            "$ref": "#/components/schemas/ConversationSessionStatus",
+            "description": "必填字段。会话生命周期状态。"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可选字段。会话历史列表标题。",
+            "title": "Title"
+          },
+          "updated_at": {
+            "description": "必填字段。会话最近更新时间。",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "session_status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConversationSessionSummaryResponse",
+        "type": "object"
+      },
       "CreateProjectRequest": {
         "additionalProperties": false,
         "description": "表示创建一个项目及其初始项目档案的 API 请求。",
@@ -2065,6 +2390,222 @@
         "summary": "Run Agent",
         "tags": [
           "agent"
+        ]
+      }
+    },
+    "/v1/conversations": {
+      "get": {
+        "description": "分页返回指定用户的 active 和 archived conversation sessions。\n\nArgs:\n    user_id (str): 必填查询参数。会话所属用户标识。\n    conversation_history (ConversationHistoryServiceProtocol): 由 Dishka 注入的对话历史应用服务。\n    limit (int): 可选查询参数。本页最多返回的会话数，默认为 20。\n    cursor (str | None): 可选查询参数。上一页返回的 opaque cursor。\n\nReturns:\n    ConversationSessionListResponse | JSONResponse: 成功时返回会话分页；失败时返回稳定错误响应。",
+        "operationId": "list_conversations_v1_conversations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "pattern": ".*\\S.*",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationSessionListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationHistoryErrorResponse"
+                }
+              }
+            },
+            "description": "会话列表查询参数不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationHistoryErrorResponse"
+                }
+              }
+            },
+            "description": "会话列表查询发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationHistoryErrorResponse"
+                }
+              }
+            },
+            "description": "会话历史存储暂时不可用。"
+          }
+        },
+        "summary": "List Conversations",
+        "tags": [
+          "conversation-history"
+        ]
+      }
+    },
+    "/v1/conversations/{session_id}/messages": {
+      "get": {
+        "description": "分页返回指定用户 session 的历史对话消息。\n\nArgs:\n    session_id (str): 必填路径参数。需要读取的稳定会话标识。\n    user_id (str): 必填查询参数。会话所属用户标识。\n    conversation_history (ConversationHistoryServiceProtocol): 由 Dishka 注入的对话历史应用服务。\n    limit (int): 可选查询参数。本页最多返回的消息数，默认为 50。\n    cursor (str | None): 可选查询参数。上一页返回的 opaque cursor。\n\nReturns:\n    ConversationMessageListResponse | JSONResponse: 成功时返回页内按旧到新排列的消息；失败时返回稳定错误响应。",
+        "operationId": "list_conversation_messages_v1_conversations__session_id__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": ".*\\S.*",
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "minLength": 1,
+                  "pattern": ".*\\S.*",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationMessageListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationHistoryErrorResponse"
+                }
+              }
+            },
+            "description": "指定用户范围内不存在该会话。"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationHistoryErrorResponse"
+                }
+              }
+            },
+            "description": "会话消息查询参数不合法。"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationHistoryErrorResponse"
+                }
+              }
+            },
+            "description": "会话消息查询发生未预期错误。"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationHistoryErrorResponse"
+                }
+              }
+            },
+            "description": "会话历史存储暂时不可用。"
+          }
+        },
+        "summary": "List Conversation Messages",
+        "tags": [
+          "conversation-history"
         ]
       }
     },
