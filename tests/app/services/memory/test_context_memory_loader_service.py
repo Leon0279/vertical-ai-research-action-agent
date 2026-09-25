@@ -9,16 +9,14 @@ from typing import Any
 from app.domain.enums import TaskType
 from app.domain.models import (
     ActionMemoryRecord,
+    ContextMemoryLoaderStageInput,
     DecisionMemoryRecord,
     EmbeddingResult,
-    ExecutionContext,
     PreferencePolicyMemoryRecord,
     ProjectProfileMemoryRecord,
     ResearchKnowledgeRecallQuery,
     ResearchKnowledgeRecallResult,
     ResearchKnowledgeUnitRecord,
-    RunningState,
-    RuntimeContext,
     SessionMemory,
 )
 from app.services.memory.context_memory_loader_service import ContextMemoryLoaderService
@@ -126,19 +124,18 @@ class FakeEmbeddingClient:
         return [await self.embed_text(text) for text in texts]
 
 
-def _context(*, project_scope_id: str | None = "project-1", task_type: str | None = TaskType.COMPARISON.value) -> ExecutionContext:
-    return ExecutionContext(
-        running_state=RunningState(
-            original_query="Compare vector search options.",
-            user_goal="Compare retrieval backends for the MVP.",
-            task_type=task_type,
-            project_scope_id=project_scope_id,
-        ),
-        runtime_context=RuntimeContext(
-            request_id="run-1",
-            user_id="user-1",
-            session_id="session-1",
-        ),
+def _stage_input(
+    *,
+    project_scope_id: str | None = "project-1",
+    task_type: str | None = TaskType.COMPARISON.value,
+) -> ContextMemoryLoaderStageInput:
+    return ContextMemoryLoaderStageInput(
+        user_id="user-1",
+        session_id="session-1",
+        project_scope_id=project_scope_id,
+        original_query="Compare vector search options.",
+        task_type=task_type,
+        user_goal="Compare retrieval backends for the MVP.",
     )
 
 
@@ -252,7 +249,11 @@ def _research_result(index: int) -> ResearchKnowledgeRecallResult:
     )
 
 
-def test_context_memory_loader_loads_typed_memory_into_execution_context() -> None:
+def test_context_memory_loader_returns_typed_stage_result(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.memory.context_memory_loader_service",
+    )
     decisions = [_decision(index) for index in range(1, 5)]
     actions = [_action(index) for index in range(1, 7)]
     policies = [_policy(index) for index in range(1, 5)]
@@ -263,9 +264,10 @@ def test_context_memory_loader_loads_typed_memory_into_execution_context() -> No
     policy_store = FakePreferencePolicyStore(policies)
     research_store = FakeResearchKnowledgeStore(research_results)
     embedding_client = FakeEmbeddingClient()
-    context = _context()
+    stage_input = _stage_input()
+    input_before = stage_input.model_dump(mode="json")
 
-    asyncio.run(
+    result = asyncio.run(
         _loader(
             session_store=FakeSessionStore(_session_memory()),
             project_profile_store=profile_store,
@@ -274,30 +276,81 @@ def test_context_memory_loader_loads_typed_memory_into_execution_context() -> No
             preference_policy_store=policy_store,
             research_knowledge_store=research_store,
             embedding_client=embedding_client,
-        ).load(context)
+        ).load(stage_input)
     )
 
-    assert context.running_state.task_framing == "Backend comparison."
-    assert context.running_state.open_questions == ["What is the latency budget?"]
-    assert "Research Agent MVP" in (context.running_state.project_context_summary or "")
-    assert context.running_state.constraints == ["single developer", "low ops burden"]
-    assert "Decision 1" in (context.running_state.active_decision_summary or "")
-    assert "Decision 4" not in (context.running_state.active_decision_summary or "")
-    assert "Action 1" in (context.running_state.current_action_status or "")
-    assert "Action 6" not in (context.running_state.current_action_status or "")
+    assert stage_input.model_dump(mode="json") == input_before
+    assert result.task_framing == "Backend comparison."
+    assert result.open_questions == ["What is the latency budget?"]
+    assert "Research Agent MVP" in (result.project_context_summary or "")
+    assert result.constraints == ["single developer", "low ops burden"]
+    assert "Decision 1" in (result.active_decision_summary or "")
+    assert "Decision 4" not in (result.active_decision_summary or "")
+    assert "Action 1" in (result.current_action_status or "")
+    assert "Action 6" not in (result.current_action_status or "")
 
-    assert len(context.supplemental_context.session_support) == 1
-    assert len(context.supplemental_context.project_support) == 1
-    assert len(context.supplemental_context.decision_support) == 3
-    assert len(context.supplemental_context.action_support) == 5
-    assert len(context.supplemental_context.policy_support) == 3
-    assert len(context.supplemental_context.research_support) == 2
+    assert len(result.session_support) == 1
+    assert len(result.project_support) == 1
+    assert len(result.decision_support) == 3
+    assert len(result.action_support) == 5
+    assert len(result.policy_support) == 3
+    assert len(result.research_support) == 2
     assert policy_store.calls[0]["task_type"] == TaskType.COMPARISON
     assert policy_store.calls[0]["memory_type"] is None
     assert "Compare retrieval backends" in embedding_client.texts[0]
+    assert "Backend comparison" in embedding_client.texts[0]
     assert research_store.queries[0].allowed_visibility_scopes == ["user", "project"]
     assert research_store.queries[0].project_scope_id == "project-1"
     assert research_store.queries[0].limit == 5
+
+    stage_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "context_memory_stage_result_created"
+    )
+    assert stage_record.context_fields_produced == list(
+        result.model_dump(
+            mode="json",
+            exclude_none=True,
+            exclude_defaults=True,
+        )
+    )
+    assert stage_record.context_memory_stage_result["constraints"] == [
+        "single developer",
+        "low ops burden",
+    ]
+    assert stage_record.context_memory_stage_result["open_questions"] == [
+        "What is the latency budget?"
+    ]
+    assert stage_record.context_memory_stage_result["decision_support"][0][
+        "id"
+    ] == "decision-1"
+
+
+def test_context_memory_loader_logs_an_empty_stage_result(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.memory.context_memory_loader_service",
+    )
+
+    result = asyncio.run(
+        _loader().load(_stage_input(task_type=TaskType.ACTION_PLANNING.value))
+    )
+
+    assert result.model_dump(
+        mode="json",
+        exclude_none=True,
+        exclude_defaults=True,
+    ) == {}
+    stage_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "context_memory_stage_result_created"
+    )
+    assert stage_record.context_fields_produced == []
+    assert stage_record.context_memory_stage_result == {}
 
 
 def test_context_memory_loader_skips_project_scoped_stores_without_project_scope() -> None:
@@ -306,16 +359,16 @@ def test_context_memory_loader_skips_project_scoped_stores_without_project_scope
     action_store = FakeActionStore([_action(1)])
     policy_store = FakePreferencePolicyStore([_policy(1)])
     research_store = FakeResearchKnowledgeStore([_research_result(1)])
-    context = _context(project_scope_id=None)
+    stage_input = _stage_input(project_scope_id=None)
 
-    asyncio.run(
+    result = asyncio.run(
         _loader(
             project_profile_store=profile_store,
             decision_store=decision_store,
             action_store=action_store,
             preference_policy_store=policy_store,
             research_knowledge_store=research_store,
-        ).load(context)
+        ).load(stage_input)
     )
 
     assert profile_store.calls == []
@@ -323,7 +376,7 @@ def test_context_memory_loader_skips_project_scoped_stores_without_project_scope
     assert action_store.calls == []
     assert policy_store.calls[0]["project_id"] is None
     assert research_store.queries[0].allowed_visibility_scopes == ["user"]
-    assert context.supplemental_context.project_support == []
+    assert result.project_support == []
 
 
 def test_context_memory_loader_degrades_when_one_memory_source_fails(caplog) -> None:
@@ -331,20 +384,20 @@ def test_context_memory_loader_degrades_when_one_memory_source_fails(caplog) -> 
         logging.INFO,
         logger="app.services.memory.context_memory_loader_service",
     )
-    context = _context()
+    stage_input = _stage_input()
 
-    asyncio.run(
+    result = asyncio.run(
         _loader(
             session_store=FakeSessionStore(_session_memory(), fail=True),
             project_profile_store=FakeProjectProfileStore(_project_profile(), fail=True),
             decision_store=FakeDecisionStore([_decision(1)]),
-        ).load(context)
+        ).load(stage_input)
     )
 
-    assert context.supplemental_context.session_support == []
-    assert context.supplemental_context.project_support == []
-    assert len(context.supplemental_context.decision_support) == 1
-    assert "Decision 1" in (context.running_state.active_decision_summary or "")
+    assert result.session_support == []
+    assert result.project_support == []
+    assert len(result.decision_support) == 1
+    assert "Decision 1" in (result.active_decision_summary or "")
     failed_sources = {
         record.memory_load_source
         for record in caplog.records
@@ -363,15 +416,15 @@ def test_context_memory_loader_degrades_when_one_memory_source_fails(caplog) -> 
 def test_context_memory_loader_does_not_recall_research_for_action_planning() -> None:
     research_store = FakeResearchKnowledgeStore([_research_result(1)])
     embedding_client = FakeEmbeddingClient()
-    context = _context(task_type=TaskType.ACTION_PLANNING.value)
+    stage_input = _stage_input(task_type=TaskType.ACTION_PLANNING.value)
 
-    asyncio.run(
+    result = asyncio.run(
         _loader(
             research_knowledge_store=research_store,
             embedding_client=embedding_client,
-        ).load(context)
+        ).load(stage_input)
     )
 
     assert embedding_client.texts == []
     assert research_store.queries == []
-    assert context.supplemental_context.research_support == []
+    assert result.research_support == []

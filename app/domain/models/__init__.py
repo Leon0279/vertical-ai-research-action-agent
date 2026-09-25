@@ -27,6 +27,10 @@ from app.domain.models.context import (
     RuntimeContext,
     SupplementalContext,
 )
+from app.domain.models.context_memory_loader_stage import (
+    ContextMemoryLoaderStageInput,
+    ContextMemoryLoaderStageResult,
+)
 from app.domain.models.docs_search import (
     DocsSearchQuery,
     DocsSearchResponse,
@@ -189,6 +193,8 @@ __all__ = [
     "ConversationSessionSummary",
     "ConclusionResult",
     "ContextItem",
+    "ContextMemoryLoaderStageInput",
+    "ContextMemoryLoaderStageResult",
     "DecisionMemoryRecord",
     "DecisionCandidateDetails",
     "DecisionMemoryPage",

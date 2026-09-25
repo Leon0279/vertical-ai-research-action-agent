@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from app.domain.models import ExecutionContext
+from app.domain.models import (
+    ContextMemoryLoaderStageInput,
+    ContextMemoryLoaderStageResult,
+)
 
 
 @runtime_checkable
@@ -13,12 +16,16 @@ class ContextMemoryLoaderProtocol(Protocol):
 
 Loads task-relevant session and long-term memory."""
 
-    async def load(self, context: ExecutionContext) -> None:
-        """加载与当前任务相关的会话和长期记忆，并原地补充执行上下文。
+    async def load(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+    ) -> ContextMemoryLoaderStageResult:
+        """加载与当前任务相关的会话和长期记忆，并返回 stage 增量结果。
 
         Args:
-            context (ExecutionContext): 当前执行上下文；方法会将可用记忆写入其 supplemental context 等运行时位置。
+            stage_input (ContextMemoryLoaderStageInput): 当前 stage 所需的用户、会话、项目和任务语义输入。
 
         Returns:
-            None: 不返回新对象；记忆加载结果通过对 context 的原地更新提供给后续阶段。
+            ContextMemoryLoaderStageResult: 已筛选的记忆摘要、候选状态补充值和列表增量；不直接修改 ExecutionContext。
         """
+        ...

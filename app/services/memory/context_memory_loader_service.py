@@ -20,9 +20,10 @@ from app.adapters.memory.contracts.session_memory_store_protocol import SessionM
 from app.domain.enums import TaskType
 from app.domain.models import (
     ActionMemoryRecord,
+    ContextMemoryLoaderStageInput,
+    ContextMemoryLoaderStageResult,
     ContextItem,
     DecisionMemoryRecord,
-    ExecutionContext,
     PreferencePolicyMemoryRecord,
     ProjectProfileMemoryRecord,
     ResearchKnowledgeRecallQuery,
@@ -37,7 +38,7 @@ logger = logging.getLogger(__name__)
 class ContextMemoryLoaderService(ContextMemoryLoaderProtocol):
     """负责处理上下文记忆加载器相关业务逻辑的服务。
 
-Load task-relevant short-term and long-term memory into execution context."""
+Load task-relevant short-term and long-term memory into a typed stage result."""
 
     _MAX_DECISION_ITEMS = 3
     _MAX_ACTION_ITEMS = 5
@@ -68,19 +69,41 @@ Load task-relevant short-term and long-term memory into execution context."""
         self._research_knowledge_store = research_knowledge_store
         self._embedding_client = embedding_client
 
-    async def load(self, context: ExecutionContext) -> None:
-        """Load selected memory records and enrich the execution context."""
+    async def load(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+    ) -> ContextMemoryLoaderStageResult:
+        """Load selected memory records and return stage-local context increments."""
 
-        await self._load_session_memory(context)
-        await self._load_structured_project_memory(context)
-        await self._load_preference_policy_memory(context)
-        await self._load_research_knowledge_memory(context)
+        result = ContextMemoryLoaderStageResult()
+        await self._load_session_memory(stage_input, result)
+        await self._load_structured_project_memory(stage_input, result)
+        await self._load_preference_policy_memory(stage_input, result)
+        await self._load_research_knowledge_memory(stage_input, result)
+        result_payload = result.model_dump(
+            mode="json",
+            exclude_none=True,
+            exclude_defaults=True,
+        )
+        logger.info(
+            "Context memory stage result created.",
+            extra={
+                "event": "context_memory_stage_result_created",
+                "context_fields_produced": list(result_payload),
+                "context_memory_stage_result": result_payload,
+            },
+        )
+        return result
 
-    async def _load_session_memory(self, context: ExecutionContext) -> None:
+    async def _load_session_memory(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+        result: ContextMemoryLoaderStageResult,
+    ) -> None:
         try:
             session_memory = await self._session_store.load(
-                user_id=context.runtime_context.user_id,
-                session_id=context.runtime_context.session_id,
+                user_id=stage_input.user_id,
+                session_id=stage_input.session_id,
             )
         except Exception:
             self._log_memory_load_failed("session")
@@ -90,30 +113,39 @@ Load task-relevant short-term and long-term memory into execution context."""
             self._log_memory_load_completed("session", result_count=0)
             return
 
-        context.supplemental_context.session_support.append(
+        result.session_support.append(
             self._context_item_from_session_memory(session_memory)
         )
-        state = context.running_state
-        state.task_framing = state.task_framing or session_memory.current_local_task_framing
-        state.open_questions = self._merge_unique(
-            state.open_questions,
+        result.task_framing = session_memory.current_local_task_framing
+        result.open_questions = self._merge_unique(
+            result.open_questions,
             session_memory.open_questions,
         )
         self._log_memory_load_completed("session", result_count=1)
 
-    async def _load_structured_project_memory(self, context: ExecutionContext) -> None:
-        project_id = context.running_state.project_scope_id
+    async def _load_structured_project_memory(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+        result: ContextMemoryLoaderStageResult,
+    ) -> None:
+        project_id = stage_input.project_scope_id
         if not project_id:
             return
 
-        await self._load_project_profile(context, project_id=project_id)
-        await self._load_active_decisions(context, project_id=project_id)
-        await self._load_active_actions(context, project_id=project_id)
+        await self._load_project_profile(stage_input, result, project_id=project_id)
+        await self._load_active_decisions(stage_input, result, project_id=project_id)
+        await self._load_active_actions(stage_input, result, project_id=project_id)
 
-    async def _load_project_profile(self, context: ExecutionContext, *, project_id: str) -> None:
+    async def _load_project_profile(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+        result: ContextMemoryLoaderStageResult,
+        *,
+        project_id: str,
+    ) -> None:
         try:
             profile = await self._project_profile_store.load_active_profile(
-                user_id=context.runtime_context.user_id,
+                user_id=stage_input.user_id,
                 project_id=project_id,
             )
         except Exception:
@@ -124,18 +156,23 @@ Load task-relevant short-term and long-term memory into execution context."""
             self._log_memory_load_completed("project_profile", result_count=0)
             return
 
-        context.supplemental_context.project_support.append(
+        result.project_support.append(
             self._context_item_from_project_profile(profile)
         )
-        state = context.running_state
-        state.project_context_summary = state.project_context_summary or self._project_profile_summary(profile)
-        state.constraints = self._merge_unique(state.constraints, profile.constraints)
+        result.project_context_summary = self._project_profile_summary(profile)
+        result.constraints = self._merge_unique(result.constraints, profile.constraints)
         self._log_memory_load_completed("project_profile", result_count=1)
 
-    async def _load_active_decisions(self, context: ExecutionContext, *, project_id: str) -> None:
+    async def _load_active_decisions(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+        result: ContextMemoryLoaderStageResult,
+        *,
+        project_id: str,
+    ) -> None:
         try:
             decisions = await self._decision_store.list_active_decisions(
-                user_id=context.runtime_context.user_id,
+                user_id=stage_input.user_id,
                 project_id=project_id,
             )
         except Exception:
@@ -144,23 +181,28 @@ Load task-relevant short-term and long-term memory into execution context."""
 
         bounded_decisions = decisions[: self._MAX_DECISION_ITEMS]
         for decision in bounded_decisions:
-            context.supplemental_context.decision_support.append(
+            result.decision_support.append(
                 self._context_item_from_decision(decision)
             )
         if bounded_decisions:
-            context.running_state.active_decision_summary = (
-                context.running_state.active_decision_summary
-                or self._active_decision_summary(bounded_decisions)
+            result.active_decision_summary = self._active_decision_summary(
+                bounded_decisions
             )
         self._log_memory_load_completed(
             "decision",
             result_count=len(bounded_decisions),
         )
 
-    async def _load_active_actions(self, context: ExecutionContext, *, project_id: str) -> None:
+    async def _load_active_actions(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+        result: ContextMemoryLoaderStageResult,
+        *,
+        project_id: str,
+    ) -> None:
         try:
             actions = await self._action_store.list_active_actions(
-                user_id=context.runtime_context.user_id,
+                user_id=stage_input.user_id,
                 project_id=project_id,
             )
         except Exception:
@@ -169,25 +211,26 @@ Load task-relevant short-term and long-term memory into execution context."""
 
         bounded_actions = actions[: self._MAX_ACTION_ITEMS]
         for action in bounded_actions:
-            context.supplemental_context.action_support.append(
+            result.action_support.append(
                 self._context_item_from_action(action)
             )
         if bounded_actions:
-            context.running_state.current_action_status = (
-                context.running_state.current_action_status
-                or self._current_action_status(bounded_actions)
-            )
+            result.current_action_status = self._current_action_status(bounded_actions)
         self._log_memory_load_completed(
             "action",
             result_count=len(bounded_actions),
         )
 
-    async def _load_preference_policy_memory(self, context: ExecutionContext) -> None:
-        task_type = self._task_type_from_state(context)
+    async def _load_preference_policy_memory(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+        result: ContextMemoryLoaderStageResult,
+    ) -> None:
+        task_type = self._task_type_from_input(stage_input)
         try:
             policies = await self._preference_policy_store.list_applicable_policies(
-                user_id=context.runtime_context.user_id,
-                project_id=context.running_state.project_scope_id,
+                user_id=stage_input.user_id,
+                project_id=stage_input.project_scope_id,
                 task_type=task_type,
                 memory_type=None,
             )
@@ -197,7 +240,7 @@ Load task-relevant short-term and long-term memory into execution context."""
 
         bounded_policies = policies[: self._MAX_POLICY_ITEMS]
         for policy in bounded_policies:
-            context.supplemental_context.policy_support.append(
+            result.policy_support.append(
                 self._context_item_from_policy(policy)
             )
         self._log_memory_load_completed(
@@ -205,12 +248,19 @@ Load task-relevant short-term and long-term memory into execution context."""
             result_count=len(bounded_policies),
         )
 
-    async def _load_research_knowledge_memory(self, context: ExecutionContext) -> None:
-        task_type = self._task_type_from_state(context)
+    async def _load_research_knowledge_memory(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+        result: ContextMemoryLoaderStageResult,
+    ) -> None:
+        task_type = self._task_type_from_input(stage_input)
         if task_type not in self._RESEARCH_RECALL_TASK_TYPES:
             return
 
-        query_text = self._research_recall_query_text(context)
+        query_text = self._research_recall_query_text(
+            stage_input,
+            loaded_task_framing=result.task_framing,
+        )
         if not query_text:
             return
 
@@ -218,10 +268,12 @@ Load task-relevant short-term and long-term memory into execution context."""
             embedding = await self._embedding_client.embed_text(query_text)
             results = await self._research_knowledge_store.recall_knowledge_units(
                 ResearchKnowledgeRecallQuery(
-                    owner_user_id=context.runtime_context.user_id,
+                    owner_user_id=stage_input.user_id,
                     query_embedding=embedding.embedding,
-                    allowed_visibility_scopes=self._allowed_research_visibility_scopes(context),
-                    project_scope_id=context.running_state.project_scope_id,
+                    allowed_visibility_scopes=self._allowed_research_visibility_scopes(
+                        stage_input
+                    ),
+                    project_scope_id=stage_input.project_scope_id,
                     limit=self._RESEARCH_RECALL_LIMIT,
                 )
             )
@@ -230,9 +282,9 @@ Load task-relevant short-term and long-term memory into execution context."""
             return
 
         bounded_results = results[: self._RESEARCH_RECALL_LIMIT]
-        for result in bounded_results:
-            context.supplemental_context.research_support.append(
-                self._context_item_from_research_result(result)
+        for recall_result in bounded_results:
+            result.research_support.append(
+                self._context_item_from_research_result(recall_result)
             )
         self._log_memory_load_completed(
             "research_knowledge",
@@ -388,25 +440,40 @@ Load task-relevant short-term and long-term memory into execution context."""
         ]
         return " | ".join(part for part in parts if part)
 
-    def _research_recall_query_text(self, context: ExecutionContext) -> str:
-        state = context.running_state
+    def _research_recall_query_text(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+        *,
+        loaded_task_framing: str | None,
+    ) -> str:
+        effective_task_framing = stage_input.task_framing or loaded_task_framing
         return "\n".join(
             self._merge_unique(
                 [],
-                [state.user_goal, state.task_framing, state.original_query],
+                [
+                    stage_input.user_goal,
+                    effective_task_framing,
+                    stage_input.original_query,
+                ],
             )
         )
 
-    def _allowed_research_visibility_scopes(self, context: ExecutionContext) -> list[str]:
-        if context.running_state.project_scope_id:
+    def _allowed_research_visibility_scopes(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+    ) -> list[str]:
+        if stage_input.project_scope_id:
             return ["user", "project"]
         return ["user"]
 
-    def _task_type_from_state(self, context: ExecutionContext) -> TaskType | None:
-        if not context.running_state.task_type:
+    def _task_type_from_input(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+    ) -> TaskType | None:
+        if not stage_input.task_type:
             return None
         try:
-            return TaskType(context.running_state.task_type)
+            return TaskType(stage_input.task_type)
         except ValueError:
             return None
 

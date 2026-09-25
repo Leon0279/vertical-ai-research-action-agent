@@ -104,6 +104,33 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                 "constraints": ["local deployment", "password=constraint-secret"],
                 "project_context_summary": "Internal retrieval MVP",
                 "current_bottleneck_summary": "Evaluation coverage is incomplete",
+                "context_fields_changed": [
+                    "active_decision_summary",
+                    "session_support",
+                ],
+                "context_fields_produced": [
+                    "task_framing",
+                    "session_support",
+                ],
+                "context_memory_stage_result": {
+                    "task_framing": "Continue with api_key=stage-secret",
+                    "session_support": [
+                        {
+                            "id": "session-1",
+                            "summary": "Bearer stage-support-secret",
+                        }
+                    ],
+                },
+                "active_decision_summary": "Use the production-safe option.",
+                "open_questions": ["Validate the latency budget."],
+                "session_support": [
+                    {
+                        "id": "session-1",
+                        "source_type": "session_memory",
+                        "summary": "Credential api_key=context-secret must be hidden.",
+                        "priority": 10,
+                    }
+                ],
                 "memory_persistence_items": [
                     {
                         "memory_type": "RESEARCH_KNOWLEDGE",
@@ -144,6 +171,33 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert record["constraints"] == ["local deployment", "password=[REDACTED]"]
     assert record["project_context_summary"] == "Internal retrieval MVP"
     assert record["current_bottleneck_summary"] == "Evaluation coverage is incomplete"
+    assert record["context_fields_changed"] == [
+        "active_decision_summary",
+        "session_support",
+    ]
+    assert record["context_fields_produced"] == [
+        "task_framing",
+        "session_support",
+    ]
+    assert record["context_memory_stage_result"] == {
+        "task_framing": "Continue with api_key=[REDACTED]",
+        "session_support": [
+            {
+                "id": "session-1",
+                "summary": "Bearer [REDACTED]",
+            }
+        ],
+    }
+    assert record["active_decision_summary"] == "Use the production-safe option."
+    assert record["open_questions"] == ["Validate the latency budget."]
+    assert record["session_support"] == [
+        {
+            "id": "session-1",
+            "source_type": "session_memory",
+            "summary": "Credential api_key=[REDACTED] must be hidden.",
+            "priority": 10,
+        }
+    ]
     assert record["memory_persistence_items"] == [
         {
             "memory_type": "RESEARCH_KNOWLEDGE",
@@ -161,6 +215,7 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert "nested-secret" not in serialized
     assert "goal-secret" not in serialized
     assert "constraint-secret" not in serialized
+    assert "context-secret" not in serialized
     assert "[REDACTED]" in serialized
 
 

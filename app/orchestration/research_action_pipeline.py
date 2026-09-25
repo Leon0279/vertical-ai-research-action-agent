@@ -14,6 +14,8 @@ from app.common.observability import (
     sanitize_sensitive_text,
 )
 from app.domain.models import (
+    ContextMemoryLoaderStageInput,
+    ContextMemoryLoaderStageResult,
     ExecutionContext,
     MemoryCandidate,
     MemoryPersistenceResult,
@@ -267,7 +269,71 @@ Fixed outer workflow with stage-by-stage execution."""
         """Load relevant short-term and long-term memory."""
 
         context.runtime_context.stage_history.append("context_memory_load")
-        await self._dependencies.context_memory_loader.load(context)
+        stage_input = self._build_context_memory_loader_stage_input(context)
+        stage_result = await self._dependencies.context_memory_loader.load(stage_input)
+
+        self._apply_context_memory_loader_stage_result(
+            context,
+            stage_result,
+        )
+
+    def _apply_context_memory_loader_stage_result(
+        self,
+        context: ExecutionContext,
+        result: ContextMemoryLoaderStageResult,
+    ) -> None:
+        """Write context-memory stage output back into the execution context."""
+
+        state = context.running_state
+        # Task Interpretation may already have produced these two fields.
+        if not state.task_framing and result.task_framing:
+            state.task_framing = result.task_framing
+
+        if not state.project_context_summary and result.project_context_summary:
+            state.project_context_summary = result.project_context_summary
+
+        merged_constraints = self._append_unique(
+            state.constraints,
+            [value for value in result.constraints if value],
+        )
+        if merged_constraints != state.constraints:
+            state.constraints = merged_constraints
+
+        # No earlier stage produces the fields below in the fixed pipeline.
+        state.active_decision_summary = result.active_decision_summary
+        state.current_action_status = result.current_action_status
+        state.open_questions = list(result.open_questions)
+
+        supplemental = context.supplemental_context
+        # These partitions have the same ownership and replacement semantics.
+        for field_name in (
+            "session_support",
+            "project_support",
+            "decision_support",
+            "action_support",
+            "policy_support",
+            "research_support",
+        ):
+            items = list(getattr(result, field_name))
+            setattr(supplemental, field_name, items)
+
+    @staticmethod
+    def _build_context_memory_loader_stage_input(
+        context: ExecutionContext,
+    ) -> ContextMemoryLoaderStageInput:
+        """Project the execution context into the memory-loader stage input."""
+
+        state = context.running_state
+        runtime = context.runtime_context
+        return ContextMemoryLoaderStageInput(
+            user_id=runtime.user_id,
+            session_id=runtime.session_id,
+            project_scope_id=state.project_scope_id,
+            original_query=state.original_query,
+            task_type=state.task_type,
+            user_goal=state.user_goal,
+            task_framing=state.task_framing,
+        )
 
     async def _workflow_routing(self, context: ExecutionContext) -> None:
         """Select workflow pattern for current task."""

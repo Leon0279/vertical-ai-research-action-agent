@@ -54,6 +54,8 @@ from app.common.observability import current_trace_id
 from app.domain.enums import FamilyName, TaskType, WorkflowPattern
 from app.domain.models import (
     ContextItem,
+    ContextMemoryLoaderStageInput,
+    ContextMemoryLoaderStageResult,
     ExecutionContext,
     RequestContext,
     ResearchStageInput,
@@ -75,6 +77,19 @@ class _FakeResearchExecutor:
         self.received_input: ResearchStageInput | None = None
 
     async def execute(self, stage_input: ResearchStageInput) -> ResearchStageResult:
+        self.received_input = stage_input
+        return self.result
+
+
+class _FakeContextMemoryLoader:
+    def __init__(self, result: ContextMemoryLoaderStageResult) -> None:
+        self.result = result
+        self.received_input: ContextMemoryLoaderStageInput | None = None
+
+    async def load(
+        self,
+        stage_input: ContextMemoryLoaderStageInput,
+    ) -> ContextMemoryLoaderStageResult:
         self.received_input = stage_input
         return self.result
 
@@ -815,6 +830,141 @@ def test_default_dependencies_register_the_same_capabilities_as_tel() -> None:
     )
     assert set(tool_execution_layer._family_services) == set(FamilyName)
     assert all(service is not None for service in tool_execution_layer._family_services.values())
+
+
+def test_context_memory_stage_projects_input_and_applies_only_real_changes() -> None:
+    new_decision = ContextItem(
+        id="decision-2",
+        source_type="decision_memory",
+        summary="New decision summary.",
+        priority=8,
+    )
+    session_support = ContextItem(
+        id="session-session-1",
+        source_type="session_memory",
+        summary="Recent session context.",
+        priority=10,
+    )
+    context = ExecutionContext(
+        running_state=RunningState(
+            original_query="Compare retrieval patterns.",
+            task_type=TaskType.COMPARISON.value,
+            user_goal="Choose the retrieval architecture.",
+            task_framing="Keep the current framing.",
+            project_scope_id="project-1",
+            project_context_summary="Keep the current project context.",
+            constraints=["existing constraint"],
+        ),
+        runtime_context=RuntimeContext(
+            request_id="trace-context-memory",
+            user_id="user-1",
+            session_id="session-1",
+        ),
+    )
+    fake_loader = _FakeContextMemoryLoader(
+        ContextMemoryLoaderStageResult(
+            task_framing="Do not overwrite framing.",
+            project_context_summary="Do not overwrite project context.",
+            active_decision_summary="Adopt the selected retrieval architecture.",
+            current_action_status="Benchmark is in progress.",
+            constraints=["existing constraint", "new constraint"],
+            open_questions=["new question"],
+            session_support=[session_support],
+            decision_support=[new_decision],
+        )
+    )
+    pipeline = ResearchActionPipeline(
+        dependencies=PipelineDependencies(
+            request_intake=object(),
+            task_interpreter=object(),
+            workflow_router=object(),
+            decomposition_planner=object(),
+            context_memory_loader=fake_loader,
+            research_executor=object(),
+            conclusion_generator=object(),
+            memory_distiller=object(),
+            memory_persistence=object(),
+            session_continuity_manager=object(),
+            conversation_history=object(),
+            response_assembler=object(),
+        )
+    )
+
+    returned = asyncio.run(pipeline._context_memory_load(context))
+
+    assert returned is None
+    assert context.runtime_context.stage_history == ["context_memory_load"]
+    assert fake_loader.received_input == ContextMemoryLoaderStageInput(
+        user_id="user-1",
+        session_id="session-1",
+        project_scope_id="project-1",
+        original_query="Compare retrieval patterns.",
+        task_type=TaskType.COMPARISON.value,
+        user_goal="Choose the retrieval architecture.",
+        task_framing="Keep the current framing.",
+    )
+    assert context.running_state.task_framing == "Keep the current framing."
+    assert (
+        context.running_state.project_context_summary
+        == "Keep the current project context."
+    )
+    assert context.running_state.active_decision_summary == (
+        "Adopt the selected retrieval architecture."
+    )
+    assert context.running_state.current_action_status == "Benchmark is in progress."
+    assert context.running_state.constraints == [
+        "existing constraint",
+        "new constraint",
+    ]
+    assert context.running_state.open_questions == ["new question"]
+    assert context.supplemental_context.session_support == [session_support]
+    assert context.supplemental_context.decision_support == [new_decision]
+
+
+def test_context_memory_stage_fills_missing_interpretation_fields() -> None:
+    context = ExecutionContext(
+        running_state=RunningState(
+            original_query="Continue the prior project discussion.",
+            task_type=TaskType.TOPIC_EXPLORATION.value,
+            user_goal="Recover the relevant project context.",
+        ),
+        runtime_context=RuntimeContext(
+            request_id="trace-context-memory-fill",
+            user_id="user-1",
+            session_id="session-1",
+        ),
+    )
+    fake_loader = _FakeContextMemoryLoader(
+        ContextMemoryLoaderStageResult(
+            task_framing="Continue the prior project investigation.",
+            project_context_summary="The project is evaluating retrieval quality.",
+        )
+    )
+    pipeline = ResearchActionPipeline(
+        dependencies=PipelineDependencies(
+            request_intake=object(),
+            task_interpreter=object(),
+            workflow_router=object(),
+            decomposition_planner=object(),
+            context_memory_loader=fake_loader,
+            research_executor=object(),
+            conclusion_generator=object(),
+            memory_distiller=object(),
+            memory_persistence=object(),
+            session_continuity_manager=object(),
+            conversation_history=object(),
+            response_assembler=object(),
+        )
+    )
+
+    asyncio.run(pipeline._context_memory_load(context))
+
+    assert context.running_state.task_framing == (
+        "Continue the prior project investigation."
+    )
+    assert context.running_state.project_context_summary == (
+        "The project is evaluating retrieval quality."
+    )
 
 
 def test_research_stage_projects_input_and_applies_result() -> None:
