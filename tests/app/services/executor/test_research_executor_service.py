@@ -636,7 +636,10 @@ def test_research_executor_projects_default_working_state_into_result() -> None:
     )
 
 
-def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None:
+def test_research_executor_writes_assessment_and_gaps_to_working_state(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
     service = _StateCapturingResearchExecutorService()
 
     asyncio.run(
@@ -680,6 +683,38 @@ def test_research_executor_writes_assessment_and_gaps_to_working_state() -> None
         captured_state.prioritization_summary
         == "该 gap 直接影响当前轮 research objective，因此优先推进。"
     )
+    assessment_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_state_assessed"
+    )
+    assert assessment_record.levelno == logging.INFO
+    assert assessment_record.iteration_index == 1
+    assert assessment_record.remaining_iteration_budget == 1
+    assert assessment_record.duration_ms >= 0
+    assert assessment_record.processed_evidence_count == 0
+    assert assessment_record.retrieval_history_count == 0
+    assert assessment_record.coverage_target_count == 1
+    assert assessment_record.identified_gap_count == 1
+    assert assessment_record.current_assessment == (
+        captured_state.current_assessment.model_dump(mode="json")
+    )
+    assert assessment_record.identified_gaps == [
+        gap.model_dump(mode="json") for gap in captured_state.identified_gaps
+    ]
+    assert assessment_record.top_gap == captured_state.top_gap.model_dump(mode="json")
+    assert assessment_record.next_evidence_need == (
+        captured_state.next_evidence_need.model_dump(mode="json")
+    )
+    assert assessment_record.evidence_coverage_map == {
+        target_key: entry.model_dump(mode="json")
+        for target_key, entry in captured_state.evidence_coverage_map.items()
+    }
+    assert assessment_record.coverage_status == "partially_covered"
+    assert assessment_record.support_strength == "weak_support"
+    assert assessment_record.finding_maturity == "tentative"
+    assert assessment_record.top_gap_nature == "missing"
+    assert assessment_record.coverage_target_key == "objective"
 
 
 def test_research_executor_builds_stable_coverage_targets() -> None:
@@ -830,13 +865,25 @@ def test_research_executor_rejects_invalid_coverage_snapshot_contract(
     payload: dict[str, Any],
     stage_input: ResearchStageInput,
     error_message: str,
+    caplog,
 ) -> None:
+    caplog.set_level(logging.WARNING)
     service = _research_executor(
         llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
     )
 
     with pytest.raises(ValueError, match=error_message):
         asyncio.run(service.execute(stage_input))
+
+    failure_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_state_assessment_failed"
+    )
+    assert failure_record.levelno == logging.WARNING
+    assert failure_record.failure_stage == "coverage_validation"
+    assert failure_record.exception_type == "ValueError"
+    assert not hasattr(failure_record, "raw_response")
 
 
 def test_research_executor_refines_when_gap_is_noop(caplog) -> None:
@@ -2010,7 +2057,8 @@ def test_research_executor_rejects_unknown_support_strength() -> None:
         )
 
 
-def test_research_executor_raises_when_llm_output_is_not_json() -> None:
+def test_research_executor_raises_when_llm_output_is_not_json(caplog) -> None:
+    caplog.set_level(logging.WARNING)
     service = _research_executor(llm_client=_FakeLLMClient(responses=["not json"]))
 
     with pytest.raises(ValueError, match="not valid JSON"):
@@ -2020,8 +2068,19 @@ def test_research_executor_raises_when_llm_output_is_not_json() -> None:
             )
         )
 
+    failure_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_state_assessment_failed"
+    )
+    assert failure_record.failure_stage == "llm_generation"
+    assert failure_record.exception_type == "ValueError"
+    assert not hasattr(failure_record, "prompt")
+    assert not hasattr(failure_record, "raw_response")
 
-def test_research_executor_raises_when_llm_schema_is_invalid() -> None:
+
+def test_research_executor_raises_when_llm_schema_is_invalid(caplog) -> None:
+    caplog.set_level(logging.WARNING)
     invalid_payload = json.dumps(
         {
             "assessment": {
@@ -2041,6 +2100,15 @@ def test_research_executor_raises_when_llm_schema_is_invalid() -> None:
                 ResearchStageInput(original_query="This should fail validation.")
             )
         )
+
+    failure_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_state_assessment_failed"
+    )
+    assert failure_record.failure_stage == "schema_validation"
+    assert failure_record.exception_type == "ValueError"
+    assert not hasattr(failure_record, "llm_output")
 
 
 def test_research_assessment_prompt_contains_required_context_and_boundaries() -> None:
@@ -2476,6 +2544,11 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
         for record in log_records
         if record.get("event") == "research_action_selected"
     ]
+    assessment_records = [
+        record
+        for record in log_records
+        if record.get("event") == "research_state_assessed"
+    ]
     outcome_records = [
         record
         for record in log_records
@@ -2490,11 +2563,37 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
         1,
     ]
     assert [record["iteration_index"] for record in action_records] == [1, 2]
+    assert [record["iteration_index"] for record in assessment_records] == [1, 2]
+    assert [record["remaining_iteration_budget"] for record in assessment_records] == [
+        2,
+        1,
+    ]
     assert [record["iteration_index"] for record in outcome_records] == [1, 2]
+    loop_events = [
+        record["event"]
+        for record in log_records
+        if record.get("event")
+        in {
+            "research_state_assessed",
+            "research_action_selected",
+            "research_iteration_outcome",
+        }
+    ]
+    assert loop_events == [
+        "research_state_assessed",
+        "research_action_selected",
+        "research_iteration_outcome",
+        "research_state_assessed",
+        "research_action_selected",
+        "research_iteration_outcome",
+    ]
     assert outcome_records[0]["iteration_outcome"] == "continue"
     assert result.executed_iteration_count == 2
     assert result.executed_iteration_count <= 2
     assert all(
         record["trace_id"] == "trace-two-iterations"
-        for record in [*action_records, *outcome_records]
+        for record in [*assessment_records, *action_records, *outcome_records]
     )
+    serialized_assessments = json.dumps(assessment_records, ensure_ascii=False)
+    assert "输入 JSON" not in serialized_assessments
+    assert "memory retrieval ineffective query" not in serialized_assessments

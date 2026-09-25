@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from typing import Any
 
 from pydantic import ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.observability import exception_diagnostic_fields
 from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_executor_llm_payloads import (
     _LLMResearchAssessmentAndGapsPayload,
@@ -22,6 +25,8 @@ from app.services.executor.research_executor_collaborator_support import (
 from app.services.executor.research_retrieval_history_tracker import (
     ResearchRetrievalHistoryTracker,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
@@ -45,14 +50,44 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
     ) -> None:
         """Run LLD 4.4: assess state, identify gaps, and select the next evidence need."""
 
+        started_at = time.perf_counter()
         prompt = self._build_research_assessment_prompt(stage_input, run_state)
-        llm_output = await self._llm_client.generate_json_object(prompt)
-        payload = self._parse_research_assessment_output(llm_output)
-        evidence_coverage_map = self._coverage_tracker.validated_map(
-            stage_input,
-            run_state,
-            payload,
-        )
+        try:
+            llm_output = await self._llm_client.generate_json_object(prompt)
+        except Exception as exc:
+            self._log_assessment_failure(
+                run_state,
+                started_at=started_at,
+                failure_stage="llm_generation",
+                error=exc,
+            )
+            raise
+
+        try:
+            payload = self._parse_research_assessment_output(llm_output)
+        except Exception as exc:
+            self._log_assessment_failure(
+                run_state,
+                started_at=started_at,
+                failure_stage="schema_validation",
+                error=exc,
+            )
+            raise
+
+        try:
+            evidence_coverage_map = self._coverage_tracker.validated_map(
+                stage_input,
+                run_state,
+                payload,
+            )
+        except Exception as exc:
+            self._log_assessment_failure(
+                run_state,
+                started_at=started_at,
+                failure_stage="coverage_validation",
+                error=exc,
+            )
+            raise
 
         run_state.current_assessment = payload.assessment
         run_state.identified_gaps = list(payload.identified_gaps)
@@ -60,6 +95,95 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
         run_state.next_evidence_need = payload.next_evidence_need
         run_state.evidence_coverage_map = evidence_coverage_map
         run_state.prioritization_summary = payload.prioritization_summary
+        self._log_assessment_succeeded(run_state, started_at=started_at)
+
+
+    def _log_assessment_succeeded(
+        self,
+        run_state: ResearchExecutorRunState,
+        *,
+        started_at: float,
+    ) -> None:
+        """记录本轮最终采用的研究状态判断，不记录 prompt 或证据正文。"""
+
+        iteration = run_state.require_current_iteration()
+        assessment = run_state.current_assessment
+        top_gap = run_state.top_gap
+        next_evidence_need = run_state.next_evidence_need
+        if assessment is None or top_gap is None or next_evidence_need is None:
+            raise ValueError("Research assessment state is incomplete after validation.")
+
+        logger.info(
+            "Research state assessed.",
+            extra={
+                "event": "research_state_assessed",
+                "iteration_index": iteration.iteration_index,
+                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "duration_ms": round(
+                    (time.perf_counter() - started_at) * 1000,
+                    2,
+                ),
+                "processed_evidence_count": len(run_state.processed_evidence_units),
+                "retrieval_history_count": len(run_state.recent_retrieval_attempts),
+                "coverage_target_count": len(run_state.evidence_coverage_map),
+                "identified_gap_count": len(run_state.identified_gaps),
+                "current_assessment": assessment.model_dump(mode="json"),
+                "identified_gaps": [
+                    gap.model_dump(mode="json")
+                    for gap in run_state.identified_gaps
+                ],
+                "top_gap": top_gap.model_dump(mode="json"),
+                "next_evidence_need": next_evidence_need.model_dump(mode="json"),
+                "prioritization_summary": run_state.prioritization_summary,
+                "evidence_coverage_map": {
+                    target_key: entry.model_dump(mode="json")
+                    for target_key, entry in run_state.evidence_coverage_map.items()
+                },
+                "coverage_status": assessment.coverage_status,
+                "support_strength": assessment.support_strength,
+                "finding_maturity": assessment.finding_maturity,
+                "top_gap_nature": top_gap.gap_nature,
+                "top_gap_severity": top_gap.gap_severity,
+                "coverage_target_key": next_evidence_need.coverage_target_key,
+                "evidence_need_purpose": next_evidence_need.need_purpose,
+                "desired_evidence_kind": (
+                    next_evidence_need.desired_evidence_kind
+                ),
+                "freshness_requirement": (
+                    next_evidence_need.freshness_requirement
+                ),
+            },
+        )
+
+
+    def _log_assessment_failure(
+        self,
+        run_state: ResearchExecutorRunState,
+        *,
+        started_at: float,
+        failure_stage: str,
+        error: Exception,
+    ) -> None:
+        """记录安全的 assessment 失败阶段后，交由调用方维持原有异常语义。"""
+
+        iteration = run_state.require_current_iteration()
+        logger.warning(
+            "Research state assessment failed.",
+            extra={
+                "event": "research_state_assessment_failed",
+                "iteration_index": iteration.iteration_index,
+                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "duration_ms": round(
+                    (time.perf_counter() - started_at) * 1000,
+                    2,
+                ),
+                "failure_stage": failure_stage,
+                "processed_evidence_count": len(run_state.processed_evidence_units),
+                "retrieval_history_count": len(run_state.recent_retrieval_attempts),
+                "coverage_target_count": len(run_state.evidence_coverage_map),
+                **exception_diagnostic_fields(error),
+            },
+        )
 
 
     def _build_research_assessment_prompt(

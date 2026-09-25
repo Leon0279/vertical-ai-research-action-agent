@@ -100,6 +100,36 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                 "interpretation_source": "deterministic_fallback",
                 "planning_source": "llm",
                 "fallback_reason": "invalid_output",
+                "plan": ["Review api_key=plan-secret before execution."],
+                "sub_questions": ["Can Bearer sub-question-secret be validated?"],
+                "comparison_candidates": ["candidate-a", "candidate-b"],
+                "initial_evidence_strategy": [
+                    "Read password=evidence-secret documentation."
+                ],
+                "retrieval_history_count": 2,
+                "coverage_target_count": 1,
+                "identified_gap_count": 1,
+                "current_assessment": {
+                    "assessment_summary": "Use api_key=assessment-secret safely."
+                },
+                "identified_gaps": [
+                    {"gap_summary": "Validate Bearer gap-secret before use."}
+                ],
+                "top_gap": {
+                    "gap_summary": "Resolve password=top-gap-secret first."
+                },
+                "next_evidence_need": {
+                    "need_summary": "Find api_key=need-secret documentation."
+                },
+                "prioritization_summary": "Bearer priority-secret is highest priority.",
+                "evidence_coverage_map": {
+                    "objective": {
+                        "coverage_summary": "Missing api_key=coverage-secret evidence."
+                    }
+                },
+                "coverage_status": "partially_covered",
+                "support_strength": "weak_support",
+                "finding_maturity": "tentative",
                 "user_goal": "Choose a safe option with api_key=goal-secret",
                 "task_framing": "Project-specific recommendation",
                 "constraints": ["local deployment", "password=constraint-secret"],
@@ -168,6 +198,38 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert record["interpretation_source"] == "deterministic_fallback"
     assert record["planning_source"] == "llm"
     assert record["fallback_reason"] == "invalid_output"
+    assert record["plan"] == ["Review api_key=[REDACTED] before execution."]
+    assert record["sub_questions"] == ["Can Bearer [REDACTED] be validated?"]
+    assert record["comparison_candidates"] == ["candidate-a", "candidate-b"]
+    assert record["initial_evidence_strategy"] == [
+        "Read password=[REDACTED] documentation."
+    ]
+    assert record["retrieval_history_count"] == 2
+    assert record["coverage_target_count"] == 1
+    assert record["identified_gap_count"] == 1
+    assert record["current_assessment"] == {
+        "assessment_summary": "Use api_key=[REDACTED] safely."
+    }
+    assert record["identified_gaps"] == [
+        {"gap_summary": "Validate Bearer [REDACTED] before use."}
+    ]
+    assert record["top_gap"] == {
+        "gap_summary": "Resolve password=[REDACTED] first."
+    }
+    assert record["next_evidence_need"] == {
+        "need_summary": "Find api_key=[REDACTED] documentation."
+    }
+    assert record["prioritization_summary"] == (
+        "Bearer [REDACTED] is highest priority."
+    )
+    assert record["evidence_coverage_map"] == {
+        "objective": {
+            "coverage_summary": "Missing api_key=[REDACTED] evidence."
+        }
+    }
+    assert record["coverage_status"] == "partially_covered"
+    assert record["support_strength"] == "weak_support"
+    assert record["finding_maturity"] == "tentative"
     assert record["user_goal"] == "Choose a safe option with api_key=[REDACTED]"
     assert record["task_framing"] == "Project-specific recommendation"
     assert record["constraints"] == ["local deployment", "password=[REDACTED]"]
@@ -218,6 +280,12 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert "goal-secret" not in serialized
     assert "constraint-secret" not in serialized
     assert "context-secret" not in serialized
+    assert "assessment-secret" not in serialized
+    assert "gap-secret" not in serialized
+    assert "top-gap-secret" not in serialized
+    assert "need-secret" not in serialized
+    assert "priority-secret" not in serialized
+    assert "coverage-secret" not in serialized
     assert "[REDACTED]" in serialized
 
 

@@ -189,7 +189,7 @@ def test_llm_can_generate_rich_artifacts_for_topic_exploration() -> None:
     assert context.running_state.sub_questions == ["各模块如何协作？"]
 
 
-def test_empty_artifacts_select_direct_path() -> None:
+def test_empty_artifacts_select_direct_path(caplog: pytest.LogCaptureFixture) -> None:
     context = _context()
     context.running_state.plan = ["旧计划"]
     context.running_state.sub_questions = ["旧问题"]
@@ -204,13 +204,27 @@ def test_empty_artifacts_select_direct_path() -> None:
         )
     )
 
-    asyncio.run(DecompositionPlannerService(llm).plan(context))
+    with caplog.at_level(logging.INFO):
+        asyncio.run(DecompositionPlannerService(llm).plan(context))
 
     state = context.running_state
     assert state.plan == []
     assert state.sub_questions == []
     assert state.comparison_candidates == []
     assert state.initial_evidence_strategy == []
+    completed = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "planning_completed"
+    )
+    assert completed.plan == []
+    assert completed.sub_questions == []
+    assert completed.comparison_candidates == []
+    assert completed.initial_evidence_strategy == []
+    assert completed.plan_step_count == 0
+    assert completed.sub_question_count == 0
+    assert completed.comparison_candidate_count == 0
+    assert completed.initial_evidence_strategy_count == 0
 
 
 def test_llm_lists_are_trimmed_deduplicated_and_bounded() -> None:
@@ -298,6 +312,13 @@ def test_llm_failure_uses_fallback_and_logs_reason(caplog: pytest.LogCaptureFixt
     )
     assert completed.planning_source == "deterministic_fallback"
     assert completed.fallback_reason == "llm_call_failed"
+    assert completed.plan == context.running_state.plan
+    assert completed.sub_questions == context.running_state.sub_questions
+    assert completed.comparison_candidates == context.running_state.comparison_candidates
+    assert (
+        completed.initial_evidence_strategy
+        == context.running_state.initial_evidence_strategy
+    )
 
 
 @pytest.mark.parametrize(
@@ -345,4 +366,12 @@ def test_successful_llm_path_logs_source(caplog: pytest.LogCaptureFixture) -> No
     )
     assert completed.planning_source == "llm"
     assert completed.fallback_reason is None
+    assert completed.plan == ["明确比较标准。"]
+    assert completed.sub_questions == ["两种方案在当前约束下各有什么取舍？"]
+    assert completed.comparison_candidates == ["Redis", "Postgres"]
+    assert completed.initial_evidence_strategy == ["优先收集相同条件下的对比证据。"]
+    assert completed.plan_step_count == 1
+    assert completed.sub_question_count == 1
+    assert completed.comparison_candidate_count == 2
+    assert completed.initial_evidence_strategy_count == 1
     assert not hasattr(completed, "planning_depth")
