@@ -165,7 +165,6 @@ Generate user-facing conclusions from the accumulated execution context."""
                 "current_action_status": state.current_action_status,
             },
             "planning_context": {
-                "planning_depth": state.planning_depth.value,
                 "plan": state.plan,
                 "sub_questions": state.sub_questions,
                 "comparison_candidates": state.comparison_candidates,

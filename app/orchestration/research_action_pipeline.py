@@ -203,7 +203,6 @@ Fixed outer workflow with stage-by-stage execution."""
             }
         if stage_name == "planning":
             return {
-                "planning_depth": state.planning_depth,
                 "plan_step_count": len(state.plan),
                 "sub_question_count": len(state.sub_questions),
                 "comparison_candidate_count": len(state.comparison_candidates),

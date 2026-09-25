@@ -645,7 +645,7 @@ def test_pipeline_stage_order(caplog) -> None:
     planning_record = next(
         record for record in stage_completed if record.stage_name == "planning"
     )
-    assert planning_record.planning_depth == "MEDIUM"
+    assert not hasattr(planning_record, "planning_depth")
     assert planning_record.plan_step_count > 0
     assert planning_record.sub_question_count > 0
     memory_record = next(

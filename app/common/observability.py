@@ -128,7 +128,6 @@ _STRUCTURED_FIELDS = (
     "research_support_count",
     "workflow_pattern",
     "planning_source",
-    "planning_depth",
     "evidence_strategy",
     "memory_writeback_focus",
     "plan_step_count",

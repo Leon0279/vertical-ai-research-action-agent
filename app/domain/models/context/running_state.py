@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from app.domain.enums.planning_depth import PlanningDepth
 from app.domain.enums.workflow_pattern import WorkflowPattern
 from app.domain.models.citation import Citation
 from app.domain.models.research_stage.research_stage_result import ResearchStageStatus
@@ -32,7 +31,7 @@ class RunningState(BaseModel):
         description=(
             "可选字段。当前 run 的顶层任务类型。当前项目中有用：TaskInterpreterService 会写入该字段，"
             "WorkflowRouter、Planner、ResearchExecutor、ResponseAssembler 等后续 stage 会读取它决定 workflow pattern、"
-            "planning depth、evidence goal 和输出形态。典型值来自 TaskType，例如 TOPIC_EXPLORATION、COMPARISON、"
+            "规划产物、evidence goal 和输出形态。典型值来自 TaskType，例如 TOPIC_EXPLORATION、COMPARISON、"
             "RECOMMENDATION、ACTION_PLANNING、TRACKING。未解释前为 None。"
         ),
     )
@@ -108,14 +107,6 @@ class RunningState(BaseModel):
             "可选字段。WorkflowRouter 为当前 run 选择的 workflow pattern。当前项目中有用：ResponseAssembler "
             "会优先使用该字段输出 workflow_pattern；后续 stage 也可用它判断当前任务走 topic exploration、comparison、"
             "recommendation、action planning 或 tracking 变体。路由前为 None。"
-        ),
-    )
-    planning_depth: PlanningDepth = Field(
-        default=PlanningDepth.NONE,
-        description=(
-            "可选字段，默认 PlanningDepth.NONE。当前 run 的规划深度。当前项目中有用：DecompositionPlannerService "
-            "会根据当前任务复杂度设置该字段，并据此表达是否需要显式规划以及规划拆解粒度。"
-            "该字段属于 Planning 阶段，不由 WorkflowRouter 或 API 调用方生成，也不用于控制 Research Executor 的迭代次数。"
         ),
     )
     plan: list[str] = Field(

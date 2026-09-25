@@ -205,7 +205,7 @@ Planning Decision and Task Decomposition
 Assess task complexity
  |
 \/
-Decide planning depth
+Decide whether explicit planning is useful
  |
 \/
 Define execution objective
@@ -233,7 +233,6 @@ Determine how much explicit planning is required for the current request and dec
 - optional `sub_questions`
 - optional `comparison_candidates`
 - optional `initial_evidence_strategy`
-- optional `planning_depth`
 
 **Notes**
 
@@ -771,7 +770,7 @@ Select the workflow pattern for the current task, such as topic exploration, com
 
 **Responsibility**
 
-Determine the required planning depth and generate explicit planning artifacts when needed.
+Determine whether explicit planning is useful and generate planning artifacts that are proportional to task complexity.
 
 **Key outputs may include**
 

@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from app.domain.enums import FamilyName, PlanningDepth, TaskType, WorkflowPattern
+from app.domain.enums import FamilyName, TaskType, WorkflowPattern
 from app.domain.models import (
     ContextItem,
     ExecutionContext,
@@ -45,14 +45,12 @@ class FakeLLMClient:
 
 def _planning_payload(
     *,
-    planning_depth: str = "MEDIUM",
     plan: list[str] | None = None,
     sub_questions: list[str] | None = None,
     comparison_candidates: list[str] | None = None,
     initial_evidence_strategy: list[str] | None = None,
 ) -> dict[str, Any]:
     return {
-        "planning_depth": planning_depth,
         "plan": plan if plan is not None else ["明确比较标准。"],
         "sub_questions": (
             sub_questions
@@ -167,7 +165,6 @@ def test_llm_planning_updates_all_owned_fields_once() -> None:
 
     state = context.running_state
     assert len(llm.prompts) == 1
-    assert state.planning_depth == PlanningDepth.MEDIUM
     assert state.plan == ["明确比较标准。"]
     assert state.sub_questions == ["两种方案在当前约束下各有什么取舍？"]
     assert state.comparison_candidates == ["Redis", "Postgres"]
@@ -175,14 +172,13 @@ def test_llm_planning_updates_all_owned_fields_once() -> None:
     assert state.information_gaps == ["保留的旧缺口"]
 
 
-def test_planning_depth_is_not_fixed_by_task_type() -> None:
+def test_llm_can_generate_rich_artifacts_for_topic_exploration() -> None:
     context = _context(
         query="解释一个跨存储、检索和评测的复杂 Agent 架构",
         task_type=TaskType.TOPIC_EXPLORATION,
     )
     llm = FakeLLMClient(
         _planning_payload(
-            planning_depth="DEEP",
             plan=["划分架构边界。", "分别分析存储、检索和评测。"],
             sub_questions=["各模块如何协作？"],
             comparison_candidates=[],
@@ -192,11 +188,11 @@ def test_planning_depth_is_not_fixed_by_task_type() -> None:
 
     asyncio.run(DecompositionPlannerService(llm).plan(context))
 
-    assert context.running_state.planning_depth == PlanningDepth.DEEP
     assert len(context.running_state.plan) == 2
+    assert context.running_state.sub_questions == ["各模块如何协作？"]
 
 
-def test_none_depth_clears_planning_artifacts_but_preserves_information_gaps() -> None:
+def test_empty_artifacts_select_direct_path_and_preserve_information_gaps() -> None:
     context = _context(information_gaps=["既有缺口"])
     context.running_state.plan = ["旧计划"]
     context.running_state.sub_questions = ["旧问题"]
@@ -204,7 +200,6 @@ def test_none_depth_clears_planning_artifacts_but_preserves_information_gaps() -
     context.running_state.initial_evidence_strategy = ["旧策略"]
     llm = FakeLLMClient(
         _planning_payload(
-            planning_depth="NONE",
             plan=[],
             sub_questions=[],
             comparison_candidates=[],
@@ -215,7 +210,6 @@ def test_none_depth_clears_planning_artifacts_but_preserves_information_gaps() -
     asyncio.run(DecompositionPlannerService(llm).plan(context))
 
     state = context.running_state
-    assert state.planning_depth == PlanningDepth.NONE
     assert state.plan == []
     assert state.sub_questions == []
     assert state.comparison_candidates == []
@@ -258,7 +252,8 @@ def test_prompt_is_self_contained_and_includes_distilled_context() -> None:
     assert "优先使用可核验资料" in prompt
     assert '"available_families"' in prompt
     assert "research_knowledge_recall" in prompt
-    assert "planning_depth 只表示本阶段的任务拆解深度" in prompt
+    assert "四个列表可以全部返回空列表" in prompt
+    assert "planning_depth" not in prompt
     assert "不要输出 information_gaps" in prompt
     assert "不是搜索词、具体工具参数或执行命令" in prompt
     assert "ExecutionContext" not in prompt
@@ -270,21 +265,12 @@ def test_prompt_is_self_contained_and_includes_distilled_context() -> None:
     "invalid_payload",
     [
         {**_planning_payload(), "unexpected": True},
-        {**_planning_payload(), "planning_depth": "VERY_DEEP"},
-        _planning_payload(
-            planning_depth="NONE",
-            plan=["不应存在的步骤"],
-            sub_questions=[],
-            comparison_candidates=[],
-            initial_evidence_strategy=[],
-        ),
-        _planning_payload(
-            planning_depth="MEDIUM",
-            plan=[],
-            sub_questions=[],
-            comparison_candidates=[],
-            initial_evidence_strategy=[],
-        ),
+        {**_planning_payload(), "planning_depth": "MEDIUM"},
+        {
+            key: value
+            for key, value in _planning_payload().items()
+            if key != "plan"
+        },
         _planning_payload(comparison_candidates=["MongoDB"]),
     ],
 )
@@ -298,11 +284,9 @@ def test_invalid_llm_output_uses_fallback_and_preserves_information_gaps(
 
     state = context.running_state
     assert len(llm.prompts) == 1
-    assert state.planning_depth == PlanningDepth.MEDIUM
     assert state.comparison_candidates == ["Redis", "Postgres"]
     assert state.information_gaps == ["不能修改"]
     assert all(not item.startswith("Objective:") for item in state.plan)
-    assert all(not item.startswith("Planning depth:") for item in state.plan)
 
 
 def test_llm_failure_uses_fallback_and_logs_reason(caplog: pytest.LogCaptureFixture) -> None:
@@ -312,7 +296,6 @@ def test_llm_failure_uses_fallback_and_logs_reason(caplog: pytest.LogCaptureFixt
     with caplog.at_level(logging.INFO):
         asyncio.run(DecompositionPlannerService(llm).plan(context))
 
-    assert context.running_state.planning_depth == PlanningDepth.MEDIUM
     assert context.running_state.information_gaps == ["保持不变"]
     completed = next(
         record
@@ -324,18 +307,17 @@ def test_llm_failure_uses_fallback_and_logs_reason(caplog: pytest.LogCaptureFixt
 
 
 @pytest.mark.parametrize(
-    ("task_type", "expected_depth", "expected_text"),
+    ("task_type", "expected_text"),
     [
-        (TaskType.TOPIC_EXPLORATION, PlanningDepth.SHALLOW, "background knowledge"),
-        (TaskType.COMPARISON, PlanningDepth.MEDIUM, "tradeoffs"),
-        (TaskType.RECOMMENDATION, PlanningDepth.MEDIUM, "decision-support"),
-        (TaskType.ACTION_PLANNING, PlanningDepth.MEDIUM, "dependencies"),
-        (TaskType.TRACKING, PlanningDepth.SHALLOW, "fresh status"),
+        (TaskType.TOPIC_EXPLORATION, "background knowledge"),
+        (TaskType.COMPARISON, "tradeoffs"),
+        (TaskType.RECOMMENDATION, "decision-support"),
+        (TaskType.ACTION_PLANNING, "dependencies"),
+        (TaskType.TRACKING, "fresh status"),
     ],
 )
 def test_fallback_covers_each_task_type(
     task_type: TaskType,
-    expected_depth: PlanningDepth,
     expected_text: str,
 ) -> None:
     context = _context(
@@ -347,7 +329,6 @@ def test_fallback_covers_each_task_type(
     asyncio.run(DecompositionPlannerService(FakeLLMClient({})).plan(context))
 
     state = context.running_state
-    assert state.planning_depth == expected_depth
     assert any(
         expected_text in item
         for item in [*state.plan, *state.sub_questions, *state.initial_evidence_strategy]
@@ -372,3 +353,4 @@ def test_successful_llm_path_logs_source(caplog: pytest.LogCaptureFixture) -> No
     )
     assert completed.planning_source == "llm"
     assert completed.fallback_reason is None
+    assert not hasattr(completed, "planning_depth")

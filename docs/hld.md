@@ -691,7 +691,7 @@ Planning Decision and Task Decomposition
 Assess task complexity
  |
 \/
-Decide planning depth
+Decide whether explicit planning is useful
  |
 \/
 Define execution objective
@@ -719,7 +719,6 @@ Determine how much explicit planning is required for the current request and dec
 - optional `sub_questions`
 - optional `comparison_candidates`
 - optional `initial_evidence_strategy`
-- optional `planning_depth`
 
 **Notes**
 
@@ -1257,7 +1256,7 @@ Select the workflow pattern for the current task, such as topic exploration, com
 
 **Responsibility**
 
-Determine the required planning depth and generate explicit planning artifacts when needed.
+Determine whether explicit planning is useful and generate planning artifacts that are proportional to the task complexity.
 
 **Key outputs may include**
 
@@ -1608,7 +1607,7 @@ In a one unified flow architecture, all requests are processed through the same 
 
 #### Option 2. Task-type Routing(Recommended)
 
-In a task-type routing architecture, the system first identifies the task type and then routes the request into a specialized workflow pattern, such as topic exploration, comparison, recommendation, action planning, or tracking. This approach makes task differences explicit at the orchestration level and allows each workflow pattern to use different planning depth, evidence strategy, tool scope, and output structure. It is particularly useful when task categories are meaningfully different and benefit from distinct downstream handling. However, it introduces additional architectural complexity because the system must define task taxonomy, routing logic, and fallback behavior when classification is ambiguous or incorrect.
+In a task-type routing architecture, the system first identifies the task type and then routes the request into a specialized workflow pattern, such as topic exploration, comparison, recommendation, action planning, or tracking. This approach makes task differences explicit at the orchestration level and allows each workflow pattern to use different planning artifacts, evidence strategy, tool scope, and output structure. It is particularly useful when task categories are meaningfully different and benefit from distinct downstream handling. However, it introduces additional architectural complexity because the system must define task taxonomy, routing logic, and fallback behavior when classification is ambiguous or incorrect.
 
 **Pros**
 
@@ -1645,7 +1644,7 @@ In practice:
 
 This design adopts **task-type routing**.
 
-The main reason is that the system is intended to support several distinct task categories, including topic exploration, comparison, recommendation, action planning, and optional update tracking. These categories differ not only in output format, but also in planning depth, evidence needs, reasoning emphasis, and memory write-back behavior. A one unified flow would be simpler, but it would likely force the system to handle these different task types in an overly generic way. Task-type routing makes these differences explicit and allows the system to apply more appropriate workflow patterns for each category while still preserving a shared outer architecture.
+The main reason is that the system is intended to support several distinct task categories, including topic exploration, comparison, recommendation, action planning, and optional update tracking. These categories differ not only in output format, but also in useful planning artifacts, evidence needs, reasoning emphasis, and memory write-back behavior. A one unified flow would be simpler, but it would likely force the system to handle these different task types in an overly generic way. Task-type routing makes these differences explicit and allows the system to apply more appropriate workflow patterns for each category while still preserving a shared outer architecture.
 
 At the same time, the routing design is kept at the workflow level rather than being expanded into a highly fragmented set of flows. This keeps the specialization benefits of routing without introducing unnecessary orchestration complexity.
 
@@ -2491,7 +2490,7 @@ This component sits between workflow routing and research execution. It provides
 The Planning and Decomposition Component is responsible for:
 
 - assessing the complexity of the current request
-- deciding the required planning depth
+- deciding whether explicit planning or decomposition is useful
 - defining the execution objective for the current run
 - generating an explicit plan when needed
 - decomposing the task into sub-questions when beneficial
@@ -2539,7 +2538,6 @@ The component produces planning artifacts only when they are useful for the curr
 
 Typical outputs may include:
 
-- `planning_depth`
 - optional `plan`
 - optional `sub_questions`
 - optional `comparison_candidates`
@@ -2549,7 +2547,6 @@ Example output:
 
 ```
 {
-  "planning_depth":"lightweight",
   "plan": [
 "Clarify the current project stage and bottleneck",
 "Compare evaluation and query rewrite under current constraints",
@@ -2578,8 +2575,8 @@ The Planning and Decomposition Component typically performs the following steps:
 
 1. **Assess task complexity**
 Evaluate whether the request is simple, multi-step, ambiguous, comparative, or decision-oriented.
-2. **Decide planning depth**
-Decide whether the request should follow:
+2. **Decide whether explicit planning is useful**
+Decide whether the request should use:
     - a **direct path** with little or no explicit planning
     - a **lightweight planning path**
     - a **fully decomposed path**
@@ -2631,7 +2628,6 @@ This component reads:
 
 It may write:
 
-- `planning_depth`
 - `plan`
 - `sub_questions`
 - `comparison_candidates`
@@ -2697,7 +2693,6 @@ This component should prefer partial useful structure over brittle full planning
 
 For observability and debugging, the component should log:
 
-- selected `planning_depth`
 - whether explicit planning was generated
 - whether `sub_questions` were generated
 - whether `comparison_candidates` were generated
@@ -2716,11 +2711,11 @@ For the MVP, the Planning and Decomposition Component may support:
 - lightweight planning for recommendation and comparison tasks
 - full decomposition only for complex research-oriented requests
 
-The MVP may also keep the planning depth policy relatively simple, relying mainly on `task_type`, request complexity, and project context.
+The MVP may keep selective planning simple, relying mainly on `task_type`, request complexity, and project context.
 
 Future extensions may include:
 
-- confidence-aware planning depth selection
+- confidence-aware planning selection
 - reusable planning templates
 - richer decomposition heuristics
 - stage-specific planning policies
@@ -2785,7 +2780,7 @@ The Research Executor typically consumes:
 - optional `initial_evidence_strategy`
 - relevant execution-context materials loaded by the Context and Memory Loader
 
-These inputs may vary depending on planning depth. For simple requests, the Research Executor may operate directly on the original query and current execution context. For more complex requests, it may use explicit planning artifacts as structured guidance.
+The available planning inputs vary with task complexity. For simple requests, the Research Executor may operate directly on the original query and current execution context. For more complex requests, it may use explicit planning artifacts as structured guidance.
 
 ---
 
@@ -4869,7 +4864,7 @@ API / Orchestration Service
 - request id
 - task type
 - workflow pattern
-- planning depth
+- planning artifact counts
 - research iteration count
 - selected tools
 - conclusion type
@@ -4890,7 +4885,7 @@ API / Orchestration Service
 - `Task Interpretation` 的输出摘要
 - `Context and Memory Loader` 的 memory hit / miss 情况
 - `Workflow Router` 的路由结果
-- `Planning and Decomposition` 的 planning depth 与 planning artifacts
+- `Planning and Decomposition` 是否生成显式 planning artifacts 及其数量
 - `Research Executor` 的 iteration 次数与 continue / stop 决策
 - `Conclusion Generator` 的输出模式
 - `Memory Distillation and Persistence` 的持久化结果

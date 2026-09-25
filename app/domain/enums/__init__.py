@@ -7,7 +7,6 @@ from app.domain.enums.conversation_message_role import ConversationMessageRole
 from app.domain.enums.conversation_session_status import ConversationSessionStatus
 from app.domain.enums.family_name import FamilyName
 from app.domain.enums.memory_type import MemoryType
-from app.domain.enums.planning_depth import PlanningDepth
 from app.domain.enums.retrieval_result_utility import RetrievalResultUtility
 from app.domain.enums.semantic_relation import SemanticRelation
 from app.domain.enums.task_type import TaskType
@@ -21,7 +20,6 @@ __all__ = [
     "ConversationSessionStatus",
     "FamilyName",
     "MemoryType",
-    "PlanningDepth",
     "RetrievalResultUtility",
     "SemanticRelation",
     "TaskType",
