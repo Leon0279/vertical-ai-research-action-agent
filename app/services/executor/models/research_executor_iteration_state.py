@@ -14,6 +14,7 @@ from app.domain.models import (
 )
 from app.services.executor.models.research_action_request import ResearchActionRequest
 from app.services.executor.models.research_executor_types import (
+    ResearchActionDecisionReason,
     ResearchActionMode,
     ResearchIterationOutcome,
 )
@@ -43,6 +44,14 @@ class ResearchExecutorIterationState:
     action_mode: ResearchActionMode | None = field(
         default=None,
         metadata={"description": "可选字段。本轮最终选定的 action mode；action decision 前为空。"},
+    )
+    action_decision_reason: ResearchActionDecisionReason | None = field(
+        default=None,
+        metadata={
+            "description": (
+                "可选字段。本轮 action mode 对应的稳定规则原因码，供 Agent Loop 日志和诊断使用。"
+            )
+        },
     )
     action_rationale: str | None = field(
         default=None,

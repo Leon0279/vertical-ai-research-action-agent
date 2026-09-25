@@ -90,6 +90,23 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                     FamilyName.DOCS_SEARCH,
                     FamilyName.WEB_SEARCH,
                 ],
+                "action_decision_reason": "memory_blocked_by_history",
+                "available_families": [
+                    FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                    FamilyName.DOCS_SEARCH,
+                    FamilyName.WEB_SEARCH,
+                ],
+                "low_value_families": [
+                    FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                    FamilyName.WEB_SEARCH,
+                ],
+                "memory_eligible_before_history": True,
+                "external_eligible_before_history": True,
+                "external_families_before_history": [
+                    FamilyName.DOCS_SEARCH,
+                    FamilyName.WEB_SEARCH,
+                ],
+                "external_families_after_history": [FamilyName.DOCS_SEARCH],
                 "action_rationale": "api_key=rationale-secret " + ("x" * 2100),
                 "failure_stage": "search_http",
                 "failure_reason": "timeout",
@@ -189,6 +206,23 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
         "external_acquisition",
     ]
     assert record["allowed_source_families"] == ["docs_search", "web_search"]
+    assert record["action_decision_reason"] == "memory_blocked_by_history"
+    assert record["available_families"] == [
+        "research_knowledge_recall",
+        "docs_search",
+        "web_search",
+    ]
+    assert record["low_value_families"] == [
+        "research_knowledge_recall",
+        "web_search",
+    ]
+    assert record["memory_eligible_before_history"] is True
+    assert record["external_eligible_before_history"] is True
+    assert record["external_families_before_history"] == [
+        "docs_search",
+        "web_search",
+    ]
+    assert record["external_families_after_history"] == ["docs_search"]
     assert len(str(record["action_rationale"])) == 2000
     assert record["failure_stage"] == "search_http"
     assert record["failure_reason"] == "timeout"

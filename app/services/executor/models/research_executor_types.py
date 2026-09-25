@@ -15,6 +15,20 @@ ResearchActionMode = Literal[
     "memory_backed_acquisition",
     "external_acquisition",
 ]
+ResearchActionDecisionReason = Literal[
+    "iteration_budget_exhausted",
+    "no_actionable_gap",
+    "stable_with_strong_support",
+    "no_available_family",
+    "latency_constrained",
+    "acquisition_paths_exhausted",
+    "fresh_or_stale_requires_external",
+    "memory_preferred_by_default",
+    "memory_only_candidate",
+    "memory_blocked_by_history",
+    "external_only_candidate",
+    "no_eligible_acquisition_path",
+]
 ResearchCoverageStatus = EvidenceCoverageStatus
 ResearchSupportStrength = Literal[
     "strong_enough",

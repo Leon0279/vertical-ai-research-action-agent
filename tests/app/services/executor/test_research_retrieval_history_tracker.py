@@ -170,6 +170,7 @@ def test_memory_low_value_history_switches_current_target_to_external() -> None:
     iteration = state.require_current_iteration()
     assert should_acquire is True
     assert iteration.action_mode == "external_acquisition"
+    assert iteration.action_decision_reason == "memory_blocked_by_history"
     assert iteration.action_request is not None
     assert iteration.action_request.allowed_source_families == [
         FamilyName.DOCS_SEARCH
@@ -200,7 +201,9 @@ def test_weakly_useful_history_does_not_block_memory_path() -> None:
     )
 
     assert should_acquire is True
-    assert state.require_current_iteration().action_mode == "memory_backed_acquisition"
+    iteration = state.require_current_iteration()
+    assert iteration.action_mode == "memory_backed_acquisition"
+    assert iteration.action_decision_reason == "memory_only_candidate"
 
 
 def test_exhausted_memory_and_external_paths_degrade_without_outcome_llm() -> None:
@@ -235,5 +238,31 @@ def test_exhausted_memory_and_external_paths_degrade_without_outcome_llm() -> No
     iteration = state.require_current_iteration()
     assert should_acquire is False
     assert iteration.acquisition_paths_exhausted is True
+    assert iteration.action_decision_reason == "acquisition_paths_exhausted"
     assert outcome == "degrade"
     assert iteration.outcome_decision_source == "rule_short_circuit"
+
+
+def test_iteration_budget_exhaustion_has_explicit_action_reason() -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+    state = _run_state()
+    state.require_current_iteration().remaining_iteration_budget = 0
+    decider = ResearchActionDecider(retrieval_history_tracker=tracker)
+
+    should_acquire = asyncio.run(
+        decider.decide(
+            ResearchStageInput(
+                original_query="预算耗尽后停止获取材料。",
+                available_families=[FamilyName.DOCS_SEARCH],
+            ),
+            state,
+        )
+    )
+
+    iteration = state.require_current_iteration()
+    assert should_acquire is False
+    assert iteration.action_mode == "refine_from_existing_state"
+    assert iteration.action_decision_reason == "iteration_budget_exhausted"
+    assert iteration.action_rationale == (
+        "当前 iteration budget 已耗尽，因此不再发起 acquisition。"
+    )

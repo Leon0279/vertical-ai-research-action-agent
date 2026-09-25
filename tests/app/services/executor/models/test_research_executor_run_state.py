@@ -66,6 +66,7 @@ def test_iteration_state_keeps_action_and_evaluation_as_typed_models() -> None:
         iteration_index=1,
         remaining_iteration_budget=2,
         action_mode="external_acquisition",
+        action_decision_reason="external_only_candidate",
         action_request=action_request,
         evaluation_state=ResearchIterationEvaluationState(
             top_gap_progress="partially_advanced",
@@ -81,6 +82,7 @@ def test_iteration_state_keeps_action_and_evaluation_as_typed_models() -> None:
 
     assert state.require_current_iteration() is iteration
     assert iteration.action_request is action_request
+    assert iteration.action_decision_reason == "external_only_candidate"
     assert iteration.action_request.allowed_source_families == [
         FamilyName.DOCS_SEARCH
     ]
