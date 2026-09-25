@@ -33,6 +33,7 @@ def test_running_state_defaults_follow_context_construction_lld() -> None:
     assert state.citations == []
     assert state.confidence is None
     assert state.caveats == []
+    assert "information_gaps" not in state.model_dump()
 
 
 def test_running_state_uses_typed_retrieved_evidence_refs() -> None:

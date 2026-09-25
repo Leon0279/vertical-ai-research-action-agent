@@ -24,6 +24,7 @@ def test_research_stage_input_minimal_construction() -> None:
     assert stage_input.action_support == []
     assert stage_input.available_families == []
     dumped = stage_input.model_dump()
+    assert "information_gaps" not in dumped
     assert "existing_evidence_summary" not in dumped
     assert "external_evidence_support" not in dumped
 

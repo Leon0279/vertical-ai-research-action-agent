@@ -77,8 +77,7 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
             "2. planning_reference\n"
             "- plan：上游给出的高层计划，只作为发现组织和覆盖判断的参考。\n"
             "- sub_questions：上游拆解出的子问题，用于判断发现是否覆盖关键问题。\n"
-            "- comparison_candidates：如果任务涉及比较，这里列出需要比较的对象。\n"
-            "- known_information_gaps：进入本阶段前已知的信息缺口，可帮助判断发现是否仍不完整。\n\n"
+            "- comparison_candidates：如果任务涉及比较，这里列出需要比较的对象。\n\n"
             "3. current_findings\n"
             "- intermediate_findings：上一轮或进入本轮前已有的中间发现。\n"
             "- finding_caveats：上一轮或进入本轮前已有的限制说明。\n"
@@ -163,7 +162,6 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
                 "plan": stage_input.plan,
                 "sub_questions": stage_input.sub_questions,
                 "comparison_candidates": stage_input.comparison_candidates,
-                "known_information_gaps": stage_input.information_gaps,
             },
             "current_findings": {
                 "intermediate_findings": self._prompt_text_list(

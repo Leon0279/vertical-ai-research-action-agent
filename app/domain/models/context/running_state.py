@@ -132,14 +132,6 @@ class RunningState(BaseModel):
             "后续可用它生成结构化对比。非 comparison 任务通常为空。"
         ),
     )
-    information_gaps: list[str] = Field(
-        default_factory=list,
-        description=(
-            "可选字段，默认空列表。当前已识别但尚未补齐的信息缺口。该字段暂时保留用于兼容现有下游上下文；"
-            "DecompositionPlannerService 不再生成或修改它，Research Executor 的动态缺口由其内部 identified_gaps、"
-            "top_gap 和 next_evidence_need 表达。当前字段仍可被 findings、conclusion 和 memory distillation 作为已有背景读取。"
-        ),
-    )
     initial_evidence_strategy: list[str] = Field(
         default_factory=list,
         description=(

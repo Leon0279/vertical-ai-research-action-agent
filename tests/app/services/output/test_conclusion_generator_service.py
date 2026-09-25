@@ -69,7 +69,6 @@ def _context() -> ExecutionContext:
             plan=["Compare memory-backed and web-backed retrieval."],
             sub_questions=["When should memory be preferred?"],
             comparison_candidates=["memory", "web"],
-            information_gaps=["Need freshness tradeoffs."],
             retrieved_evidence_refs=[
                 SourceReference(
                     source_type="web_page",

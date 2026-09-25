@@ -1816,7 +1816,6 @@ def test_intermediate_findings_prompt_contains_required_context_and_boundaries()
                 plan=["Compare memory-backed and web-backed retrieval."],
                 sub_questions=["When should memory be preferred?"],
                 comparison_candidates=["memory", "web"],
-                information_gaps=["Freshness evidence is weak."],
                 existing_intermediate_findings=["Existing finding."],
                 research_support=[research_support],
                 decision_support=[decision_support],

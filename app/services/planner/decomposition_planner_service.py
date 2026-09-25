@@ -120,7 +120,7 @@ class DecompositionPlannerService(DecompositionPlannerProtocol):
             "- sub_questions：为了完成任务需要分别回答的问题，可供后续判断问题覆盖情况。\n"
             "- comparison_candidates：只列出输入中明确出现或可以可靠识别的对象，不得创造候选对象。\n"
             "- initial_evidence_strategy：描述首轮应优先收集的证据目标和来源方向，不是搜索词、具体工具参数或执行命令。\n"
-            "- 不要输出 information_gaps；研究过程中仍缺什么证据由后续研究阶段判断。\n\n"
+            "- 研究过程中仍缺什么证据由后续研究阶段判断，本阶段只生成规划产物。\n\n"
             "如果请求足够直接、不需要显式规划，四个列表可以全部返回空列表；不要为了填充字段而制造无用步骤。\n"
             f"- 每个列表最多 {_MAX_PLANNING_ITEMS} 项，每项应简洁且不超过 {_MAX_PLANNING_ITEM_LENGTH} 个字符。\n\n"
             "只输出一个 JSON object，不要输出 Markdown、解释文字或额外字段。JSON 必须且只能包含：\n"

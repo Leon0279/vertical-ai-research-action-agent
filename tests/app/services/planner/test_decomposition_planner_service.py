@@ -74,7 +74,6 @@ def _context(
     *,
     query: str = "Compare Redis vs Postgres for session memory",
     task_type: TaskType | None = TaskType.COMPARISON,
-    information_gaps: list[str] | None = None,
 ) -> ExecutionContext:
     return ExecutionContext(
         running_state=RunningState(
@@ -89,7 +88,6 @@ def _context(
             active_decision_summary="暂不引入复杂分布式组件。",
             current_action_status="正在验证 session continuity。",
             workflow_pattern=WorkflowPattern.COMPARISON,
-            information_gaps=list(information_gaps or []),
             open_questions=["峰值流量下的成本是多少？"],
         ),
         supplemental_context=SupplementalContext(
@@ -158,7 +156,7 @@ def _context(
 
 
 def test_llm_planning_updates_all_owned_fields_once() -> None:
-    context = _context(information_gaps=["保留的旧缺口"])
+    context = _context()
     llm = FakeLLMClient(_planning_payload())
 
     asyncio.run(DecompositionPlannerService(llm).plan(context))
@@ -169,7 +167,6 @@ def test_llm_planning_updates_all_owned_fields_once() -> None:
     assert state.sub_questions == ["两种方案在当前约束下各有什么取舍？"]
     assert state.comparison_candidates == ["Redis", "Postgres"]
     assert state.initial_evidence_strategy == ["优先收集相同条件下的对比证据。"]
-    assert state.information_gaps == ["保留的旧缺口"]
 
 
 def test_llm_can_generate_rich_artifacts_for_topic_exploration() -> None:
@@ -192,8 +189,8 @@ def test_llm_can_generate_rich_artifacts_for_topic_exploration() -> None:
     assert context.running_state.sub_questions == ["各模块如何协作？"]
 
 
-def test_empty_artifacts_select_direct_path_and_preserve_information_gaps() -> None:
-    context = _context(information_gaps=["既有缺口"])
+def test_empty_artifacts_select_direct_path() -> None:
+    context = _context()
     context.running_state.plan = ["旧计划"]
     context.running_state.sub_questions = ["旧问题"]
     context.running_state.comparison_candidates = ["Redis"]
@@ -214,7 +211,6 @@ def test_empty_artifacts_select_direct_path_and_preserve_information_gaps() -> N
     assert state.sub_questions == []
     assert state.comparison_candidates == []
     assert state.initial_evidence_strategy == []
-    assert state.information_gaps == ["既有缺口"]
 
 
 def test_llm_lists_are_trimmed_deduplicated_and_bounded() -> None:
@@ -254,7 +250,7 @@ def test_prompt_is_self_contained_and_includes_distilled_context() -> None:
     assert "research_knowledge_recall" in prompt
     assert "四个列表可以全部返回空列表" in prompt
     assert "planning_depth" not in prompt
-    assert "不要输出 information_gaps" in prompt
+    assert "information_gaps" not in prompt
     assert "不是搜索词、具体工具参数或执行命令" in prompt
     assert "ExecutionContext" not in prompt
     assert "RunningState" not in prompt
@@ -274,10 +270,10 @@ def test_prompt_is_self_contained_and_includes_distilled_context() -> None:
         _planning_payload(comparison_candidates=["MongoDB"]),
     ],
 )
-def test_invalid_llm_output_uses_fallback_and_preserves_information_gaps(
+def test_invalid_llm_output_uses_fallback(
     invalid_payload: dict[str, Any],
 ) -> None:
-    context = _context(information_gaps=["不能修改"])
+    context = _context()
     llm = FakeLLMClient(invalid_payload)
 
     asyncio.run(DecompositionPlannerService(llm).plan(context))
@@ -285,18 +281,16 @@ def test_invalid_llm_output_uses_fallback_and_preserves_information_gaps(
     state = context.running_state
     assert len(llm.prompts) == 1
     assert state.comparison_candidates == ["Redis", "Postgres"]
-    assert state.information_gaps == ["不能修改"]
     assert all(not item.startswith("Objective:") for item in state.plan)
 
 
 def test_llm_failure_uses_fallback_and_logs_reason(caplog: pytest.LogCaptureFixture) -> None:
-    context = _context(information_gaps=["保持不变"])
+    context = _context()
     llm = FakeLLMClient(error=RuntimeError("provider unavailable"))
 
     with caplog.at_level(logging.INFO):
         asyncio.run(DecompositionPlannerService(llm).plan(context))
 
-    assert context.running_state.information_gaps == ["保持不变"]
     completed = next(
         record
         for record in caplog.records
@@ -323,7 +317,6 @@ def test_fallback_covers_each_task_type(
     context = _context(
         query="Explain the next project step.",
         task_type=task_type,
-        information_gaps=["已有信息缺口"],
     )
 
     asyncio.run(DecompositionPlannerService(FakeLLMClient({})).plan(context))
@@ -333,7 +326,6 @@ def test_fallback_covers_each_task_type(
         expected_text in item
         for item in [*state.plan, *state.sub_questions, *state.initial_evidence_strategy]
     )
-    assert state.information_gaps == ["已有信息缺口"]
 
 
 def test_successful_llm_path_logs_source(caplog: pytest.LogCaptureFixture) -> None:

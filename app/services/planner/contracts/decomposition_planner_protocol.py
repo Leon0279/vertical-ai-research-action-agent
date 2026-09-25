@@ -20,5 +20,5 @@ Builds planning artifacts for the current run."""
             context (ExecutionContext): 已完成请求接入与任务理解的执行上下文；规划结果会原地写入其 running state。
 
         Returns:
-            None: 不返回独立计划对象；规划结果会写入 context，已有 information_gaps 保持不变。
+            None: 不返回独立计划对象；规划结果会原地写入 context。
         """

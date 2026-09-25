@@ -121,7 +121,7 @@ Generate user-facing conclusions from the accumulated execution context."""
             "9. 不要改写用户目标、计划、子问题或比较对象；项目背景和补充上下文只能用于收窄和校准回答，不得扩大研究范围。\n\n"
             "输入 JSON 分区说明：\n"
             "- task_context：用户问题、任务类型、目标、约束和项目背景。\n"
-            "- planning_context：上游规划阶段给出的计划、子问题、比较对象和已知信息缺口。\n"
+            "- planning_context：上游规划阶段给出的计划、子问题、比较对象和初始证据方向。\n"
             "- research_outputs：研究阶段已经形成的 evidence 摘要、中间发现和未解决问题。\n"
             "- source_grounding：可引用来源及 allowed_citation_sources。你只能引用这里列出的 source。\n"
             "- distilled_supporting_context：进入本轮前已有的摘要级背景材料，不是 raw records，也不是完整外部文档。\n\n"
@@ -168,7 +168,6 @@ Generate user-facing conclusions from the accumulated execution context."""
                 "plan": state.plan,
                 "sub_questions": state.sub_questions,
                 "comparison_candidates": state.comparison_candidates,
-                "information_gaps": state.information_gaps,
                 "initial_evidence_strategy": state.initial_evidence_strategy,
             },
             "research_outputs": {

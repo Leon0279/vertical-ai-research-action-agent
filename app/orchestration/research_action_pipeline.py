@@ -389,7 +389,6 @@ Fixed outer workflow with stage-by-stage execution."""
             plan=state.plan,
             sub_questions=state.sub_questions,
             comparison_candidates=state.comparison_candidates,
-            information_gaps=state.information_gaps,
             initial_evidence_strategy=state.initial_evidence_strategy,
             active_decision_summary=state.active_decision_summary,
             current_action_status=state.current_action_status,

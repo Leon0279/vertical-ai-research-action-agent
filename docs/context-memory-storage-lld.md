@@ -1298,8 +1298,6 @@ priority ordering 通常应受以下因素影响：
 当前 run 拆出的子问题集合。
 - `comparison_candidates: list[str]`
 当前比较任务中的候选对象集合。
-- `information_gaps: list[str]`
-当前已识别但尚未补齐的信息缺口。
 
 **Research and reasoning fields**
 
@@ -1327,7 +1325,7 @@ priority ordering 通常应受以下因素影响：
 通常为单次赋值后少量修正，不应频繁覆盖。
 - `project_context_summary`, `current_bottleneck_summary`, `active_decision_summary`, `current_action_status`
 允许在 context refresh 后被更新，但应保持摘要级，不应退化成原始记录堆叠。
-- `plan`, `sub_questions`, `comparison_candidates`, `information_gaps`
+- `plan`, `sub_questions`, `comparison_candidates`
 允许在 planning 和 research 过程中增删或重排。
 - `retrieved_evidence_refs`, `intermediate_findings`, `open_questions`
 允许逐步追加与重整。
@@ -1575,7 +1573,6 @@ priority ordering 通常应受以下因素影响：
     - `plan`
     - `sub_questions`
     - `comparison_candidates`
-    - `information_gaps`
     - `evidence_summary`
     - `intermediate_findings`
 - from `SupplementalContext`:

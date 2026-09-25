@@ -64,13 +64,6 @@ class ResearchStageInput(BaseModel):
         default_factory=list,
         description="可选字段，默认空列表。Comparison 任务中的候选对象列表。",
     )
-    information_gaps: list[str] = Field(
-        default_factory=list,
-        description=(
-            "可选字段，默认空列表。进入 Research Stage 前已经存在的信息缺口。"
-            "DecompositionPlannerService 当前不生成该字段；IntermediateFindingsRefiner 可将其作为发现完整性的背景参考。"
-        ),
-    )
     initial_evidence_strategy: list[str] = Field(
         default_factory=list,
         description=(

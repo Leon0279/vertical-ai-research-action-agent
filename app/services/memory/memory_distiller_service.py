@@ -175,7 +175,6 @@ class MemoryDistillerService(MemoryDistillerProtocol):
                 "plan": list(state.plan),
                 "sub_questions": list(state.sub_questions),
                 "comparison_candidates": list(state.comparison_candidates),
-                "information_gaps": list(state.information_gaps),
                 "initial_evidence_strategy": list(state.initial_evidence_strategy),
             },
             conclusion_outputs={

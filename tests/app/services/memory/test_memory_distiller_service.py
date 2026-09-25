@@ -77,7 +77,6 @@ def _context(
             plan=["建立评测基线"],
             sub_questions=["应该先建设什么？"],
             comparison_candidates=["离线评测", "查询改写"],
-            information_gaps=["缺少量化基线"],
             final_summary="当前证据支持先建立评测基线。",
             final_recommendation=final_recommendation,
             confidence=confidence,
