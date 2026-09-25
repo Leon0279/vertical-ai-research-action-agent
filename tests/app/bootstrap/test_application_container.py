@@ -80,6 +80,9 @@ from app.services.memory.contracts.session_memory_service_protocol import (
 from app.services.memory.session_memory_service import SessionMemoryService
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.output.conclusion_generator_service import ConclusionGeneratorService
+from app.services.planner.decomposition_planner_service import (
+    DecompositionPlannerService,
+)
 from app.services.planner.task_interpreter_service import TaskInterpreterService
 from app.services.project.contracts.project_service_protocol import ProjectServiceProtocol
 from app.services.project.project_service import ProjectService
@@ -251,6 +254,7 @@ def test_all_llm_consumers_share_one_app_scoped_client() -> None:
         try:
             llm = await container.get(LLMClientProtocol)
             task_interpreter = await container.get(TaskInterpreterService)
+            decomposition_planner = await container.get(DecompositionPlannerService)
             query_generator = await container.get(RetrievalQueryGenerationService)
             pipeline = await container.get(ResearchActionPipeline)
             conclusion_generator = await container.get(ConclusionGeneratorService)
@@ -259,6 +263,7 @@ def test_all_llm_consumers_share_one_app_scoped_client() -> None:
             research_executor = pipeline._dependencies.research_executor
 
             assert task_interpreter._llm_client is llm
+            assert decomposition_planner._llm_client is llm
             assert query_generator._llm_client is llm
             assert research_executor._state_assessor._llm_client is llm
             assert research_executor._findings_refiner._llm_client is llm

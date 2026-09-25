@@ -207,7 +207,6 @@ Fixed outer workflow with stage-by-stage execution."""
                 "plan_step_count": len(state.plan),
                 "sub_question_count": len(state.sub_questions),
                 "comparison_candidate_count": len(state.comparison_candidates),
-                "information_gap_count": len(state.information_gaps),
                 "initial_evidence_strategy_count": len(
                     state.initial_evidence_strategy
                 ),

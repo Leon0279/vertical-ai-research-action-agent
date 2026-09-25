@@ -114,8 +114,8 @@ class RunningState(BaseModel):
         default=PlanningDepth.NONE,
         description=(
             "可选字段，默认 PlanningDepth.NONE。当前 run 的规划深度。当前项目中有用：DecompositionPlannerService "
-            "会根据 task_type 设置该字段，并据此决定是否生成 plan、sub_questions、comparison_candidates 等。"
-            "该字段属于 Planning 阶段，不由 WorkflowRouter 生成。"
+            "会根据当前任务复杂度设置该字段，并据此表达是否需要显式规划以及规划拆解粒度。"
+            "该字段属于 Planning 阶段，不由 WorkflowRouter 或 API 调用方生成，也不用于控制 Research Executor 的迭代次数。"
         ),
     )
     plan: list[str] = Field(
@@ -130,7 +130,7 @@ class RunningState(BaseModel):
         default_factory=list,
         description=(
             "可选字段，默认空列表。当前 run 拆解出的子问题。当前项目中有用：DecompositionPlannerService 会写入该字段；"
-            "ResearchExecutor 会优先把它作为逐轮 retrieval target。为空时 ResearchExecutor 会退回 information_gaps、user_goal 或 original_query。"
+            "ResearchExecutor 会把它建立为 evidence coverage target；为空时仍可围绕 user_goal 或 original_query 维护整体目标覆盖。"
         ),
     )
     comparison_candidates: list[str] = Field(
@@ -144,16 +144,17 @@ class RunningState(BaseModel):
     information_gaps: list[str] = Field(
         default_factory=list,
         description=(
-            "可选字段，默认空列表。当前已识别但尚未补齐的信息缺口。当前项目中有用：Planner 会写入初始 gap；"
-            "ResearchExecutor 在没有 sub_questions 时会把它作为 retrieval target；research 过程中也可追加未解决问题。"
+            "可选字段，默认空列表。当前已识别但尚未补齐的信息缺口。该字段暂时保留用于兼容现有下游上下文；"
+            "DecompositionPlannerService 不再生成或修改它，Research Executor 的动态缺口由其内部 identified_gaps、"
+            "top_gap 和 next_evidence_need 表达。当前字段仍可被 findings、conclusion 和 memory distillation 作为已有背景读取。"
         ),
     )
     initial_evidence_strategy: list[str] = Field(
         default_factory=list,
         description=(
             "可选字段，默认空列表。Planning 阶段生成的初始 evidence gathering guidance。当前项目中有用："
-            "DecompositionPlannerService 会根据 task_type、project context、active decisions 等生成提示，例如优先查对比证据、"
-            "fresh status、dependencies 或 actionability signals。它是 research guidance，不是最终 evidence。"
+            "DecompositionPlannerService 会根据请求复杂度、项目状态和已提炼上下文生成首轮证据方向；"
+            "Research assessment 可据此校准 next evidence need。它不是搜索词、工具参数、执行命令或最终 evidence。"
         ),
     )
 

@@ -98,6 +98,7 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                 "provider_http_status": 504,
                 "retryable": True,
                 "interpretation_source": "deterministic_fallback",
+                "planning_source": "llm",
                 "fallback_reason": "invalid_output",
                 "user_goal": "Choose a safe option with api_key=goal-secret",
                 "task_framing": "Project-specific recommendation",
@@ -165,6 +166,7 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert record["provider_http_status"] == 504
     assert record["retryable"] is True
     assert record["interpretation_source"] == "deterministic_fallback"
+    assert record["planning_source"] == "llm"
     assert record["fallback_reason"] == "invalid_output"
     assert record["user_goal"] == "Choose a safe option with api_key=[REDACTED]"
     assert record["task_framing"] == "Project-specific recommendation"

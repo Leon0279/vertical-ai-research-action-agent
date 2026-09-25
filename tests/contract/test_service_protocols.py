@@ -335,7 +335,10 @@ def test_service_protocol_conformance() -> None:
         ConversationHistoryServiceProtocol,
     )
     assert isinstance(TaskInterpreterService(), TaskInterpreterProtocol)
-    assert isinstance(DecompositionPlannerService(), DecompositionPlannerProtocol)
+    assert isinstance(
+        DecompositionPlannerService(StubLLMClient()),
+        DecompositionPlannerProtocol,
+    )
     assert isinstance(
         ProjectService(
             project_profile_store=PostgresProjectProfileMemoryStore(
