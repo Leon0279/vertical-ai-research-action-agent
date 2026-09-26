@@ -112,6 +112,16 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                     FamilyName.WEB_SEARCH,
                 ],
                 "external_families_after_history": [FamilyName.DOCS_SEARCH],
+                "tool_execution_request": {
+                    "target_problem": "Use api_key=tel-secret safely.",
+                    "action_mode": "external_acquisition",
+                    "recent_retrieval_attempts": [
+                        {
+                            "generated_query": "Bearer tel-query-secret",
+                            "selected_family": FamilyName.DOCS_SEARCH,
+                        }
+                    ],
+                },
                 "action_rationale": "api_key=rationale-secret " + ("x" * 2100),
                 "previous_finding_count": 1,
                 "previous_caveat_count": 1,
@@ -258,6 +268,16 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
         "web_search",
     ]
     assert record["external_families_after_history"] == ["docs_search"]
+    assert record["tool_execution_request"] == {
+        "target_problem": "Use api_key=[REDACTED] safely.",
+        "action_mode": "external_acquisition",
+        "recent_retrieval_attempts": [
+            {
+                "generated_query": "Bearer [REDACTED]",
+                "selected_family": "docs_search",
+            }
+        ],
+    }
     assert len(str(record["action_rationale"])) == 2000
     assert record["previous_finding_count"] == 1
     assert record["previous_caveat_count"] == 1

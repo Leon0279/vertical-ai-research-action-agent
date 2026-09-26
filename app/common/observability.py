@@ -103,6 +103,7 @@ _STRUCTURED_FIELDS = (
     "preferred_source_families",
     "blocked_source_families",
     "fallback_policy",
+    "tool_execution_request",
     "previous_finding_count",
     "previous_caveat_count",
     "finding_count",

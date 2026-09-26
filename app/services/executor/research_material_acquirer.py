@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from app.domain.enums import ActionMode
 from app.domain.models import (
     EvidenceProcessingRequest,
@@ -34,6 +36,8 @@ from app.services.tool_execution_layer.contracts.tool_execution_layer_service_pr
     ToolExecutionLayerServiceProtocol,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
     """把强类型 action request 映射为 TEL 与 Evidence Processing 调用。"""
@@ -58,6 +62,14 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
 
         iteration = run_state.require_current_iteration()
         request = self._tool_execution_layer_request(stage_input, run_state, iteration)
+        logger.info(
+            "Research material acquisition request created.",
+            extra={
+                "event": "research_tool_execution_requested",
+                "iteration_index": iteration.iteration_index,
+                "tool_execution_request": request.model_dump(mode="json"),
+            },
+        )
         result = await self._tool_execution_layer_service.execute(request)
         iteration.tool_execution_request = request
         iteration.tool_execution_result = result

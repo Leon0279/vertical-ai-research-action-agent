@@ -289,6 +289,15 @@ class _FakeToolExecutionLayerService:
         return self.result
 
 
+class _FailingToolExecutionLayerService(_FakeToolExecutionLayerService):
+    async def execute(
+        self,
+        request: ToolExecutionLayerRequest,
+    ) -> ToolExecutionLayerResult:
+        self.requests.append(request)
+        raise RuntimeError("simulated TEL failure")
+
+
 class _FakeEvidenceProcessingService:
     def __init__(
         self,
@@ -711,6 +720,37 @@ def test_research_executor_runs_acquisition_steps_when_action_decision_requires_
     ]
     assert isinstance(result, ResearchStageResult)
     assert result.executed_iteration_count == 1
+
+
+def test_research_material_acquirer_logs_request_before_tel_failure(caplog) -> None:
+    tel_service = _FailingToolExecutionLayerService()
+    service = _research_executor(tool_execution_layer_service=tel_service)
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.executor.research_material_acquirer",
+    )
+
+    with pytest.raises(RuntimeError, match="simulated TEL failure"):
+        asyncio.run(
+            service.execute(
+                ResearchStageInput(
+                    original_query="Acquire external evidence before TEL fails.",
+                    available_families=[FamilyName.DOCS_SEARCH],
+                )
+            )
+        )
+
+    request_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_tool_execution_requested"
+    ]
+    assert len(request_records) == 1
+    assert len(tel_service.requests) == 1
+    assert request_records[0].iteration_index == 1
+    assert request_records[0].tool_execution_request == (
+        tel_service.requests[0].model_dump(mode="json")
+    )
 
 
 def test_research_executor_projects_default_working_state_into_result() -> None:
@@ -2993,6 +3033,15 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
         record
         for record in log_records
         if record.get("event") == "research_retrieval_history_updated"
+    ]
+    request_records = [
+        record
+        for record in log_records
+        if record.get("event") == "research_tool_execution_requested"
+    ]
+    assert [record["iteration_index"] for record in request_records] == [1, 2]
+    assert [record["tool_execution_request"] for record in request_records] == [
+        request.model_dump(mode="json") for request in fake_tel.requests
     ]
     assert [record["action_mode"] for record in action_records] == [
         "memory_backed_acquisition",
