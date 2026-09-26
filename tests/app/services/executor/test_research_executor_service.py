@@ -38,12 +38,28 @@ from app.services.executor.research_executor_service import (
     ResearchExecutorService,
     ResearchIterationOutcome,
 )
+from app.services.executor.intermediate_findings_refiner import (
+    IntermediateFindingsRefiner,
+)
+from app.services.executor.iteration_outcome_evaluator import (
+    IterationOutcomeEvaluator,
+)
 from app.services.executor.models.evidence_coverage_entry import (
     EvidenceCoverageEntry,
 )
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
 )
+from app.services.executor.research_action_decider import ResearchActionDecider
+from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
+from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
+from app.services.executor.research_retrieval_history_tracker import (
+    ResearchRetrievalHistoryTracker,
+)
+from app.services.executor.research_stage_result_builder import (
+    ResearchStageResultBuilder,
+)
+from app.services.executor.research_state_assessor import ResearchStateAssessor
 
 
 def _valid_assessment_payload(
@@ -297,14 +313,71 @@ def _research_executor(
     evidence_processing_service: _FakeEvidenceProcessingService | None = None,
 ) -> ResearchExecutorService:
     return ResearchExecutorService(
-        llm_client=llm_client or _FakeLLMClient(),
-        tool_execution_layer_service=(
-            tool_execution_layer_service or _FakeToolExecutionLayerService()
-        ),
-        evidence_processing_service=(
-            evidence_processing_service or _FakeEvidenceProcessingService()
-        ),
+        **_research_executor_collaborators(
+            llm_client=llm_client,
+            tool_execution_layer_service=tool_execution_layer_service,
+            evidence_processing_service=evidence_processing_service,
+        )
     )
+
+
+def _research_executor_collaborators(
+    *,
+    llm_client: _FakeLLMClient | None = None,
+    tool_execution_layer_service: _FakeToolExecutionLayerService | None = None,
+    evidence_processing_service: _FakeEvidenceProcessingService | None = None,
+) -> dict[str, Any]:
+    llm = llm_client or _FakeLLMClient()
+    tel = tool_execution_layer_service or _FakeToolExecutionLayerService()
+    evidence = evidence_processing_service or _FakeEvidenceProcessingService()
+    coverage_tracker = ResearchCoverageTracker()
+    retrieval_history_tracker = ResearchRetrievalHistoryTracker()
+    return {
+        "coverage_tracker": coverage_tracker,
+        "retrieval_history_tracker": retrieval_history_tracker,
+        "state_assessor": ResearchStateAssessor(
+            llm_client=llm,
+            coverage_tracker=coverage_tracker,
+            retrieval_history_tracker=retrieval_history_tracker,
+        ),
+        "action_decider": ResearchActionDecider(
+            retrieval_history_tracker=retrieval_history_tracker,
+        ),
+        "material_acquirer": ResearchMaterialAcquirer(
+            tool_execution_layer_service=tel,
+            evidence_processing_service=evidence,
+            retrieval_history_tracker=retrieval_history_tracker,
+        ),
+        "findings_refiner": IntermediateFindingsRefiner(llm_client=llm),
+        "outcome_evaluator": IterationOutcomeEvaluator(llm_client=llm),
+        "result_builder": ResearchStageResultBuilder(),
+    }
+
+
+class _TestResearchExecutorService(ResearchExecutorService):
+    """Preserve concise fake dependency construction for executor loop tests."""
+
+    def __init__(
+        self,
+        *,
+        llm_client: _FakeLLMClient | None = None,
+        tool_execution_layer_service: _FakeToolExecutionLayerService | None = None,
+        evidence_processing_service: _FakeEvidenceProcessingService | None = None,
+    ) -> None:
+        self.llm_client = llm_client or _FakeLLMClient()
+        self.tool_execution_layer_service = (
+            tool_execution_layer_service or _FakeToolExecutionLayerService()
+        )
+        self.evidence_processing_service = (
+            evidence_processing_service or _FakeEvidenceProcessingService()
+        )
+        super().__init__(
+            **_research_executor_collaborators(
+                llm_client=self.llm_client,
+                tool_execution_layer_service=self.tool_execution_layer_service,
+                evidence_processing_service=self.evidence_processing_service,
+            )
+        )
 
 
 def _processed_evidence_unit(
@@ -332,7 +405,7 @@ def _successful_evidence_service(
     )
 
 
-class _SpyResearchExecutorService(ResearchExecutorService):
+class _SpyResearchExecutorService(_TestResearchExecutorService):
     def __init__(
         self,
         outcomes: list[ResearchIterationOutcome] | None = None,
@@ -340,17 +413,10 @@ class _SpyResearchExecutorService(ResearchExecutorService):
         tool_execution_layer_service: _FakeToolExecutionLayerService | None = None,
         evidence_processing_service: _FakeEvidenceProcessingService | None = None,
     ) -> None:
-        self.llm_client = llm_client or _FakeLLMClient()
-        self.tool_execution_layer_service = (
-            tool_execution_layer_service or _FakeToolExecutionLayerService()
-        )
-        self.evidence_processing_service = (
-            evidence_processing_service or _FakeEvidenceProcessingService()
-        )
         super().__init__(
-            llm_client=self.llm_client,
-            tool_execution_layer_service=self.tool_execution_layer_service,
-            evidence_processing_service=self.evidence_processing_service,
+            llm_client=llm_client,
+            tool_execution_layer_service=tool_execution_layer_service,
+            evidence_processing_service=evidence_processing_service,
         )
         self.calls: list[str] = []
         self._outcomes = outcomes or []
@@ -423,7 +489,7 @@ class _SpyResearchExecutorService(ResearchExecutorService):
         return await super()._evaluate_iteration_outcome(stage_input, run_state)
 
 
-class _StateCapturingResearchExecutorService(ResearchExecutorService):
+class _StateCapturingResearchExecutorService(_TestResearchExecutorService):
     def __init__(
         self,
         *,
@@ -432,17 +498,10 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         tool_execution_layer_service: _FakeToolExecutionLayerService | None = None,
         evidence_processing_service: _FakeEvidenceProcessingService | None = None,
     ) -> None:
-        self.llm_client = llm_client or _FakeLLMClient()
-        self.tool_execution_layer_service = (
-            tool_execution_layer_service or _FakeToolExecutionLayerService()
-        )
-        self.evidence_processing_service = (
-            evidence_processing_service or _FakeEvidenceProcessingService()
-        )
         super().__init__(
-            llm_client=self.llm_client,
-            tool_execution_layer_service=self.tool_execution_layer_service,
-            evidence_processing_service=self.evidence_processing_service,
+            llm_client=llm_client,
+            tool_execution_layer_service=tool_execution_layer_service,
+            evidence_processing_service=evidence_processing_service,
         )
         self.captured_states: list[ResearchExecutorRunState] = []
         self.action_states: list[ResearchExecutorRunState] = []
@@ -514,7 +573,7 @@ class _StateCapturingResearchExecutorService(ResearchExecutorService):
         self.finding_states.append(deepcopy(run_state))
 
 
-class _FailingFourthFindingsResearchExecutorService(ResearchExecutorService):
+class _FailingFourthFindingsResearchExecutorService(_TestResearchExecutorService):
     """Minimal loop double used to exercise the iteration failure boundary."""
 
     async def _assess_research_state_and_select_next_evidence_need(
@@ -568,7 +627,7 @@ class _FailingFourthFindingsResearchExecutorService(ResearchExecutorService):
         return "continue"
 
 
-class _PathsExhaustedResearchExecutorService(ResearchExecutorService):
+class _PathsExhaustedResearchExecutorService(_TestResearchExecutorService):
     async def _decide_whether_external_action_is_needed(
         self,
         stage_input: ResearchStageInput,
@@ -2017,7 +2076,7 @@ def test_fourth_iteration_failure_preserves_three_completed_iterations(
 
 
 def test_first_iteration_failure_without_output_still_raises() -> None:
-    class _AssessmentFailureResearchExecutorService(ResearchExecutorService):
+    class _AssessmentFailureResearchExecutorService(_TestResearchExecutorService):
         async def _assess_research_state_and_select_next_evidence_need(
             self,
             stage_input: ResearchStageInput,

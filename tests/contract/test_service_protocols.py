@@ -171,7 +171,19 @@ from app.services.memory.memory_persistence_service import MemoryPersistenceServ
 from app.services.memory.semantic_resolver_service import SemanticResolverService
 from app.services.memory.session_continuity_manager_service import SessionContinuityManagerService
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
+from app.services.executor.intermediate_findings_refiner import (
+    IntermediateFindingsRefiner,
+)
+from app.services.executor.iteration_outcome_evaluator import IterationOutcomeEvaluator
+from app.services.executor.research_action_decider import ResearchActionDecider
+from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_executor_service import ResearchExecutorService
+from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
+from app.services.executor.research_retrieval_history_tracker import (
+    ResearchRetrievalHistoryTracker,
+)
+from app.services.executor.research_stage_result_builder import ResearchStageResultBuilder
+from app.services.executor.research_state_assessor import ResearchStateAssessor
 from app.services.output.conclusion_generator_service import ConclusionGeneratorService
 from app.services.output.contracts.conclusion_generator_protocol import ConclusionGeneratorProtocol
 from app.services.output.response_assembler_service import ResponseAssemblerService
@@ -327,6 +339,16 @@ def test_adapter_protocol_conformance() -> None:
 
 
 def test_service_protocol_conformance() -> None:
+    llm_client = StubLLMClient()
+    coverage_tracker = ResearchCoverageTracker()
+    retrieval_history_tracker = ResearchRetrievalHistoryTracker()
+    tool_execution_layer_service = ToolExecutionLayerService(
+        family_selection_service=FamilySelectionService(),
+        query_generation_service=RetrievalQueryGenerationService(llm_client),
+        completion_evaluation_service=RequestCompletionEvaluationService(),
+    )
+    evidence_processing_service = EvidenceProcessingService()
+
     assert isinstance(
         ConversationHistoryService(
             conversation_session_store=object(),
@@ -352,13 +374,24 @@ def test_service_protocol_conformance() -> None:
     )
     assert isinstance(
         ResearchExecutorService(
-            llm_client=StubLLMClient(),
-            tool_execution_layer_service=ToolExecutionLayerService(
-                family_selection_service=FamilySelectionService(),
-                query_generation_service=RetrievalQueryGenerationService(StubLLMClient()),
-                completion_evaluation_service=RequestCompletionEvaluationService(),
+            coverage_tracker=coverage_tracker,
+            retrieval_history_tracker=retrieval_history_tracker,
+            state_assessor=ResearchStateAssessor(
+                llm_client=llm_client,
+                coverage_tracker=coverage_tracker,
+                retrieval_history_tracker=retrieval_history_tracker,
             ),
-            evidence_processing_service=EvidenceProcessingService(),
+            action_decider=ResearchActionDecider(
+                retrieval_history_tracker=retrieval_history_tracker,
+            ),
+            material_acquirer=ResearchMaterialAcquirer(
+                tool_execution_layer_service=tool_execution_layer_service,
+                evidence_processing_service=evidence_processing_service,
+                retrieval_history_tracker=retrieval_history_tracker,
+            ),
+            findings_refiner=IntermediateFindingsRefiner(llm_client=llm_client),
+            outcome_evaluator=IterationOutcomeEvaluator(llm_client=llm_client),
+            result_builder=ResearchStageResultBuilder(),
         ),
         ResearchExecutorProtocol,
     )

@@ -35,10 +35,6 @@ from app.services.evidence.contracts.evidence_processing_service_protocol import
     EvidenceProcessingServiceProtocol,
 )
 from app.services.evidence.evidence_processing_service import EvidenceProcessingService
-from app.services.executor.contracts.research_executor_protocol import (
-    ResearchExecutorProtocol,
-)
-from app.services.executor.research_executor_service import ResearchExecutorService
 from app.services.health.readiness_service import ReadinessService
 from app.services.intake.contracts.request_intake_protocol import RequestIntakeProtocol
 from app.services.intake.request_intake_service import RequestIntakeService
@@ -106,9 +102,6 @@ from app.services.planner.task_interpreter_service import TaskInterpreterService
 from app.services.planner.workflow_router_service import WorkflowRouterService
 from app.services.project.contracts.project_service_protocol import ProjectServiceProtocol
 from app.services.project.project_service import ProjectService
-from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
-    ToolExecutionLayerServiceProtocol,
-)
 from app.services.use_cases.contracts.list_action_memories_use_case_service_protocol import (
     ListActionMemoriesUseCaseServiceProtocol,
 )
@@ -256,10 +249,6 @@ class ApplicationServiceProvider(Provider):
         TaskInterpreterService,
         provides=TaskInterpreterProtocol,
     )
-    research_executor_protocol = alias(
-        ResearchExecutorService,
-        provides=ResearchExecutorProtocol,
-    )
     conclusion_generator_protocol = alias(
         ConclusionGeneratorService,
         provides=ConclusionGeneratorProtocol,
@@ -295,19 +284,6 @@ class ApplicationServiceProvider(Provider):
     def evidence_processing(self) -> EvidenceProcessingService:
         # Preserve the current deterministic Evidence Processing default behavior.
         return EvidenceProcessingService()
-
-    @provide
-    def research_executor(
-        self,
-        llm_client: LLMClientProtocol,
-        tool_execution_layer_service: ToolExecutionLayerServiceProtocol,
-        evidence_processing_service: EvidenceProcessingServiceProtocol,
-    ) -> ResearchExecutorService:
-        return ResearchExecutorService(
-            llm_client=llm_client,
-            tool_execution_layer_service=tool_execution_layer_service,
-            evidence_processing_service=evidence_processing_service,
-        )
 
     @provide
     def conclusion_generator(

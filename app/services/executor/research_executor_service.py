@@ -4,12 +4,8 @@ from __future__ import annotations
 
 import logging
 
-from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.common.observability import exception_diagnostic_fields
 from app.domain.models import ResearchStageInput, ResearchStageResult
-from app.services.evidence.contracts.evidence_processing_service_protocol import (
-    EvidenceProcessingServiceProtocol,
-)
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
 from app.services.executor.intermediate_findings_refiner import (
     IntermediateFindingsRefiner,
@@ -30,9 +26,6 @@ from app.services.executor.research_retrieval_history_tracker import (
 )
 from app.services.executor.research_stage_result_builder import ResearchStageResultBuilder
 from app.services.executor.research_state_assessor import ResearchStateAssessor
-from app.services.tool_execution_layer.contracts.tool_execution_layer_service_protocol import (
-    ToolExecutionLayerServiceProtocol,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -43,41 +36,23 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     def __init__(
         self,
         *,
-        llm_client: LLMClientProtocol,
-        tool_execution_layer_service: ToolExecutionLayerServiceProtocol,
-        evidence_processing_service: EvidenceProcessingServiceProtocol,
+        coverage_tracker: ResearchCoverageTracker,
+        retrieval_history_tracker: ResearchRetrievalHistoryTracker,
+        state_assessor: ResearchStateAssessor,
+        action_decider: ResearchActionDecider,
+        material_acquirer: ResearchMaterialAcquirer,
+        findings_refiner: IntermediateFindingsRefiner,
+        outcome_evaluator: IterationOutcomeEvaluator,
+        result_builder: ResearchStageResultBuilder,
     ) -> None:
-        if llm_client is None:
-            raise ValueError("ResearchExecutorService requires an llm_client.")
-        if tool_execution_layer_service is None:
-            raise ValueError(
-                "ResearchExecutorService requires a tool_execution_layer_service."
-            )
-        if evidence_processing_service is None:
-            raise ValueError(
-                "ResearchExecutorService requires an evidence_processing_service."
-            )
-
-        coverage_tracker = ResearchCoverageTracker()
-        retrieval_history_tracker = ResearchRetrievalHistoryTracker()
         self._coverage_tracker = coverage_tracker
         self._retrieval_history_tracker = retrieval_history_tracker
-        self._state_assessor = ResearchStateAssessor(
-            llm_client=llm_client,
-            coverage_tracker=coverage_tracker,
-            retrieval_history_tracker=retrieval_history_tracker,
-        )
-        self._action_decider = ResearchActionDecider(
-            retrieval_history_tracker=retrieval_history_tracker,
-        )
-        self._material_acquirer = ResearchMaterialAcquirer(
-            tool_execution_layer_service=tool_execution_layer_service,
-            evidence_processing_service=evidence_processing_service,
-            retrieval_history_tracker=retrieval_history_tracker,
-        )
-        self._findings_refiner = IntermediateFindingsRefiner(llm_client=llm_client)
-        self._outcome_evaluator = IterationOutcomeEvaluator(llm_client=llm_client)
-        self._result_builder = ResearchStageResultBuilder()
+        self._state_assessor = state_assessor
+        self._action_decider = action_decider
+        self._material_acquirer = material_acquirer
+        self._findings_refiner = findings_refiner
+        self._outcome_evaluator = outcome_evaluator
+        self._result_builder = result_builder
 
     async def execute(self, stage_input: ResearchStageInput) -> ResearchStageResult:
         """执行有上限的 research loop，并返回公开的阶段结果。"""

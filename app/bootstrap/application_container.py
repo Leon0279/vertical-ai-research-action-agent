@@ -7,6 +7,7 @@ from app.bootstrap.application_config_provider import ApplicationConfigProvider
 from app.bootstrap.application_service_provider import ApplicationServiceProvider
 from app.bootstrap.infrastructure_provider import InfrastructureProvider
 from app.bootstrap.orchestration_provider import OrchestrationProvider
+from app.bootstrap.research_executor_provider import ResearchExecutorProvider
 from app.bootstrap.retrieval_provider import RetrievalProvider
 
 
@@ -27,6 +28,7 @@ def build_application_container(
         InfrastructureProvider(),
         RetrievalProvider(),
         ApplicationServiceProvider(),
+        ResearchExecutorProvider(),
         OrchestrationProvider(),
         FastapiProvider(),
         *override_providers,

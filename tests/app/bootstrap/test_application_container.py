@@ -54,6 +54,22 @@ from app.services.conversation.contracts.conversation_history_service_protocol i
 from app.services.conversation.conversation_history_service import (
     ConversationHistoryService,
 )
+from app.services.executor.contracts.research_executor_protocol import (
+    ResearchExecutorProtocol,
+)
+from app.services.executor.intermediate_findings_refiner import (
+    IntermediateFindingsRefiner,
+)
+from app.services.executor.iteration_outcome_evaluator import IterationOutcomeEvaluator
+from app.services.executor.research_action_decider import ResearchActionDecider
+from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
+from app.services.executor.research_executor_service import ResearchExecutorService
+from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
+from app.services.executor.research_retrieval_history_tracker import (
+    ResearchRetrievalHistoryTracker,
+)
+from app.services.executor.research_stage_result_builder import ResearchStageResultBuilder
+from app.services.executor.research_state_assessor import ResearchStateAssessor
 from app.services.memory.memory_distiller_service import MemoryDistillerService
 from app.services.memory.action_memory_service import ActionMemoryService
 from app.services.memory.contracts.action_memory_service_protocol import (
@@ -271,6 +287,55 @@ def test_all_llm_consumers_share_one_app_scoped_client() -> None:
             assert conclusion_generator._llm_client is llm
             assert memory_distiller._llm_client is llm
             assert semantic_resolver._llm_client is llm
+        finally:
+            await container.close()
+
+    asyncio.run(verify())
+
+
+def test_research_executor_collaborators_are_app_scoped_and_shared() -> None:
+    async def verify() -> None:
+        container = build_application_container()
+        try:
+            executor = await container.get(ResearchExecutorService)
+            coverage_tracker = await container.get(ResearchCoverageTracker)
+            retrieval_history_tracker = await container.get(
+                ResearchRetrievalHistoryTracker
+            )
+            state_assessor = await container.get(ResearchStateAssessor)
+            action_decider = await container.get(ResearchActionDecider)
+            material_acquirer = await container.get(ResearchMaterialAcquirer)
+            findings_refiner = await container.get(IntermediateFindingsRefiner)
+            outcome_evaluator = await container.get(IterationOutcomeEvaluator)
+            result_builder = await container.get(ResearchStageResultBuilder)
+
+            assert executor is await container.get(ResearchExecutorProtocol)
+            assert executor is await container.get(ResearchExecutorService)
+            assert coverage_tracker is await container.get(ResearchCoverageTracker)
+            assert retrieval_history_tracker is await container.get(
+                ResearchRetrievalHistoryTracker
+            )
+            assert executor._coverage_tracker is coverage_tracker
+            assert executor._retrieval_history_tracker is retrieval_history_tracker
+            assert executor._state_assessor is state_assessor
+            assert executor._action_decider is action_decider
+            assert executor._material_acquirer is material_acquirer
+            assert executor._findings_refiner is findings_refiner
+            assert executor._outcome_evaluator is outcome_evaluator
+            assert executor._result_builder is result_builder
+            assert state_assessor._coverage_tracker is coverage_tracker
+            assert (
+                state_assessor._retrieval_history_tracker
+                is retrieval_history_tracker
+            )
+            assert (
+                action_decider._retrieval_history_tracker
+                is retrieval_history_tracker
+            )
+            assert (
+                material_acquirer._retrieval_history_tracker
+                is retrieval_history_tracker
+            )
         finally:
             await container.close()
 
