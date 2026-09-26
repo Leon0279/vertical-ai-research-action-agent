@@ -21,6 +21,9 @@ from app.services.executor.models.research_executor_iteration_state import (
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
 )
+from app.services.executor.models.research_material_acquire_input import (
+    ResearchMaterialAcquireInput,
+)
 from app.services.executor.models.research_state_assessor_input import (
     ResearchStateAssessorInput,
 )
@@ -282,7 +285,41 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     ) -> None:
         """Step 3：通过 Tool Execution Layer 获取候选材料。"""
 
-        await self._material_acquirer.acquire(stage_input, run_state)
+        iteration = run_state.require_current_iteration()
+        action_request = iteration.action_request
+        if action_request is None:
+            raise ValueError(
+                "action_request is required before material acquisition."
+            )
+        if run_state.top_gap is None or run_state.next_evidence_need is None:
+            raise ValueError(
+                "assessment decision is required before material acquisition."
+            )
+
+        acquire_input = ResearchMaterialAcquireInput(
+            original_query=stage_input.original_query,
+            user_goal=stage_input.user_goal,
+            task_framing=stage_input.task_framing,
+            owner_user_id=stage_input.owner_user_id,
+            project_scope_id=stage_input.project_scope_id,
+            latency_budget_ms=stage_input.latency_budget_ms,
+            iteration_index=iteration.iteration_index,
+            action_request=action_request,
+            coverage_target_key=(
+                run_state.next_evidence_need.coverage_target_key
+            ),
+            recent_retrieval_attempts=list(
+                run_state.recent_retrieval_attempts
+            ),
+        )
+        acquire_output = await self._material_acquirer.acquire(acquire_input)
+
+        iteration.tool_execution_request = acquire_output.tool_execution_request
+        iteration.tool_execution_result = acquire_output.tool_execution_result
+        iteration.candidate_materials = list(acquire_output.candidate_materials)
+        run_state.tool_execution_results.append(
+            acquire_output.tool_execution_result
+        )
 
     async def _process_candidate_material_into_usable_evidence(
         self,

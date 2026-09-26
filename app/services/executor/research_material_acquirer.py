@@ -22,6 +22,12 @@ from app.services.executor.models.research_executor_iteration_state import (
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
 )
+from app.services.executor.models.research_material_acquire_input import (
+    ResearchMaterialAcquireInput,
+)
+from app.services.executor.models.research_material_acquire_output import (
+    ResearchMaterialAcquireOutput,
+)
 from app.services.executor.models.research_executor_types import (
     EXTERNAL_ACTION_MODE as _EXTERNAL_ACTION_MODE,
     MEMORY_ACTION_MODE as _MEMORY_ACTION_MODE,
@@ -55,26 +61,34 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
 
     async def acquire(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-    ) -> None:
-        """通过 Tool Execution Layer 获取当前 iteration 的候选材料。"""
+        acquire_input: ResearchMaterialAcquireInput,
+    ) -> ResearchMaterialAcquireOutput:
+        """根据只读输入快照调用 TEL，并返回完整的强类型材料获取结果。
 
-        iteration = run_state.require_current_iteration()
-        request = self._tool_execution_layer_request(stage_input, run_state, iteration)
+        Args:
+            acquire_input: ``ResearchMaterialAcquireInput`` 类型。包含 action
+                request、scope、覆盖目标、检索历史和运行预算快照。
+
+        Returns:
+            ``ResearchMaterialAcquireOutput`` 类型。包含实际 TEL request、
+            TEL result 和本轮候选材料。
+        """
+
+        request = self._tool_execution_layer_request(acquire_input)
         logger.info(
             "Research material acquisition request created.",
             extra={
                 "event": "research_tool_execution_requested",
-                "iteration_index": iteration.iteration_index,
+                "iteration_index": acquire_input.iteration_index,
                 "tool_execution_request": request.model_dump(mode="json"),
             },
         )
         result = await self._tool_execution_layer_service.execute(request)
-        iteration.tool_execution_request = request
-        iteration.tool_execution_result = result
-        iteration.candidate_materials = list(result.normalized_items)
-        run_state.tool_execution_results.append(result)
+        return ResearchMaterialAcquireOutput(
+            tool_execution_request=request,
+            tool_execution_result=result,
+            candidate_materials=list(result.normalized_items),
+        )
 
     async def process(
         self,
@@ -122,28 +136,22 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
 
     def _tool_execution_layer_request(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        iteration: ResearchExecutorIterationState,
+        acquire_input: ResearchMaterialAcquireInput,
     ) -> ToolExecutionLayerRequest:
         """将当前强类型 action request 投影为 TEL public request。"""
 
-        action_request = iteration.action_request
-        if action_request is None:
-            raise ValueError("action_request is required before material acquisition.")
-        if run_state.top_gap is None or run_state.next_evidence_need is None:
-            raise ValueError("assessment decision is required before material acquisition.")
+        action_request = acquire_input.action_request
         max_results = self._positive_int(action_request.max_results, default=5)
         return ToolExecutionLayerRequest(
             target_problem=self._required_text(
                 action_request.target_problem,
-                fallback=stage_input.user_goal or stage_input.original_query,
+                fallback=acquire_input.user_goal or acquire_input.original_query,
                 field_name="target_problem",
             ),
             action_mode=self._tel_action_mode(action_request.action_mode),
             evidence_goal=action_request.evidence_goal,
             evidence_shape=self._tel_evidence_shape_from_action_request(action_request),
-            task_framing=stage_input.task_framing,
+            task_framing=acquire_input.task_framing,
             allowed_source_families=list(action_request.allowed_source_families),
             preferred_source_families=list(action_request.preferred_source_families),
             blocked_source_families=list(action_request.blocked_source_families),
@@ -151,20 +159,24 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
             success_hint=action_request.success_hint,
             recent_retrieval_attempts=(
                 self._retrieval_history_tracker.attempts_for_target(
-                    run_state.recent_retrieval_attempts,
-                    run_state.next_evidence_need.coverage_target_key,
+                    acquire_input.recent_retrieval_attempts,
+                    acquire_input.coverage_target_key,
                 )
             ),
             preferred_tool=action_request.preferred_tool,
             max_search_results=max_results,
             max_content_fetches=3,
-            owner_user_id=stage_input.owner_user_id,
-            project_scope_id=stage_input.project_scope_id,
-            allowed_visibility_scopes=self._allowed_visibility_scopes(stage_input),
+            owner_user_id=acquire_input.owner_user_id,
+            project_scope_id=acquire_input.project_scope_id,
+            allowed_visibility_scopes=self._allowed_visibility_scopes(
+                acquire_input.project_scope_id
+            ),
             memory_recall_limit=max_results,
             retry_budget=1,
             fallback_policy=action_request.fallback_policy,
-            timeout_limit_ms=self._positive_optional_int(stage_input.latency_budget_ms),
+            timeout_limit_ms=self._positive_optional_int(
+                acquire_input.latency_budget_ms
+            ),
         )
 
     def _tel_action_mode(self, action_mode: object) -> ActionMode:
@@ -215,9 +227,12 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
                 f"Unsupported desired_evidence_kind for TEL mapping: {desired_kind!r}."
             ) from exc
 
-    def _allowed_visibility_scopes(self, stage_input: ResearchStageInput) -> list[str]:
+    def _allowed_visibility_scopes(
+        self,
+        project_scope_id: str | None,
+    ) -> list[str]:
         """构造 memory recall 所需的 visibility scope 列表。"""
 
-        if stage_input.project_scope_id:
+        if project_scope_id:
             return ["user", "project"]
         return ["user"]

@@ -47,6 +47,7 @@ from app.services.executor.iteration_outcome_evaluator import (
 from app.services.executor.models.evidence_coverage_entry import (
     EvidenceCoverageEntry,
 )
+from app.services.executor.models.research_action_request import ResearchActionRequest
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
 )
@@ -1128,6 +1129,62 @@ def test_research_executor_does_not_partially_update_iteration_when_decider_fail
         )
 
     assert run_state.require_current_iteration() == iteration_before_decision
+
+
+def test_research_executor_does_not_partially_update_state_when_acquisition_fails() -> None:
+    stage_input = ResearchStageInput(
+        original_query="Keep acquisition state atomic on TEL failure.",
+        owner_user_id="user-1",
+        project_scope_id="project-1",
+        available_families=[FamilyName.DOCS_SEARCH],
+    )
+    tel_service = _FailingToolExecutionLayerService()
+    service = _research_executor(tool_execution_layer_service=tel_service)
+    run_state = ResearchExecutorRunState(
+        evidence_coverage_map=service._coverage_tracker.initial_map(stage_input),
+        current_assessment=_LLMResearchAssessmentPayload(
+            coverage_status="not_covered",
+            support_strength="weak_support",
+            finding_maturity="tentative",
+            assessment_summary="当前缺少关键证据。",
+        ),
+        top_gap=_LLMResearchGapPayload(
+            gap_scope="objective_level",
+            gap_nature="missing",
+            gap_severity="important",
+            gap_summary="缺少直接证据。",
+        ),
+        next_evidence_need=_LLMNextEvidenceNeedPayload(
+            need_scope="objective_level",
+            need_purpose="establish_coverage",
+            desired_evidence_kind="direct_fact",
+            freshness_requirement="normal",
+            minimum_support_requirement="any_relevant_signal",
+            need_summary="补充直接事实证据。",
+            coverage_target_key="objective",
+        ),
+        current_iteration=ResearchExecutorIterationState(
+            iteration_index=1,
+            remaining_iteration_budget=1,
+            action_mode="external_acquisition",
+            action_request=ResearchActionRequest(
+                action_mode="external_acquisition",
+                target_problem="补充直接事实证据。",
+                desired_evidence_kind="direct_fact",
+                freshness_requirement="normal",
+                allowed_source_families=[FamilyName.DOCS_SEARCH],
+            ),
+        ),
+    )
+    state_before_acquisition = deepcopy(run_state)
+
+    with pytest.raises(RuntimeError, match="simulated TEL failure"):
+        asyncio.run(
+            service._acquire_candidate_material(stage_input, run_state)
+        )
+
+    assert len(tel_service.requests) == 1
+    assert run_state == state_before_acquisition
 
 
 def test_research_executor_refines_when_gap_is_noop(caplog) -> None:
