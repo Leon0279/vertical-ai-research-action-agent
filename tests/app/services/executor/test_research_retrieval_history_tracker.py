@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from copy import deepcopy
 
 from app.domain.enums import (
     AcquisitionStatus,
@@ -19,6 +20,12 @@ from app.domain.models import (
 )
 from app.services.executor.iteration_outcome_evaluator import IterationOutcomeEvaluator
 from app.services.executor.models.evidence_coverage_entry import EvidenceCoverageEntry
+from app.services.executor.models.research_action_decider_input import (
+    ResearchActionDeciderInput,
+)
+from app.services.executor.models.research_action_decider_output import (
+    ResearchActionDeciderOutput,
+)
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
@@ -103,6 +110,45 @@ def _attempt(
         result_status=status,
         result_utility=utility,
     )
+
+
+def _decider_input(
+    stage_input: ResearchStageInput,
+    state: ResearchExecutorRunState,
+) -> ResearchActionDeciderInput:
+    assessment = state.current_assessment
+    top_gap = state.top_gap
+    next_evidence_need = state.next_evidence_need
+    assert assessment is not None
+    assert top_gap is not None
+    assert next_evidence_need is not None
+    iteration = state.require_current_iteration()
+    return ResearchActionDeciderInput(
+        original_query=stage_input.original_query,
+        user_goal=stage_input.user_goal,
+        available_families=list(stage_input.available_families),
+        latency_budget_ms=stage_input.latency_budget_ms,
+        scope_restrictions=list(stage_input.scope_restrictions),
+        current_assessment=assessment,
+        top_gap=top_gap,
+        next_evidence_need=next_evidence_need,
+        recent_retrieval_attempts=list(state.recent_retrieval_attempts),
+        iteration_index=iteration.iteration_index,
+        remaining_iteration_budget=iteration.remaining_iteration_budget,
+    )
+
+
+def _apply_decider_output(
+    state: ResearchExecutorRunState,
+    output: ResearchActionDeciderOutput,
+) -> None:
+    iteration = state.require_current_iteration()
+    iteration.candidate_action_modes = list(output.candidate_action_modes)
+    iteration.action_mode = output.action_mode
+    iteration.action_decision_reason = output.action_decision_reason
+    iteration.action_rationale = output.action_rationale
+    iteration.acquisition_paths_exhausted = output.acquisition_paths_exhausted
+    iteration.action_request = output.action_request
 
 
 def test_history_tracker_records_attempt_after_outcome_and_bounds_history(
@@ -270,25 +316,29 @@ def test_memory_low_value_history_switches_current_target_to_external() -> None:
         ]
     )
     decider = ResearchActionDecider(retrieval_history_tracker=tracker)
-
-    should_acquire = asyncio.run(
-        decider.decide(
-            ResearchStageInput(
-                original_query="补齐当前目标的可靠支撑材料。",
-                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL, FamilyName.DOCS_SEARCH],
-            ),
-            state,
-        )
+    decider_input = _decider_input(
+        ResearchStageInput(
+            original_query="补齐当前目标的可靠支撑材料。",
+            available_families=[
+                FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                FamilyName.DOCS_SEARCH,
+            ],
+        ),
+        state,
     )
+    state_before_decision = deepcopy(state)
+    input_before_decision = decider_input.model_dump(mode="json")
 
-    iteration = state.require_current_iteration()
-    assert should_acquire is True
-    assert iteration.action_mode == "external_acquisition"
-    assert iteration.action_decision_reason == "memory_blocked_by_history"
-    assert iteration.action_request is not None
-    assert iteration.action_request.allowed_source_families == [
+    output = asyncio.run(decider.decide(decider_input))
+
+    assert output.action_mode == "external_acquisition"
+    assert output.action_decision_reason == "memory_blocked_by_history"
+    assert output.action_request is not None
+    assert output.action_request.allowed_source_families == [
         FamilyName.DOCS_SEARCH
     ]
+    assert state == state_before_decision
+    assert decider_input.model_dump(mode="json") == input_before_decision
 
 
 def test_weakly_useful_history_does_not_block_memory_path() -> None:
@@ -304,20 +354,23 @@ def test_weakly_useful_history_does_not_block_memory_path() -> None:
     )
     decider = ResearchActionDecider(retrieval_history_tracker=tracker)
 
-    should_acquire = asyncio.run(
+    output = asyncio.run(
         decider.decide(
-            ResearchStageInput(
-                original_query="补齐当前目标的可靠支撑材料。",
-                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL, FamilyName.DOCS_SEARCH],
-            ),
-            state,
+            _decider_input(
+                ResearchStageInput(
+                    original_query="补齐当前目标的可靠支撑材料。",
+                    available_families=[
+                        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                        FamilyName.DOCS_SEARCH,
+                    ],
+                ),
+                state,
+            )
         )
     )
 
-    assert should_acquire is True
-    iteration = state.require_current_iteration()
-    assert iteration.action_mode == "memory_backed_acquisition"
-    assert iteration.action_decision_reason == "memory_only_candidate"
+    assert output.action_mode == "memory_backed_acquisition"
+    assert output.action_decision_reason == "memory_only_candidate"
 
 
 def test_exhausted_memory_and_external_paths_degrade_without_outcome_llm() -> None:
@@ -330,15 +383,21 @@ def test_exhausted_memory_and_external_paths_degrade_without_outcome_llm() -> No
     )
     decider = ResearchActionDecider(retrieval_history_tracker=tracker)
 
-    should_acquire = asyncio.run(
+    output = asyncio.run(
         decider.decide(
-            ResearchStageInput(
-                original_query="补齐当前目标的可靠支撑材料。",
-                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL, FamilyName.DOCS_SEARCH],
-            ),
-            state,
+            _decider_input(
+                ResearchStageInput(
+                    original_query="补齐当前目标的可靠支撑材料。",
+                    available_families=[
+                        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                        FamilyName.DOCS_SEARCH,
+                    ],
+                ),
+                state,
+            )
         )
     )
+    _apply_decider_output(state, output)
     outcome = asyncio.run(
         IterationOutcomeEvaluator(llm_client=_FailIfCalledLLMClient()).evaluate(
             ResearchStageInput(
@@ -350,7 +409,7 @@ def test_exhausted_memory_and_external_paths_degrade_without_outcome_llm() -> No
     )
 
     iteration = state.require_current_iteration()
-    assert should_acquire is False
+    assert output.action_mode == "refine_from_existing_state"
     assert iteration.acquisition_paths_exhausted is True
     assert iteration.action_decision_reason == "acquisition_paths_exhausted"
     assert outcome == "degrade"
@@ -363,20 +422,20 @@ def test_iteration_budget_exhaustion_has_explicit_action_reason() -> None:
     state.require_current_iteration().remaining_iteration_budget = 0
     decider = ResearchActionDecider(retrieval_history_tracker=tracker)
 
-    should_acquire = asyncio.run(
+    output = asyncio.run(
         decider.decide(
-            ResearchStageInput(
-                original_query="预算耗尽后停止获取材料。",
-                available_families=[FamilyName.DOCS_SEARCH],
-            ),
-            state,
+            _decider_input(
+                ResearchStageInput(
+                    original_query="预算耗尽后停止获取材料。",
+                    available_families=[FamilyName.DOCS_SEARCH],
+                ),
+                state,
+            )
         )
     )
 
-    iteration = state.require_current_iteration()
-    assert should_acquire is False
-    assert iteration.action_mode == "refine_from_existing_state"
-    assert iteration.action_decision_reason == "iteration_budget_exhausted"
-    assert iteration.action_rationale == (
+    assert output.action_mode == "refine_from_existing_state"
+    assert output.action_decision_reason == "iteration_budget_exhausted"
+    assert output.action_rationale == (
         "当前 iteration budget 已耗尽，因此不再发起 acquisition。"
     )

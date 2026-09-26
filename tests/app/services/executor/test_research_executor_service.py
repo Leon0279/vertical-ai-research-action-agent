@@ -53,6 +53,11 @@ from app.services.executor.models.research_executor_run_state import (
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
+from app.services.executor.models.research_executor_llm_payloads import (
+    _LLMNextEvidenceNeedPayload,
+    _LLMResearchAssessmentPayload,
+    _LLMResearchGapPayload,
+)
 from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
@@ -316,6 +321,12 @@ class _FakeEvidenceProcessingService:
         if self._results:
             return self._results.pop(0)
         return self.result
+
+
+class _FailingResearchActionDecider:
+    async def decide(self, decider_input: Any) -> Any:
+        _ = decider_input
+        raise RuntimeError("simulated action decision failure")
 
 
 def _research_executor(
@@ -1066,6 +1077,57 @@ def test_research_executor_does_not_partially_update_state_when_assessment_fails
         )
 
     assert run_state == state_before_assessment
+
+
+def test_research_executor_does_not_partially_update_iteration_when_decider_fails() -> None:
+    stage_input = ResearchStageInput(
+        original_query="Keep action decision state atomic on failure.",
+        available_families=[FamilyName.DOCS_SEARCH],
+    )
+    collaborators = _research_executor_collaborators()
+    collaborators["action_decider"] = _FailingResearchActionDecider()
+    service = ResearchExecutorService(**collaborators)
+    run_state = ResearchExecutorRunState(
+        evidence_coverage_map=service._coverage_tracker.initial_map(stage_input),
+        current_assessment=_LLMResearchAssessmentPayload(
+            coverage_status="not_covered",
+            support_strength="weak_support",
+            finding_maturity="tentative",
+            assessment_summary="当前缺少关键证据。",
+        ),
+        top_gap=_LLMResearchGapPayload(
+            gap_scope="objective_level",
+            gap_nature="missing",
+            gap_severity="important",
+            gap_summary="缺少直接证据。",
+        ),
+        next_evidence_need=_LLMNextEvidenceNeedPayload(
+            need_scope="objective_level",
+            need_purpose="establish_coverage",
+            desired_evidence_kind="direct_fact",
+            freshness_requirement="normal",
+            minimum_support_requirement="any_relevant_signal",
+            need_summary="补充直接事实证据。",
+            coverage_target_key="objective",
+        ),
+        current_iteration=ResearchExecutorIterationState(
+            iteration_index=1,
+            remaining_iteration_budget=1,
+        ),
+    )
+    iteration_before_decision = deepcopy(
+        run_state.require_current_iteration()
+    )
+
+    with pytest.raises(RuntimeError, match="simulated action decision failure"):
+        asyncio.run(
+            service._decide_whether_external_action_is_needed(
+                stage_input,
+                run_state,
+            )
+        )
+
+    assert run_state.require_current_iteration() == iteration_before_decision
 
 
 def test_research_executor_refines_when_gap_is_noop(caplog) -> None:

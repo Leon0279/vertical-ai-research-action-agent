@@ -148,7 +148,7 @@ class ResearchRetrievalHistoryTracker:
         low_value_families = (
             sorted(
                 self.low_value_families_for_target(
-                    run_state,
+                    run_state.recent_retrieval_attempts,
                     coverage_target_key,
                 ),
                 key=lambda family: family.value,
@@ -187,26 +187,29 @@ class ResearchRetrievalHistoryTracker:
 
     def attempts_for_target(
         self,
-        run_state: ResearchExecutorRunState,
+        recent_retrieval_attempts: list[RecentRetrievalAttempt],
         coverage_target_key: str,
     ) -> list[RecentRetrievalAttempt]:
         """返回与当前 coverage target 精确对应的近期尝试。"""
 
         return [
             attempt
-            for attempt in run_state.recent_retrieval_attempts
+            for attempt in recent_retrieval_attempts
             if attempt.coverage_target_key == coverage_target_key
         ]
 
     def low_value_families_for_target(
         self,
-        run_state: ResearchExecutorRunState,
+        recent_retrieval_attempts: list[RecentRetrievalAttempt],
         coverage_target_key: str,
     ) -> set[FamilyName]:
         """依据每个 family 的最近一次结果返回当前 target 应规避的路径。"""
 
         latest_attempt_by_family: dict[FamilyName, RecentRetrievalAttempt] = {}
-        for attempt in self.attempts_for_target(run_state, coverage_target_key):
+        for attempt in self.attempts_for_target(
+            recent_retrieval_attempts,
+            coverage_target_key,
+        ):
             latest_attempt_by_family[attempt.selected_family] = attempt
         return {
             family

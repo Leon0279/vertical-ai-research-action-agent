@@ -11,6 +11,9 @@ from app.services.executor.intermediate_findings_refiner import (
     IntermediateFindingsRefiner,
 )
 from app.services.executor.iteration_outcome_evaluator import IterationOutcomeEvaluator
+from app.services.executor.models.research_action_decider_input import (
+    ResearchActionDeciderInput,
+)
 from app.services.executor.models.research_executor_types import ResearchIterationOutcome
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
@@ -228,7 +231,49 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     ) -> bool:
         """Step 2：依据规则决定本轮是否进入材料获取分支。"""
 
-        return await self._action_decider.decide(stage_input, run_state)
+        assessment = run_state.current_assessment
+        if assessment is None:
+            raise ValueError(
+                "current_assessment is required before action decision."
+            )
+        top_gap = run_state.top_gap
+        if top_gap is None:
+            raise ValueError("top_gap is required before action decision.")
+        next_evidence_need = run_state.next_evidence_need
+        if next_evidence_need is None:
+            raise ValueError(
+                "next_evidence_need is required before action decision."
+            )
+
+        iteration = run_state.require_current_iteration()
+        decider_input = ResearchActionDeciderInput(
+            original_query=stage_input.original_query,
+            user_goal=stage_input.user_goal,
+            available_families=list(stage_input.available_families),
+            latency_budget_ms=stage_input.latency_budget_ms,
+            scope_restrictions=list(stage_input.scope_restrictions),
+            current_assessment=assessment,
+            top_gap=top_gap,
+            next_evidence_need=next_evidence_need,
+            recent_retrieval_attempts=list(
+                run_state.recent_retrieval_attempts
+            ),
+            iteration_index=iteration.iteration_index,
+            remaining_iteration_budget=iteration.remaining_iteration_budget,
+        )
+        decider_output = await self._action_decider.decide(decider_input)
+
+        iteration.candidate_action_modes = list(
+            decider_output.candidate_action_modes
+        )
+        iteration.action_mode = decider_output.action_mode
+        iteration.action_decision_reason = decider_output.action_decision_reason
+        iteration.action_rationale = decider_output.action_rationale
+        iteration.acquisition_paths_exhausted = (
+            decider_output.acquisition_paths_exhausted
+        )
+        iteration.action_request = decider_output.action_request
+        return decider_output.action_mode != "refine_from_existing_state"
 
     async def _acquire_candidate_material(
         self,

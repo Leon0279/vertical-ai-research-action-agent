@@ -151,7 +151,7 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
             success_hint=action_request.success_hint,
             recent_retrieval_attempts=(
                 self._retrieval_history_tracker.attempts_for_target(
-                    run_state,
+                    run_state.recent_retrieval_attempts,
                     run_state.next_evidence_need.coverage_target_key,
                 )
             ),

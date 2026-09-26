@@ -6,16 +6,13 @@ import logging
 from dataclasses import dataclass
 
 from app.domain.enums import FamilyName
-from app.domain.models import ResearchStageInput
+from app.services.executor.models.research_action_decider_input import (
+    ResearchActionDeciderInput,
+)
+from app.services.executor.models.research_action_decider_output import (
+    ResearchActionDeciderOutput,
+)
 from app.services.executor.models.research_action_request import ResearchActionRequest
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMNextEvidenceNeedPayload,
-    _LLMResearchAssessmentPayload,
-    _LLMResearchGapPayload,
-)
-from app.services.executor.models.research_executor_run_state import (
-    ResearchExecutorRunState,
-)
 from app.services.executor.models.research_executor_types import (
     EXTERNAL_ACTION_MODE as _EXTERNAL_ACTION_MODE,
     MEMORY_ACTION_MODE as _MEMORY_ACTION_MODE,
@@ -62,73 +59,59 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
 
     async def decide(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-    ) -> bool:
-        """依据当前强类型 assessment 产出本轮 action decision。"""
+        decider_input: ResearchActionDeciderInput,
+    ) -> ResearchActionDeciderOutput:
+        """根据只读输入快照选择 action，并返回完整的强类型决策。
 
-        assessment = self._required_assessment(run_state)
-        top_gap = self._required_top_gap(run_state)
-        next_evidence_need = self._required_next_evidence_need(run_state)
-        iteration = run_state.require_current_iteration()
-        diagnostics = self._decision_diagnostics(
-            stage_input,
-            run_state,
-            top_gap,
-            next_evidence_need,
+        Args:
+            decider_input: ``ResearchActionDeciderInput`` 类型。包含当前评估、
+                evidence need、检索历史、可用 family 和运行预算快照。
+
+        Returns:
+            ``ResearchActionDeciderOutput`` 类型。包含候选模式、最终模式、
+            规则原因、路径耗尽状态和可选 acquisition request。
+        """
+
+        top_gap = decider_input.top_gap
+        next_evidence_need = decider_input.next_evidence_need
+        diagnostics = self._decision_diagnostics(decider_input)
+        acquisition_paths_exhausted = self._acquisition_paths_exhausted(
+            decider_input
         )
-        iteration.acquisition_paths_exhausted = self._acquisition_paths_exhausted(
-            stage_input,
-            run_state,
-            assessment,
-            top_gap,
-            next_evidence_need,
-        )
-        candidate_action_modes = self._candidate_action_modes(
-            stage_input,
-            run_state,
-            iteration.remaining_iteration_budget,
-            assessment,
-            top_gap,
-            next_evidence_need,
-        )
+        candidate_action_modes = self._candidate_action_modes(decider_input)
         action_mode, action_decision_reason = self._select_action_mode(
             candidate_action_modes,
-            stage_input,
-            run_state,
-            iteration.remaining_iteration_budget,
-            assessment,
-            top_gap,
-            next_evidence_need,
+            decider_input,
+            acquisition_paths_exhausted,
             diagnostics,
         )
-        iteration.candidate_action_modes = candidate_action_modes
-        iteration.action_mode = action_mode
-        iteration.action_decision_reason = action_decision_reason
-        iteration.action_rationale = self._action_rationale(
-            action_decision_reason,
+        output = ResearchActionDeciderOutput(
+            candidate_action_modes=candidate_action_modes,
+            action_mode=action_mode,
+            action_decision_reason=action_decision_reason,
+            action_rationale=self._action_rationale(action_decision_reason),
+            acquisition_paths_exhausted=acquisition_paths_exhausted,
+            action_request=self._build_action_request(
+                action_mode,
+                decider_input,
+                diagnostics,
+            ),
         )
-        iteration.action_request = self._build_action_request(
-            action_mode,
-            stage_input,
-            run_state,
-            top_gap,
-            next_evidence_need,
-            diagnostics,
-        )
-        action_request = iteration.action_request
+        action_request = output.action_request
         logger.info(
             "Research action selected.",
             extra={
                 "event": "research_action_selected",
-                "iteration_index": iteration.iteration_index,
-                "remaining_iteration_budget": iteration.remaining_iteration_budget,
-                "candidate_action_modes": iteration.candidate_action_modes,
-                "action_mode": iteration.action_mode,
-                "action_decision_reason": iteration.action_decision_reason,
-                "action_rationale": iteration.action_rationale,
+                "iteration_index": decider_input.iteration_index,
+                "remaining_iteration_budget": (
+                    decider_input.remaining_iteration_budget
+                ),
+                "candidate_action_modes": output.candidate_action_modes,
+                "action_mode": output.action_mode,
+                "action_decision_reason": output.action_decision_reason,
+                "action_rationale": output.action_rationale,
                 "acquisition_paths_exhausted": (
-                    iteration.acquisition_paths_exhausted
+                    output.acquisition_paths_exhausted
                 ),
                 "top_gap_nature": top_gap.gap_nature,
                 "top_gap_severity": top_gap.gap_severity,
@@ -176,24 +159,18 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
                 ),
             },
         )
-        return action_mode != _REFINE_ACTION_MODE
+        return output
 
     def _decision_diagnostics(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> _ResearchActionDecisionDiagnostics:
         """计算不影响业务选择的路径资格与历史过滤诊断数据。"""
 
         available_families = self._ordered_unique_families(
-            stage_input.available_families,
+            decider_input.available_families,
         )
-        low_value_family_set = self._low_value_families(
-            run_state,
-            next_evidence_need,
-        )
+        low_value_family_set = self._low_value_families(decider_input)
         low_value_families = [
             family
             for family in available_families
@@ -210,162 +187,114 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
             low_value_families=low_value_families,
             memory_eligible_before_history=(
                 self._memory_acquisition_eligible_without_history(
-                    stage_input,
-                    top_gap,
-                    next_evidence_need,
+                    decider_input,
                 )
             ),
             external_eligible_before_history=(
                 self._external_acquisition_eligible_without_history(
-                    stage_input,
-                    top_gap,
-                    next_evidence_need,
+                    decider_input,
                 )
             ),
             external_families_before_history=self._ordered_unique_families(
-                self._external_source_families(stage_input),
+                self._external_source_families(decider_input),
             ),
             external_families_after_history=self._ordered_unique_families(
                 self._external_source_families_for_current_target(
-                    stage_input,
-                    run_state,
-                    next_evidence_need,
+                    decider_input,
                 )
             ),
         )
 
     def _candidate_action_modes(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        remaining_iteration_budget: int,
-        assessment: _LLMResearchAssessmentPayload,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> list[ResearchActionMode]:
         """应用确定性 gate，生成本轮可行的 action mode。"""
 
-        if self._must_refine_from_existing_state(
-            stage_input,
-            remaining_iteration_budget,
-            assessment,
-            top_gap,
-            next_evidence_need,
-        ):
+        if self._must_refine_from_existing_state(decider_input):
             return [_REFINE_ACTION_MODE]
 
         candidate_modes: list[ResearchActionMode] = [_REFINE_ACTION_MODE]
-        if self._memory_acquisition_available(
-            stage_input,
-            run_state,
-            top_gap,
-            next_evidence_need,
-        ):
+        if self._memory_acquisition_available(decider_input):
             candidate_modes.append(_MEMORY_ACTION_MODE)
-        if self._external_acquisition_available(
-            stage_input,
-            run_state,
-            top_gap,
-            next_evidence_need,
-        ):
+        if self._external_acquisition_available(decider_input):
             candidate_modes.append(_EXTERNAL_ACTION_MODE)
         return candidate_modes
 
     def _must_refine_from_existing_state(
         self,
-        stage_input: ResearchStageInput,
-        remaining_iteration_budget: int,
-        assessment: _LLMResearchAssessmentPayload,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> bool:
         """判断 acquisition 是否明确无必要或不可用。"""
 
-        if remaining_iteration_budget <= 0:
+        if decider_input.remaining_iteration_budget <= 0:
             return True
-        if self._has_no_actionable_evidence_need(top_gap, next_evidence_need):
-            return True
-        if (
-            assessment.finding_maturity == "stable"
-            and assessment.support_strength == "strong_enough"
+        if self._has_no_actionable_evidence_need(
+            decider_input.top_gap,
+            decider_input.next_evidence_need,
         ):
             return True
-        if not self._available_families(stage_input):
+        if (
+            decider_input.current_assessment.finding_maturity == "stable"
+            and decider_input.current_assessment.support_strength == "strong_enough"
+        ):
             return True
-        return self._is_latency_constrained(stage_input) and top_gap.gap_severity != "blocking"
+        if not decider_input.available_families:
+            return True
+        return (
+            self._is_latency_constrained(decider_input)
+            and decider_input.top_gap.gap_severity != "blocking"
+        )
 
     def _memory_acquisition_available(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> bool:
         """判断 memory-backed acquisition 是否是有效候选。"""
 
         return (
-            self._memory_acquisition_eligible_without_history(
-                stage_input,
-                top_gap,
-                next_evidence_need,
-            )
+            self._memory_acquisition_eligible_without_history(decider_input)
             and FamilyName.RESEARCH_KNOWLEDGE_RECALL
-            not in self._low_value_families(run_state, next_evidence_need)
+            not in self._low_value_families(decider_input)
         )
 
     def _external_acquisition_available(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> bool:
         """判断 external acquisition 是否是有效候选。"""
 
         external_families = self._external_source_families_for_current_target(
-            stage_input,
-            run_state,
-            next_evidence_need,
+            decider_input,
         )
         return bool(external_families) and (
-            self._external_acquisition_eligible_without_history(
-                stage_input,
-                top_gap,
-                next_evidence_need,
-            )
+            self._external_acquisition_eligible_without_history(decider_input)
             # 同一 target 的 memory 已被验证低价值时，只要外部能力仍可用，就切换
             # 路径而不是继续无意义地只做 state refinement。
             or FamilyName.RESEARCH_KNOWLEDGE_RECALL
-            in self._low_value_families(run_state, next_evidence_need)
+            in self._low_value_families(decider_input)
         )
 
     def _select_action_mode(
         self,
         candidate_action_modes: list[ResearchActionMode],
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        remaining_iteration_budget: int,
-        assessment: _LLMResearchAssessmentPayload,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
+        acquisition_paths_exhausted: bool,
         diagnostics: _ResearchActionDecisionDiagnostics,
     ) -> tuple[ResearchActionMode, ResearchActionDecisionReason]:
         """从候选中选择 action mode，并返回与该分支一致的稳定原因码。"""
 
         if len(candidate_action_modes) == 1:
             return candidate_action_modes[0], self._refine_decision_reason(
-                stage_input,
-                run_state,
-                remaining_iteration_budget,
-                assessment,
-                top_gap,
-                next_evidence_need,
+                decider_input,
+                acquisition_paths_exhausted,
             )
         if (
             _EXTERNAL_ACTION_MODE in candidate_action_modes
             and (
-                next_evidence_need.freshness_requirement == "fresh_required"
-                or top_gap.gap_nature == "stale"
+                decider_input.next_evidence_need.freshness_requirement
+                == "fresh_required"
+                or decider_input.top_gap.gap_nature == "stale"
             )
         ):
             return _EXTERNAL_ACTION_MODE, "fresh_or_stale_requires_external"
@@ -385,31 +314,30 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
 
     def _refine_decision_reason(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        remaining_iteration_budget: int,
-        assessment: _LLMResearchAssessmentPayload,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
+        acquisition_paths_exhausted: bool,
     ) -> ResearchActionDecisionReason:
         """按照 refine gate 的实际优先顺序返回唯一原因码。"""
 
-        if run_state.require_current_iteration().acquisition_paths_exhausted:
+        if acquisition_paths_exhausted:
             return "acquisition_paths_exhausted"
-        if remaining_iteration_budget <= 0:
+        if decider_input.remaining_iteration_budget <= 0:
             return "iteration_budget_exhausted"
-        if self._has_no_actionable_evidence_need(top_gap, next_evidence_need):
+        if self._has_no_actionable_evidence_need(
+            decider_input.top_gap,
+            decider_input.next_evidence_need,
+        ):
             return "no_actionable_gap"
         if (
-            assessment.finding_maturity == "stable"
-            and assessment.support_strength == "strong_enough"
+            decider_input.current_assessment.finding_maturity == "stable"
+            and decider_input.current_assessment.support_strength == "strong_enough"
         ):
             return "stable_with_strong_support"
-        if not self._available_families(stage_input):
+        if not decider_input.available_families:
             return "no_available_family"
         if (
-            self._is_latency_constrained(stage_input)
-            and top_gap.gap_severity != "blocking"
+            self._is_latency_constrained(decider_input)
+            and decider_input.top_gap.gap_severity != "blocking"
         ):
             return "latency_constrained"
         return "no_eligible_acquisition_path"
@@ -417,10 +345,7 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
     def _build_action_request(
         self,
         action_mode: ResearchActionMode,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
         diagnostics: _ResearchActionDecisionDiagnostics,
     ) -> ResearchActionRequest | None:
         """构造 acquisition path 所需的强类型 action request。"""
@@ -429,9 +354,7 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
             return None
         allowed_source_families = self._allowed_source_families_for_action(
             action_mode,
-            stage_input,
-            run_state,
-            next_evidence_need,
+            decider_input,
         )
         blocked_source_families = self._blocked_source_families_for_action(
             action_mode,
@@ -439,28 +362,29 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
         )
         return ResearchActionRequest(
             action_mode=action_mode,
-            target_scope=self._action_target_scope(top_gap, next_evidence_need),
-            target_problem=self._action_target_problem(
-                stage_input,
-                top_gap,
-                next_evidence_need,
+            target_scope=self._action_target_scope(decider_input),
+            target_problem=self._action_target_problem(decider_input),
+            gap_scope=decider_input.top_gap.gap_scope,
+            gap_nature=decider_input.top_gap.gap_nature,
+            gap_severity=decider_input.top_gap.gap_severity,
+            gap_summary=decider_input.top_gap.gap_summary,
+            evidence_goal=decider_input.next_evidence_need.need_purpose,
+            desired_evidence_kind=(
+                decider_input.next_evidence_need.desired_evidence_kind
             ),
-            gap_scope=top_gap.gap_scope,
-            gap_nature=top_gap.gap_nature,
-            gap_severity=top_gap.gap_severity,
-            gap_summary=top_gap.gap_summary,
-            evidence_goal=next_evidence_need.need_purpose,
-            desired_evidence_kind=next_evidence_need.desired_evidence_kind,
-            freshness_requirement=next_evidence_need.freshness_requirement,
+            freshness_requirement=(
+                decider_input.next_evidence_need.freshness_requirement
+            ),
             allowed_source_families=allowed_source_families,
             preferred_source_families=self._preferred_source_families_for_action(
                 action_mode,
                 allowed_source_families,
             ),
             blocked_source_families=blocked_source_families,
-            scope_restrictions=list(stage_input.scope_restrictions),
+            scope_restrictions=list(decider_input.scope_restrictions),
             success_hint=(
-                next_evidence_need.need_summary or top_gap.gap_actionability
+                decider_input.next_evidence_need.need_summary
+                or decider_input.top_gap.gap_actionability
             ),
             fallback_policy=(
                 "fallback_within_same_family"
@@ -483,9 +407,7 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
     def _allowed_source_families_for_action(
         self,
         action_mode: ResearchActionMode,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> list[FamilyName]:
         """解析本轮 action request 的 retrieval family 约束。"""
 
@@ -493,9 +415,7 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
             return [FamilyName.RESEARCH_KNOWLEDGE_RECALL]
         if action_mode == _EXTERNAL_ACTION_MODE:
             return self._external_source_families_for_current_target(
-                stage_input,
-                run_state,
-                next_evidence_need,
+                decider_input,
             )
         return []
 
@@ -516,31 +436,28 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
 
     def _action_target_scope(
         self,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> str | None:
         """返回 action intent 可用的最具体目标范围。"""
 
         return (
-            next_evidence_need.need_target
-            or top_gap.gap_target
-            or next_evidence_need.need_scope
-            or top_gap.gap_scope
+            decider_input.next_evidence_need.need_target
+            or decider_input.top_gap.gap_target
+            or decider_input.next_evidence_need.need_scope
+            or decider_input.top_gap.gap_scope
         )
 
     def _action_target_problem(
         self,
-        stage_input: ResearchStageInput,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> str:
         """返回后续 acquisition 要解决的具体问题。"""
 
         return (
-            next_evidence_need.need_summary
-            or top_gap.gap_summary
-            or stage_input.user_goal
-            or stage_input.original_query
+            decider_input.next_evidence_need.need_summary
+            or decider_input.top_gap.gap_summary
+            or decider_input.user_goal
+            or decider_input.original_query
         )
 
     def _action_rationale(
@@ -591,38 +508,21 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
 
     def _acquisition_paths_exhausted(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        assessment: _LLMResearchAssessmentPayload,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> bool:
         """判断历史是否已耗尽当前 target 的全部规则允许 acquisition 路径。"""
 
-        if self._must_refine_from_existing_state(
-            stage_input,
-            run_state.require_current_iteration().remaining_iteration_budget,
-            assessment,
-            top_gap,
-            next_evidence_need,
-        ):
+        if self._must_refine_from_existing_state(decider_input):
             return False
 
-        low_value_families = self._low_value_families(
-            run_state,
-            next_evidence_need,
-        )
+        low_value_families = self._low_value_families(decider_input)
         memory_eligible = self._memory_acquisition_eligible_without_history(
-            stage_input,
-            top_gap,
-            next_evidence_need,
+            decider_input
         )
-        external_families = self._external_source_families(stage_input)
+        external_families = self._external_source_families(decider_input)
         external_eligible = bool(external_families) and (
             self._external_acquisition_eligible_without_history(
-                stage_input,
-                top_gap,
-                next_evidence_need,
+                decider_input,
             )
             or FamilyName.RESEARCH_KNOWLEDGE_RECALL in low_value_families
         )
@@ -639,109 +539,75 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
 
     def _memory_acquisition_eligible_without_history(
         self,
-        stage_input: ResearchStageInput,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> bool:
         """只根据当前 need 与 capability 判断 memory path 的基础适用性。"""
 
         return (
-            self._has_memory_capability(stage_input)
-            and next_evidence_need.freshness_requirement != "fresh_required"
-            and top_gap.gap_nature not in {"stale", "imbalanced"}
+            self._has_memory_capability(decider_input)
+            and decider_input.next_evidence_need.freshness_requirement
+            != "fresh_required"
+            and decider_input.top_gap.gap_nature not in {"stale", "imbalanced"}
         )
 
     def _external_acquisition_eligible_without_history(
         self,
-        stage_input: ResearchStageInput,
-        top_gap: _LLMResearchGapPayload,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> bool:
         """只根据当前 need 与 capability 判断 external path 的基础适用性。"""
 
-        return bool(self._external_source_families(stage_input)) and (
-            top_gap.gap_nature in {"missing", "stale", "imbalanced"}
-            or next_evidence_need.freshness_requirement == "fresh_required"
-            or next_evidence_need.desired_evidence_kind
+        return bool(self._external_source_families(decider_input)) and (
+            decider_input.top_gap.gap_nature in {"missing", "stale", "imbalanced"}
+            or decider_input.next_evidence_need.freshness_requirement
+            == "fresh_required"
+            or decider_input.next_evidence_need.desired_evidence_kind
             in {"direct_fact", "comparison_evidence", "fresh_status_evidence"}
         )
 
     def _external_source_families_for_current_target(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> list[FamilyName]:
         """排除当前 target 已明确低价值的 external family。"""
 
-        low_value_families = self._low_value_families(
-            run_state,
-            next_evidence_need,
-        )
+        low_value_families = self._low_value_families(decider_input)
         return [
             family
-            for family in self._external_source_families(stage_input)
+            for family in self._external_source_families(decider_input)
             if family not in low_value_families
         ]
 
     def _low_value_families(
         self,
-        run_state: ResearchExecutorRunState,
-        next_evidence_need: _LLMNextEvidenceNeedPayload,
+        decider_input: ResearchActionDeciderInput,
     ) -> set[FamilyName]:
         """返回与当前 evidence need 同 coverage target 的已验证低价值 family。"""
 
         return self._retrieval_history_tracker.low_value_families_for_target(
-            run_state,
-            next_evidence_need.coverage_target_key,
+            decider_input.recent_retrieval_attempts,
+            decider_input.next_evidence_need.coverage_target_key,
         )
 
-    def _required_assessment(
+    def _has_memory_capability(
         self,
-        run_state: ResearchExecutorRunState,
-    ) -> _LLMResearchAssessmentPayload:
-        """返回当前 assessment；缺失时说明 Step 1 尚未完成。"""
-
-        if run_state.current_assessment is None:
-            raise ValueError("current_assessment is required before action decision.")
-        return run_state.current_assessment
-
-    def _required_top_gap(
-        self,
-        run_state: ResearchExecutorRunState,
-    ) -> _LLMResearchGapPayload:
-        """返回当前 top gap；缺失时说明 Step 1 尚未完成。"""
-
-        if run_state.top_gap is None:
-            raise ValueError("top_gap is required before action decision.")
-        return run_state.top_gap
-
-    def _required_next_evidence_need(
-        self,
-        run_state: ResearchExecutorRunState,
-    ) -> _LLMNextEvidenceNeedPayload:
-        """返回当前 evidence need；缺失时说明 Step 1 尚未完成。"""
-
-        if run_state.next_evidence_need is None:
-            raise ValueError("next_evidence_need is required before action decision.")
-        return run_state.next_evidence_need
-
-    def _has_memory_capability(self, stage_input: ResearchStageInput) -> bool:
+        decider_input: ResearchActionDeciderInput,
+    ) -> bool:
         """判断 runtime family 是否包含 memory acquisition 路径。"""
 
-        return FamilyName.RESEARCH_KNOWLEDGE_RECALL in self._available_families(
-            stage_input,
+        return (
+            FamilyName.RESEARCH_KNOWLEDGE_RECALL
+            in decider_input.available_families
         )
 
     def _external_source_families(
         self,
-        stage_input: ResearchStageInput,
+        decider_input: ResearchActionDeciderInput,
     ) -> list[FamilyName]:
         """返回当前 runtime 中按原顺序可选的 external retrieval family。"""
 
         return [
             family
-            for family in stage_input.available_families
+            for family in decider_input.available_families
             if family in _EXTERNAL_FAMILIES
         ]
 
@@ -753,10 +619,13 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
 
         return list(dict.fromkeys(families))
 
-    def _is_latency_constrained(self, stage_input: ResearchStageInput) -> bool:
+    def _is_latency_constrained(
+        self,
+        decider_input: ResearchActionDeciderInput,
+    ) -> bool:
         """判断 latency budget 是否应抑制非阻塞 acquisition。"""
 
         return (
-            stage_input.latency_budget_ms is not None
-            and stage_input.latency_budget_ms <= 1000
+            decider_input.latency_budget_ms is not None
+            and decider_input.latency_budget_ms <= 1000
         )
