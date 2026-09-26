@@ -6,12 +6,16 @@ import asyncio
 import logging
 from copy import deepcopy
 
+import pytest
+
 from app.domain.enums import (
     AcquisitionStatus,
     FamilyName,
     RetrievalResultUtility,
 )
 from app.domain.models import (
+    EvidenceProcessingResult,
+    ProcessedEvidenceUnit,
     RecentRetrievalAttempt,
     ResearchStageInput,
     RetrievalAttemptTrace,
@@ -36,6 +40,9 @@ from app.services.executor.models.research_executor_llm_payloads import (
 )
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
+)
+from app.services.executor.models.research_iteration_evaluation_state import (
+    ResearchIterationEvaluationState,
 )
 from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_retrieval_history_tracker import (
@@ -110,6 +117,33 @@ def _attempt(
         result_status=status,
         result_utility=utility,
     )
+
+
+def _state_with_processed_evidence(
+    *,
+    top_gap_progress: str | None,
+    evidence_gain: str | None,
+) -> ResearchExecutorRunState:
+    """构造已经产出 evidence、可用于派生 utility 的 iteration state。"""
+
+    state = _run_state()
+    iteration = state.require_current_iteration()
+    evidence_unit = ProcessedEvidenceUnit(
+        evidence_unit_id="ev_001",
+        content="当前材料对 coverage target 提供了一条可评估的证据。",
+        evidence_type="supporting_signal",
+    )
+    iteration.evidence_processing_result = EvidenceProcessingResult(
+        processed_evidence_units=[evidence_unit],
+        processing_status="success",
+    )
+    iteration.processed_evidence_units = [evidence_unit]
+    if top_gap_progress is not None or evidence_gain is not None:
+        iteration.evaluation_state = ResearchIterationEvaluationState(
+            top_gap_progress=top_gap_progress,
+            evidence_gain=evidence_gain,
+        )
+    return state
 
 
 def _decider_input(
@@ -341,7 +375,7 @@ def test_memory_low_value_history_switches_current_target_to_external() -> None:
     assert decider_input.model_dump(mode="json") == input_before_decision
 
 
-def test_weakly_useful_history_does_not_block_memory_path() -> None:
+def test_weakly_useful_memory_history_switches_current_target_to_external() -> None:
     tracker = ResearchRetrievalHistoryTracker()
     state = _run_state(
         recent_retrieval_attempts=[
@@ -369,8 +403,282 @@ def test_weakly_useful_history_does_not_block_memory_path() -> None:
         )
     )
 
-    assert output.action_mode == "memory_backed_acquisition"
-    assert output.action_decision_reason == "memory_only_candidate"
+    assert output.action_mode == "external_acquisition"
+    assert output.action_decision_reason == "memory_blocked_by_history"
+    assert output.action_request is not None
+    assert output.action_request.allowed_source_families == [
+        FamilyName.DOCS_SEARCH
+    ]
+
+
+def test_weakly_useful_memory_exhausts_memory_only_path() -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+    state = _run_state(
+        recent_retrieval_attempts=[
+            _attempt(
+                FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                status=AcquisitionStatus.SUCCESS,
+                utility=RetrievalResultUtility.WEAKLY_USEFUL,
+            )
+        ]
+    )
+    decider = ResearchActionDecider(retrieval_history_tracker=tracker)
+
+    output = asyncio.run(
+        decider.decide(
+            _decider_input(
+                ResearchStageInput(
+                    original_query="补齐当前目标的可靠支撑材料。",
+                    available_families=[
+                        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                    ],
+                ),
+                state,
+            )
+        )
+    )
+
+    assert output.candidate_action_modes == ["refine_from_existing_state"]
+    assert output.action_mode == "refine_from_existing_state"
+    assert output.action_decision_reason == "acquisition_paths_exhausted"
+    assert output.acquisition_paths_exhausted is True
+    assert output.action_request is None
+
+
+@pytest.mark.parametrize("family", list(FamilyName))
+@pytest.mark.parametrize(
+    "utility",
+    [
+        RetrievalResultUtility.WEAKLY_USEFUL,
+        RetrievalResultUtility.NOT_USEFUL,
+    ],
+)
+def test_lower_two_utility_levels_make_every_family_low_value(
+    family: FamilyName,
+    utility: RetrievalResultUtility,
+) -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+    state = _run_state(
+        recent_retrieval_attempts=[
+            _attempt(
+                family,
+                status=AcquisitionStatus.SUCCESS,
+                utility=utility,
+            )
+        ]
+    )
+
+    assert tracker.low_value_families_for_target(
+        state.recent_retrieval_attempts,
+        "objective",
+    ) == {family}
+
+
+@pytest.mark.parametrize("family", list(FamilyName))
+@pytest.mark.parametrize(
+    "utility",
+    [
+        RetrievalResultUtility.HIGHLY_USEFUL,
+        RetrievalResultUtility.STRONGLY_USEFUL,
+        RetrievalResultUtility.USEFUL,
+    ],
+)
+def test_top_three_utility_levels_do_not_block_family(
+    family: FamilyName,
+    utility: RetrievalResultUtility,
+) -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+    state = _run_state(
+        recent_retrieval_attempts=[
+            _attempt(
+                family,
+                status=AcquisitionStatus.SUCCESS,
+                utility=utility,
+            )
+        ]
+    )
+
+    assert tracker.low_value_families_for_target(
+        state.recent_retrieval_attempts,
+        "objective",
+    ) == set()
+
+
+def test_only_latest_attempt_per_family_controls_low_value_state() -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+    recovered_attempts = [
+        _attempt(
+            FamilyName.DOCS_SEARCH,
+            status=AcquisitionStatus.SUCCESS,
+            utility=RetrievalResultUtility.WEAKLY_USEFUL,
+        ),
+        _attempt(
+            FamilyName.DOCS_SEARCH,
+            status=AcquisitionStatus.SUCCESS,
+            utility=RetrievalResultUtility.USEFUL,
+        ),
+    ]
+    regressed_attempts = list(reversed(recovered_attempts))
+
+    assert tracker.low_value_families_for_target(
+        recovered_attempts,
+        "objective",
+    ) == set()
+    assert tracker.low_value_families_for_target(
+        regressed_attempts,
+        "objective",
+    ) == {FamilyName.DOCS_SEARCH}
+
+
+@pytest.mark.parametrize(
+    ("top_gap_progress", "evidence_gain", "expected_utility"),
+    [
+        (
+            "resolved",
+            "meaningful_gain",
+            RetrievalResultUtility.HIGHLY_USEFUL,
+        ),
+        (
+            "partially_advanced",
+            "meaningful_gain",
+            RetrievalResultUtility.STRONGLY_USEFUL,
+        ),
+        (
+            "not_advanced",
+            "meaningful_gain",
+            RetrievalResultUtility.USEFUL,
+        ),
+        (
+            "partially_advanced",
+            "limited_gain",
+            RetrievalResultUtility.WEAKLY_USEFUL,
+        ),
+        (
+            "partially_advanced",
+            "no_meaningful_gain",
+            RetrievalResultUtility.NOT_USEFUL,
+        ),
+        (
+            "not_advanced",
+            "failed_acquisition",
+            RetrievalResultUtility.NOT_USEFUL,
+        ),
+    ],
+)
+def test_attempt_utility_uses_five_level_outcome_mapping(
+    top_gap_progress: str,
+    evidence_gain: str,
+    expected_utility: RetrievalResultUtility,
+) -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+    state = _state_with_processed_evidence(
+        top_gap_progress=top_gap_progress,
+        evidence_gain=evidence_gain,
+    )
+
+    assert tracker._attempt_utility(state, AcquisitionStatus.SUCCESS) == (
+        expected_utility
+    )
+
+
+def test_attempt_utility_without_evaluation_is_weakly_useful() -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+    state = _state_with_processed_evidence(
+        top_gap_progress=None,
+        evidence_gain=None,
+    )
+
+    assert tracker._attempt_utility(state, AcquisitionStatus.SUCCESS) == (
+        RetrievalResultUtility.WEAKLY_USEFUL
+    )
+
+
+@pytest.mark.parametrize(
+    "acquisition_status",
+    [AcquisitionStatus.SUCCESS, AcquisitionStatus.PARTIAL_SUCCESS],
+)
+def test_returned_but_non_advancing_evidence_is_not_useful(
+    acquisition_status: AcquisitionStatus,
+) -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+    state = _state_with_processed_evidence(
+        top_gap_progress="not_advanced",
+        evidence_gain="no_meaningful_gain",
+    )
+
+    assert tracker._attempt_utility(state, acquisition_status) == (
+        RetrievalResultUtility.NOT_USEFUL
+    )
+
+
+@pytest.mark.parametrize(
+    "acquisition_status",
+    [AcquisitionStatus.FAILED, AcquisitionStatus.NO_RESULT],
+)
+def test_failed_or_empty_acquisition_is_not_useful(
+    acquisition_status: AcquisitionStatus,
+) -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+
+    assert tracker._attempt_utility(_run_state(), acquisition_status) == (
+        RetrievalResultUtility.NOT_USEFUL
+    )
+
+
+def test_success_without_processed_evidence_is_not_useful() -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+
+    assert tracker._attempt_utility(_run_state(), AcquisitionStatus.SUCCESS) == (
+        RetrievalResultUtility.NOT_USEFUL
+    )
+
+
+def test_failed_no_result_and_not_useful_history_remain_low_value() -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+    attempts = [
+        _attempt(
+            FamilyName.WEB_SEARCH,
+            status=AcquisitionStatus.FAILED,
+            utility=RetrievalResultUtility.WEAKLY_USEFUL,
+        ),
+        _attempt(
+            FamilyName.PAPER_SEARCH,
+            status=AcquisitionStatus.NO_RESULT,
+            utility=RetrievalResultUtility.USEFUL,
+        ),
+        _attempt(
+            FamilyName.DOCS_SEARCH,
+            status=AcquisitionStatus.SUCCESS,
+            utility=RetrievalResultUtility.NOT_USEFUL,
+        ),
+    ]
+
+    assert all(tracker.is_definitively_low_value(attempt) for attempt in attempts)
+
+
+def test_weakly_useful_memory_history_is_scoped_to_coverage_target() -> None:
+    tracker = ResearchRetrievalHistoryTracker()
+    state = _run_state(
+        recent_retrieval_attempts=[
+            _attempt(
+                FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                status=AcquisitionStatus.SUCCESS,
+                utility=RetrievalResultUtility.WEAKLY_USEFUL,
+                target_key="sub_question:1",
+            )
+        ]
+    )
+
+    assert tracker.low_value_families_for_target(
+        state.recent_retrieval_attempts,
+        "objective",
+    ) == set()
+    assert tracker.low_value_families_for_target(
+        state.recent_retrieval_attempts,
+        "sub_question:1",
+    ) == {
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL
+    }
 
 
 def test_exhausted_memory_and_external_paths_degrade_without_outcome_llm() -> None:

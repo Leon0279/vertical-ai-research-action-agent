@@ -298,6 +298,20 @@ class _FakeToolExecutionLayerService:
         return self.result
 
 
+class _SequencedFakeToolExecutionLayerService(_FakeToolExecutionLayerService):
+    def __init__(self, results: list[ToolExecutionLayerResult]) -> None:
+        assert results
+        super().__init__(result=results[-1])
+        self._results = list(results)
+
+    async def execute(
+        self,
+        request: ToolExecutionLayerRequest,
+    ) -> ToolExecutionLayerResult:
+        self.requests.append(request)
+        return self._results.pop(0)
+
+
 class _FailingToolExecutionLayerService(_FakeToolExecutionLayerService):
     async def execute(
         self,
@@ -3161,7 +3175,9 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
     assert "memory retrieval ineffective query" not in assessment_prompts[1]
     assert fake_tel.requests[0].action_mode == "memory_backed_acquisition"
     assert fake_tel.requests[1].action_mode == "external_acquisition"
-    assert fake_tel.requests[1].allowed_source_families == [FamilyName.DOCS_SEARCH]
+    assert fake_tel.requests[1].allowed_source_families == [
+        FamilyName.DOCS_SEARCH
+    ]
     log_records = [
         json.loads(line)
         for line in log_path.read_text(encoding="utf-8").splitlines()
@@ -3283,3 +3299,196 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
     assert all("top_gap" not in record for record in action_records)
     assert all("next_evidence_need" not in record for record in action_records)
     assert all("evidence_coverage_map" not in record for record in action_records)
+
+
+def test_research_executor_switches_to_external_after_weakly_useful_memory(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
+    limited_gain_outcome = json.dumps(
+        _valid_outcome_payload(
+            top_gap_progress="partially_advanced",
+            evidence_gain="limited_gain",
+            finding_progress="improved_but_not_stable",
+            residual_uncertainty="moderate",
+            proposed_iteration_outcome="continue",
+            proposed_outcome_rationale=(
+                "Memory 只有有限增量，应继续使用外部来源补齐证据。"
+            ),
+        ),
+        ensure_ascii=False,
+    )
+    stop_outcome = json.dumps(
+        _valid_outcome_payload(
+            proposed_iteration_outcome="stop",
+            proposed_outcome_rationale="外部来源已完成本测试所需的补充。",
+        ),
+        ensure_ascii=False,
+    )
+    memory_result = ToolExecutionLayerResult(
+        execution_status="completed",
+        acquisition_status=AcquisitionStatus.SUCCESS,
+        retrieval_trace=RetrievalTrace(
+            target_problem="补充 memory-backed retrieval 的直接事实证据。",
+            selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+            selected_tool="research_knowledge_memory_v1",
+            attempts=[
+                RetrievalAttemptTrace(
+                    selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                    selected_tool="research_knowledge_memory_v1",
+                    generated_query="memory retrieval limited gain query",
+                    acquisition_status=AcquisitionStatus.SUCCESS,
+                )
+            ],
+        ),
+    )
+    fake_llm = _FakeLLMClient(
+        outcome_responses=[limited_gain_outcome, stop_outcome]
+    )
+    fake_tel = _FakeToolExecutionLayerService(result=memory_result)
+    service = _StateCapturingResearchExecutorService(
+        llm_client=fake_llm,
+        tool_execution_layer_service=fake_tel,
+        evidence_processing_service=_successful_evidence_service(),
+    )
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Switch away from weakly useful memory evidence.",
+                available_families=[
+                    FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                    FamilyName.DOCS_SEARCH,
+                ],
+                iteration_budget=2,
+            )
+        )
+    )
+
+    assert result.executed_iteration_count == 2
+    assert [request.action_mode for request in fake_tel.requests] == [
+        "memory_backed_acquisition",
+        "external_acquisition",
+    ]
+    assert fake_tel.requests[1].allowed_source_families == [FamilyName.DOCS_SEARCH]
+    action_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_action_selected"
+    ]
+    assert [record.action_decision_reason for record in action_records] == [
+        "memory_preferred_by_default",
+        "memory_blocked_by_history",
+    ]
+    history_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_retrieval_history_updated"
+    ]
+    assert history_records[0].retrieval_attempts[0]["result_utility"] == (
+        RetrievalResultUtility.WEAKLY_USEFUL
+    )
+    assert history_records[0].low_value_families == [
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL
+    ]
+
+
+def test_research_executor_excludes_weakly_useful_docs_on_next_iteration(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
+    limited_gain_outcome = json.dumps(
+        _valid_outcome_payload(
+            top_gap_progress="partially_advanced",
+            evidence_gain="limited_gain",
+            proposed_iteration_outcome="continue",
+            proposed_outcome_rationale=(
+                "Docs 只有有限增量，应切换到其他 external family。"
+            ),
+        ),
+        ensure_ascii=False,
+    )
+    stop_outcome = json.dumps(
+        _valid_outcome_payload(
+            proposed_iteration_outcome="stop",
+            proposed_outcome_rationale="Web 已完成本测试所需的补充。",
+        ),
+        ensure_ascii=False,
+    )
+    docs_result = ToolExecutionLayerResult(
+        execution_status="completed",
+        acquisition_status=AcquisitionStatus.SUCCESS,
+        retrieval_trace=RetrievalTrace(
+            target_problem="补充当前目标的直接事实证据。",
+            selected_family=FamilyName.DOCS_SEARCH,
+            selected_tool="docs_search_v1",
+            attempts=[
+                RetrievalAttemptTrace(
+                    selected_family=FamilyName.DOCS_SEARCH,
+                    selected_tool="docs_search_v1",
+                    generated_query="docs limited gain query",
+                    acquisition_status=AcquisitionStatus.SUCCESS,
+                )
+            ],
+        ),
+    )
+    web_result = ToolExecutionLayerResult(
+        execution_status="completed",
+        acquisition_status=AcquisitionStatus.SUCCESS,
+        retrieval_trace=RetrievalTrace(
+            target_problem="补充当前目标的直接事实证据。",
+            selected_family=FamilyName.WEB_SEARCH,
+            selected_tool="web_search_v1",
+            attempts=[
+                RetrievalAttemptTrace(
+                    selected_family=FamilyName.WEB_SEARCH,
+                    selected_tool="web_search_v1",
+                    generated_query="web follow-up query",
+                    acquisition_status=AcquisitionStatus.SUCCESS,
+                )
+            ],
+        ),
+    )
+    fake_tel = _SequencedFakeToolExecutionLayerService(
+        [docs_result, web_result]
+    )
+    service = _StateCapturingResearchExecutorService(
+        llm_client=_FakeLLMClient(
+            outcome_responses=[limited_gain_outcome, stop_outcome]
+        ),
+        tool_execution_layer_service=fake_tel,
+        evidence_processing_service=_successful_evidence_service(),
+    )
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Switch away from weakly useful docs evidence.",
+                available_families=[
+                    FamilyName.DOCS_SEARCH,
+                    FamilyName.WEB_SEARCH,
+                ],
+                iteration_budget=2,
+            )
+        )
+    )
+
+    assert result.executed_iteration_count == 2
+    assert fake_tel.requests[0].allowed_source_families == [
+        FamilyName.DOCS_SEARCH,
+        FamilyName.WEB_SEARCH,
+    ]
+    assert fake_tel.requests[1].allowed_source_families == [
+        FamilyName.WEB_SEARCH
+    ]
+    history_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_retrieval_history_updated"
+    ]
+    assert history_records[0].retrieval_attempts[0]["result_utility"] == (
+        RetrievalResultUtility.WEAKLY_USEFUL
+    )
+    assert history_records[0].low_value_families == [FamilyName.DOCS_SEARCH]

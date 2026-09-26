@@ -221,12 +221,20 @@ class ResearchRetrievalHistoryTracker:
         self,
         attempt: RecentRetrievalAttempt,
     ) -> bool:
-        """判断某条历史是否足以阻止当前 target 立刻重复同一 family。"""
+        """判断某条历史是否足以阻止当前 target 立刻重复同一 family。
+
+        AcquisitionStatus 只描述检索是否返回材料；Utility 描述材料对当前 target
+        的实际增量。任意 family 一旦只有微弱增量或完全无用，下一轮都应切换路径。
+        """
 
         return (
             attempt.result_status
             in {AcquisitionStatus.FAILED, AcquisitionStatus.NO_RESULT}
-            or attempt.result_utility == RetrievalResultUtility.NOT_USEFUL
+            or attempt.result_utility
+            in {
+                RetrievalResultUtility.WEAKLY_USEFUL,
+                RetrievalResultUtility.NOT_USEFUL,
+            }
         )
 
     def assessment_prompt_value(
@@ -273,7 +281,10 @@ class ResearchRetrievalHistoryTracker:
         """结合 Evidence Processing 与 Step 7 outcome 确定单条 attempt 的实际效用。"""
 
         iteration = run_state.require_current_iteration()
-        if acquisition_status in {AcquisitionStatus.FAILED, AcquisitionStatus.NO_RESULT}:
+        if acquisition_status in {
+            AcquisitionStatus.FAILED,
+            AcquisitionStatus.NO_RESULT,
+        }:
             return RetrievalResultUtility.NOT_USEFUL
         if (
             iteration.evidence_processing_result is None
@@ -286,11 +297,15 @@ class ResearchRetrievalHistoryTracker:
         evaluation_state = iteration.evaluation_state
         if evaluation_state is None or evaluation_state.evidence_gain is None:
             return RetrievalResultUtility.WEAKLY_USEFUL
-        if evaluation_state.evidence_gain == "meaningful_gain":
-            return RetrievalResultUtility.USEFUL
         if evaluation_state.evidence_gain == "limited_gain":
             return RetrievalResultUtility.WEAKLY_USEFUL
-        return RetrievalResultUtility.NOT_USEFUL
+        if evaluation_state.evidence_gain != "meaningful_gain":
+            return RetrievalResultUtility.NOT_USEFUL
+        if evaluation_state.top_gap_progress == "resolved":
+            return RetrievalResultUtility.HIGHLY_USEFUL
+        if evaluation_state.top_gap_progress == "partially_advanced":
+            return RetrievalResultUtility.STRONGLY_USEFUL
+        return RetrievalResultUtility.USEFUL
 
     def _query_fingerprint(self, generated_query: str | None) -> str | None:
         """生成足够稳定且不引入额外持久化依赖的 query 指纹。"""

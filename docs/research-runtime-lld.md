@@ -4165,9 +4165,16 @@ cross_round_merge_summary
 
 `result_utility` 推荐枚举值：
 
+- `highly_useful`
+- `strongly_useful`
 - `useful`
 - `weakly_useful`
 - `not_useful`
+
+`result_status` 与 `result_utility` 表达两个独立维度：前者描述 retrieval
+是否完成并返回材料，后者描述这些材料对当前 `coverage_target_key` 的增量效用。
+因此，成功返回无关、重复或不可用材料时，可以合法记录为
+`success + not_useful`。
 
 **Example**
 
@@ -4895,7 +4902,7 @@ candidate_tools
 
 - 若某个具体 tool 最近针对相同或高度相似的 `target_problem`、`query_fingerprint` 已多次返回
     
-    `failed / no_result / not_useful`
+    `failed / no_result / weakly_useful / not_useful`
     
     → 应优先降权或排除该 tool
     
@@ -5177,9 +5184,29 @@ routing_rationale
 
 **`result_utility` 推荐枚举值：**
 
-- `useful`：本次结果对当前轮有明确帮助
-- `weakly_useful`：本次结果有一定帮助，但增益有限
-- `not_useful`：本次结果对当前轮几乎没有帮助
+- `highly_useful`：本次结果直接解决或基本填补当前 coverage target 的核心缺口
+- `strongly_useful`：本次结果显著推进当前 coverage target，但尚未完全解决核心缺口
+- `useful`：本次结果与当前 coverage target 明确相关，并产生实际增量
+- `weakly_useful`：本次结果只有有限、间接或不稳定的增量，不值得立即重复同一 family
+- `not_useful`：未获得可用证据，或返回的证据无关、重复、不可用，未推进当前 coverage target
+
+`result_status` 只描述 retrieval 是否成功执行并返回材料，`result_utility`
+只描述材料对当前 coverage target 的增量效用。两者不得互相替代。例如，成功返回
+无关材料应记录为 `success + not_useful`，而不能因为 status 为 `success` 就提升效用。
+
+当前五档由已有 iteration outcome 确定性派生：
+
+- `failed`、`no_result`、没有 processed evidence、`failed_acquisition` 或 `no_meaningful_gain`
+  → `not_useful`
+- 缺少 evaluation state 或 `limited_gain` → `weakly_useful`
+- `meaningful_gain + resolved` → `highly_useful`
+- `meaningful_gain + partially_advanced` → `strongly_useful`
+- 其他 `meaningful_gain` 组合 → `useful`
+
+family 级路径规避以当前 `coverage_target_key` 为边界，并且每个 family 只看最近一次
+attempt。最近一次为 `failed` / `no_result`，或 utility 为 `weakly_useful` /
+`not_useful` 时，该 family 在当前 target 的下一轮被标记为 low value；前三档不会触发
+该规则。coverage target 改变后，该 family 可重新使用。
 
 **Example**
 

@@ -18,6 +18,16 @@ from app.domain.models import (
 )
 
 
+def test_retrieval_result_utility_uses_five_stable_wire_values() -> None:
+    assert [utility.value for utility in RetrievalResultUtility] == [
+        "highly_useful",
+        "strongly_useful",
+        "useful",
+        "weakly_useful",
+        "not_useful",
+    ]
+
+
 def test_normalized_retrieval_item_supports_core_fields_and_metadata() -> None:
     item = NormalizedRetrievalItem(
         item_id="item-1",
