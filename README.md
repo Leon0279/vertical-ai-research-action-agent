@@ -178,7 +178,7 @@ logs/app.jsonl
 make logs
 ```
 
-日志包含 `trace_id`、Pipeline 阶段、retrieval attempt/fallback、研究迭代和 memory writeback 结果，但不会记录 API Key、Authorization、完整 prompt 或 provider 原始响应。
+日志包含 `trace_id`、Pipeline 阶段、retrieval attempt/fallback、研究迭代和 memory writeback 结果。LLM 失败还会记录模型、响应模式、prompt 字符数与不可逆短指纹、调用耗时、尝试次数，以及经过脱敏和截断的 provider 状态、错误码、错误说明和 request ID，用于区分参数拒绝、限流、服务端错误、超时、网络和响应格式问题。日志不会记录 API Key、Authorization、prompt 正文、LLM 请求体或 provider 原始响应。
 
 ## 常见问题
 

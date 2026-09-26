@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from typing import Any
 
 import pytest
 
+from app.adapters.llm.zhipu_llm_client_error import ZhipuLLMClientError
 from app.domain.enums import FamilyName, TaskType, WorkflowPattern
 from app.domain.models import (
     ContextItem,
@@ -319,6 +321,102 @@ def test_llm_failure_uses_fallback_and_logs_reason(caplog: pytest.LogCaptureFixt
         completed.initial_evidence_strategy
         == context.running_state.initial_evidence_strategy
     )
+    failed = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "planning_llm_failed"
+    )
+    assert failed.llm_operation == "planning"
+    assert failed.llm_prompt_char_count > 0
+    assert len(failed.llm_prompt_fingerprint) == 16
+    assert failed.llm_duration_ms >= 0
+    assert failed.exception_type == "RuntimeError"
+    assert not hasattr(failed, "provider_error_message")
+    assert not hasattr(failed, "prompt")
+
+
+def test_provider_failure_logs_safe_planning_diagnostics(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    context = _context(query="private planning question")
+    error = ZhipuLLMClientError(
+        "safe adapter error",
+        status_code=400,
+        provider_code="1301",
+        provider_message="request rejected",
+        request_id="provider-request-1",
+        retriable=False,
+        error_category="provider_client_error",
+        attempt_count=1,
+        max_attempts=3,
+        model="glm-5.1",
+        response_mode="json_object",
+        timeout_seconds=60,
+        temperature=0.2,
+        max_tokens=4096,
+        response_format_type="json_object",
+        thinking_type="disabled",
+    )
+    planner = DecompositionPlannerService(FakeLLMClient(error=error))
+    expected_prompt = planner._build_prompt(context)
+    normalized_prompt = " ".join(expected_prompt.split())
+
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(planner.plan(context))
+
+    failed = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "planning_llm_failed"
+    )
+    assert failed.fallback_reason == "llm_call_failed"
+    assert failed.llm_operation == "planning"
+    assert failed.llm_prompt_char_count == len(normalized_prompt)
+    assert failed.llm_prompt_fingerprint == hashlib.sha256(
+        normalized_prompt.encode("utf-8")
+    ).hexdigest()[:16]
+    assert failed.provider_http_status == 400
+    assert failed.provider_error_code == "1301"
+    assert failed.provider_error_message == "request rejected"
+    assert failed.provider_request_id == "provider-request-1"
+    assert failed.error_category == "provider_client_error"
+    assert failed.retryable is False
+    assert failed.llm_attempt_count == 1
+    assert failed.llm_max_attempts == 3
+    assert failed.llm_model == "glm-5.1"
+    assert failed.llm_response_mode == "json_object"
+    assert failed.llm_timeout_seconds == 60
+    assert failed.llm_temperature == 0.2
+    assert failed.llm_max_tokens == 4096
+    assert failed.llm_response_format_type == "json_object"
+    assert failed.llm_thinking_type == "disabled"
+    assert "private planning question" not in str(failed.__dict__)
+
+
+def test_invalid_llm_schema_logs_only_validation_paths(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    context = _context(query="private schema question")
+    invalid_payload = {
+        key: value
+        for key, value in _planning_payload().items()
+        if key != "plan"
+    }
+
+    with caplog.at_level(logging.WARNING):
+        asyncio.run(DecompositionPlannerService(FakeLLMClient(invalid_payload)).plan(context))
+
+    invalid = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "planning_llm_invalid_output"
+    )
+    assert invalid.fallback_reason == "invalid_output"
+    assert invalid.validation_error_count == 1
+    assert invalid.validation_error_paths == ["plan"]
+    assert invalid.llm_prompt_char_count > 0
+    assert len(invalid.llm_prompt_fingerprint) == 16
+    assert "private schema question" not in str(invalid.__dict__)
 
 
 @pytest.mark.parametrize(

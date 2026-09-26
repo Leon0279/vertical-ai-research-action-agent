@@ -11,6 +11,7 @@ import httpx
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.adapters.llm.zhipu_llm_client_config import ZhipuLLMClientConfig
 from app.adapters.llm.zhipu_llm_client_error import ZhipuLLMClientError
+from app.common.observability import sanitize_sensitive_text
 
 
 class ZhipuLLMClient(LLMClientProtocol):
@@ -31,7 +32,10 @@ HTTP client for Zhipu chat completions."""
 
         result = await self._generate(prompt, json_object=False)
         if not isinstance(result, str):
-            raise ZhipuLLMClientError("Zhipu LLM text generation returned an invalid result.")
+            raise ZhipuLLMClientError(
+                "Zhipu LLM text generation returned an invalid result.",
+                error_category="invalid_response",
+            )
         return result
 
     async def generate_json_object(self, prompt: str) -> dict[str, Any]:
@@ -40,7 +44,8 @@ HTTP client for Zhipu chat completions."""
         result = await self._generate(prompt, json_object=True)
         if not isinstance(result, dict):
             raise ZhipuLLMClientError(
-                "Zhipu LLM JSON generation returned an invalid result."
+                "Zhipu LLM JSON generation returned an invalid result.",
+                error_category="invalid_response",
             )
         return result
 
@@ -55,6 +60,9 @@ HTTP client for Zhipu chat completions."""
             raise ZhipuLLMClientError("Prompt must not be empty.")
 
         attempts = self._config.max_retries + 1
+        response_mode = "json_object" if json_object else "text"
+        response_format_type = "json_object" if json_object else None
+        thinking_type = "disabled" if json_object else None
         for attempt_index in range(attempts):
             try:
                 response_data = await self._post_chat_completion(
@@ -66,11 +74,34 @@ HTTP client for Zhipu chat completions."""
                     return self._parse_json_object(content, response_data)
                 return content
             except ZhipuLLMClientError as exc:
+                exc.attach_call_diagnostics(
+                    attempt_count=attempt_index + 1,
+                    max_attempts=attempts,
+                    model=self._config.model,
+                    response_mode=response_mode,
+                    timeout_seconds=self._config.timeout_seconds,
+                    temperature=self._config.temperature,
+                    max_tokens=self._config.max_tokens,
+                    response_format_type=response_format_type,
+                    thinking_type=thinking_type,
+                )
                 if not exc.retriable or attempt_index >= attempts - 1:
                     raise
                 await asyncio.sleep(self._retry_delay_seconds(attempt_index))
 
-        raise ZhipuLLMClientError("Zhipu LLM request exhausted its retry budget.")
+        raise ZhipuLLMClientError(
+            "Zhipu LLM request exhausted its retry budget.",
+            error_category="provider_server_error",
+            attempt_count=attempts,
+            max_attempts=attempts,
+            model=self._config.model,
+            response_mode=response_mode,
+            timeout_seconds=self._config.timeout_seconds,
+            temperature=self._config.temperature,
+            max_tokens=self._config.max_tokens,
+            response_format_type=response_format_type,
+            thinking_type=thinking_type,
+        )
 
     @staticmethod
     def _retry_delay_seconds(attempt_index: int) -> float:
@@ -110,11 +141,13 @@ HTTP client for Zhipu chat completions."""
             raise ZhipuLLMClientError(
                 "Zhipu LLM request timed out.",
                 retriable=True,
+                error_category="timeout",
             ) from exc
         except httpx.RequestError as exc:
             raise ZhipuLLMClientError(
                 f"Zhipu LLM request failed: {self._safe_text(str(exc), prompt)}",
                 retriable=True,
+                error_category="network",
             ) from exc
 
         if response.status_code < 200 or response.status_code >= 300:
@@ -135,7 +168,9 @@ HTTP client for Zhipu chat completions."""
                 retriable=response.status_code == 429 or response.status_code >= 500,
                 status_code=response.status_code,
                 provider_code=provider_code,
+                provider_message=provider_message,
                 request_id=request_id,
+                error_category=self._http_error_category(response.status_code),
             )
 
         try:
@@ -144,12 +179,14 @@ HTTP client for Zhipu chat completions."""
             raise ZhipuLLMClientError(
                 "Zhipu LLM response was not valid JSON.",
                 request_id=self._request_id(response),
+                error_category="invalid_response",
             ) from exc
 
         if not isinstance(data, dict):
             raise ZhipuLLMClientError(
                 "Zhipu LLM response JSON must be an object.",
                 request_id=self._request_id(response),
+                error_category="invalid_response",
             )
         return data
 
@@ -158,12 +195,14 @@ HTTP client for Zhipu chat completions."""
         if not isinstance(choices, list) or not choices:
             raise ZhipuLLMClientError(
                 "Zhipu LLM response did not include choices.",
+                error_category="invalid_response",
             )
 
         first_choice = choices[0]
         if not isinstance(first_choice, dict):
             raise ZhipuLLMClientError(
                 "Zhipu LLM response choice must be an object.",
+                error_category="invalid_response",
             )
 
         finish_reason = self._optional_text(first_choice.get("finish_reason"))
@@ -173,6 +212,7 @@ HTTP client for Zhipu chat completions."""
             raise ZhipuLLMClientError(
                 self._content_error_message(finish_reason),
                 finish_reason=finish_reason,
+                error_category="empty_content",
             )
 
         content = message.get("content")
@@ -180,6 +220,7 @@ HTTP client for Zhipu chat completions."""
             raise ZhipuLLMClientError(
                 self._content_error_message(finish_reason),
                 finish_reason=finish_reason,
+                error_category="empty_content",
             )
         return content
 
@@ -194,11 +235,13 @@ HTTP client for Zhipu chat completions."""
             raise ZhipuLLMClientError(
                 "Zhipu LLM response content was not valid JSON.",
                 finish_reason=self._finish_reason(data),
+                error_category="invalid_json",
             ) from exc
         if not isinstance(payload, dict):
             raise ZhipuLLMClientError(
                 "Zhipu LLM response content must be a JSON object.",
                 finish_reason=self._finish_reason(data),
+                error_category="invalid_json",
             )
         return payload
 
@@ -232,8 +275,35 @@ HTTP client for Zhipu chat completions."""
         if self._config.api_key:
             sanitized = sanitized.replace(self._config.api_key, "[REDACTED]")
         if prompt:
-            sanitized = sanitized.replace(prompt, "[REDACTED_PROMPT]")
-        return sanitized[:300]
+            normalized_prompt = " ".join(prompt.split())
+            sanitized = sanitized.replace(normalized_prompt, "[REDACTED_PROMPT]")
+            if self._contains_prompt_overlap(sanitized, normalized_prompt):
+                sanitized = "[REDACTED_PROMPT_CONTENT]"
+        return sanitize_sensitive_text(sanitized, max_length=300)
+
+    @staticmethod
+    def _contains_prompt_overlap(value: str, prompt: str) -> bool:
+        """Reject provider messages that echo a meaningful prompt fragment."""
+
+        minimum_overlap = min(12, len(prompt))
+        if minimum_overlap <= 0 or len(value) < minimum_overlap:
+            return False
+        prompt_fragments = {
+            prompt[index : index + minimum_overlap]
+            for index in range(len(prompt) - minimum_overlap + 1)
+        }
+        return any(
+            value[index : index + minimum_overlap] in prompt_fragments
+            for index in range(len(value) - minimum_overlap + 1)
+        )
+
+    @staticmethod
+    def _http_error_category(status_code: int) -> str:
+        if status_code == 429:
+            return "rate_limit"
+        if status_code >= 500:
+            return "provider_server_error"
+        return "provider_client_error"
 
     @staticmethod
     def _optional_text(value: object) -> str | None:

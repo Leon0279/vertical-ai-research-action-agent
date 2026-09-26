@@ -187,7 +187,10 @@ def test_generate_json_object_does_not_retry_provider_code_1301() -> None:
             json={
                 "error": {
                     "code": "1301",
-                    "message": "request rejected",
+                    "message": (
+                        "request rejected safe test prompt "
+                        "api_key=fake-key Authorization=Bearer provider-token"
+                    ),
                 }
             },
         )
@@ -197,6 +200,10 @@ def test_generate_json_object_does_not_retry_provider_code_1301() -> None:
             llm_client = ZhipuLLMClient(
                 config=ZhipuLLMClientConfig(
                     api_key="fake-key",
+                    model="glm-diagnostic",
+                    timeout_seconds=12.5,
+                    temperature=0.3,
+                    max_tokens=1234,
                     max_retries=2,
                 ),
                 http_client=client,
@@ -208,7 +215,56 @@ def test_generate_json_object_does_not_retry_provider_code_1301() -> None:
     assert call_count == 1
     assert exc_info.value.status_code == 400
     assert exc_info.value.provider_code == "1301"
+    assert exc_info.value.provider_message is not None
+    assert "request rejected" in exc_info.value.provider_message
+    assert "safe test prompt" not in exc_info.value.provider_message
+    assert "fake-key" not in exc_info.value.provider_message
+    assert "provider-token" not in exc_info.value.provider_message
+    assert exc_info.value.request_id == "req-safety"
     assert exc_info.value.retriable is False
+    assert exc_info.value.error_category == "provider_client_error"
+    assert exc_info.value.attempt_count == 1
+    assert exc_info.value.max_attempts == 3
+    assert exc_info.value.model == "glm-diagnostic"
+    assert exc_info.value.response_mode == "json_object"
+    assert exc_info.value.timeout_seconds == 12.5
+    assert exc_info.value.temperature == 0.3
+    assert exc_info.value.max_tokens == 1234
+    assert exc_info.value.response_format_type == "json_object"
+    assert exc_info.value.thinking_type == "disabled"
+    assert "safe test prompt" not in str(exc_info.value)
+    assert "fake-key" not in str(exc_info.value)
+    assert "provider-token" not in str(exc_info.value)
+
+
+def test_provider_message_redacts_partial_prompt_echo() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        _ = request
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": "1301",
+                    "message": "rejected because private memory context was unsafe",
+                }
+            },
+        )
+
+    async def run_case() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            llm_client = ZhipuLLMClient(
+                config=ZhipuLLMClientConfig(api_key="fake-key", max_retries=0),
+                http_client=client,
+            )
+            await llm_client.generate_json_object(
+                "planning input includes private memory context and more details"
+            )
+
+    with pytest.raises(ZhipuLLMClientError) as exc_info:
+        asyncio.run(run_case())
+
+    assert exc_info.value.provider_message == "[REDACTED_PROMPT_CONTENT]"
+    assert "private memory context" not in str(exc_info.value)
 
 
 def test_generate_text_rejects_missing_choices() -> None:
@@ -225,8 +281,10 @@ def test_generate_text_rejects_missing_choices() -> None:
 
             await llm_client.generate_text("hello")
 
-    with pytest.raises(ZhipuLLMClientError, match="choices"):
+    with pytest.raises(ZhipuLLMClientError, match="choices") as exc_info:
         asyncio.run(run_case())
+    assert exc_info.value.error_category == "invalid_response"
+    assert exc_info.value.attempt_count == 1
 
 
 def test_generate_text_wraps_request_error() -> None:
@@ -242,8 +300,11 @@ def test_generate_text_wraps_request_error() -> None:
 
             await llm_client.generate_text("hello")
 
-    with pytest.raises(ZhipuLLMClientError, match="request failed"):
+    with pytest.raises(ZhipuLLMClientError, match="request failed") as exc_info:
         asyncio.run(run_case())
+    assert exc_info.value.error_category == "network"
+    assert exc_info.value.attempt_count == 1
+    assert exc_info.value.max_attempts == 1
 
 
 def test_generate_text_wraps_timeout_error() -> None:
@@ -259,8 +320,11 @@ def test_generate_text_wraps_timeout_error() -> None:
 
             await llm_client.generate_text("hello")
 
-    with pytest.raises(ZhipuLLMClientError, match="timed out"):
+    with pytest.raises(ZhipuLLMClientError, match="timed out") as exc_info:
         asyncio.run(run_case())
+    assert exc_info.value.error_category == "timeout"
+    assert exc_info.value.attempt_count == 1
+    assert exc_info.value.max_attempts == 1
 
 
 @pytest.mark.parametrize("status_code", [429, 503])
@@ -301,6 +365,54 @@ def test_generate_text_retries_transient_http_error_once_then_succeeds(
     assert asyncio.run(run_case()) == '{"status":"ok"}'
     assert call_count == 2
     assert sleep_delays == [1.0]
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected_category"),
+    [(429, "rate_limit"), (503, "provider_server_error")],
+)
+def test_generate_text_reports_exhausted_transient_attempts(
+    status_code: int,
+    expected_category: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    call_count = 0
+    sleep_delays: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+
+    monkeypatch.setattr("app.adapters.llm.zhipu_llm_client.asyncio.sleep", fake_sleep)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        _ = request
+        call_count += 1
+        return httpx.Response(
+            status_code,
+            headers={"x-request-id": "req-transient"},
+            json={"error": {"code": "busy", "message": "try later"}},
+        )
+
+    async def run_case() -> str:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            llm_client = ZhipuLLMClient(
+                config=ZhipuLLMClientConfig(api_key="fake-key", max_retries=2),
+                http_client=client,
+            )
+            return await llm_client.generate_text("hello")
+
+    with pytest.raises(ZhipuLLMClientError) as exc_info:
+        asyncio.run(run_case())
+
+    assert call_count == 3
+    assert sleep_delays == [1.0, 3.0]
+    assert exc_info.value.error_category == expected_category
+    assert exc_info.value.attempt_count == 3
+    assert exc_info.value.max_attempts == 3
+    assert exc_info.value.request_id == "req-transient"
+    assert exc_info.value.provider_message == "try later"
+    assert exc_info.value.retriable is True
 
 
 @pytest.mark.parametrize("error_type", [httpx.ConnectError, httpx.TimeoutException])
@@ -360,9 +472,11 @@ def test_generate_json_object_does_not_retry_invalid_json_content() -> None:
             )
             return await llm_client.generate_json_object("hello")
 
-    with pytest.raises(ZhipuLLMClientError, match="not valid JSON"):
+    with pytest.raises(ZhipuLLMClientError, match="not valid JSON") as exc_info:
         asyncio.run(run_case())
     assert call_count == 1
+    assert exc_info.value.error_category == "invalid_json"
+    assert exc_info.value.response_mode == "json_object"
 
 
 def test_generate_json_object_does_not_retry_non_object_content() -> None:
@@ -386,9 +500,10 @@ def test_generate_json_object_does_not_retry_non_object_content() -> None:
             )
             return await llm_client.generate_json_object("hello")
 
-    with pytest.raises(ZhipuLLMClientError, match="must be a JSON object"):
+    with pytest.raises(ZhipuLLMClientError, match="must be a JSON object") as exc_info:
         asyncio.run(run_case())
     assert call_count == 1
+    assert exc_info.value.error_category == "invalid_json"
 
 
 def test_generate_text_retries_connection_errors_twice_with_bounded_backoff(
@@ -454,6 +569,7 @@ def test_generate_text_reports_empty_content_finish_reason_without_using_reasoni
     with pytest.raises(ZhipuLLMClientError, match="finish_reason=length") as exc_info:
         asyncio.run(run_case())
     assert exc_info.value.finish_reason == "length"
+    assert exc_info.value.error_category == "empty_content"
 
 
 def test_generate_text_accepts_non_json_without_retry() -> None:

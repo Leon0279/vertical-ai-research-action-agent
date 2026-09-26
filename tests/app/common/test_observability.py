@@ -15,6 +15,7 @@ from app.common.observability import (
     configure_file_logging,
     current_trace_id,
     exception_diagnostic_fields,
+    llm_prompt_log_fields,
     remove_file_logging_handler,
     reset_trace_id,
     retrieval_query_log_fields,
@@ -397,10 +398,24 @@ def test_jsonl_handler_preserves_stack_trace_and_provider_diagnostics(
 
     error = ZhipuLLMClientError(
         "Provider failed with api_key=secret-value.",
+        retriable=False,
         status_code=503,
         provider_code="service_unavailable",
+        provider_message=(
+            "safe provider detail api_key=provider-secret " + ("x" * 400)
+        ),
         request_id="provider-request-1",
         finish_reason="length",
+        error_category="provider_server_error",
+        attempt_count=3,
+        max_attempts=3,
+        model="glm-test",
+        response_mode="json_object",
+        timeout_seconds=12.5,
+        temperature=0.2,
+        max_tokens=2048,
+        response_format_type="json_object",
+        thinking_type="disabled",
     )
     try:
         raise error
@@ -409,6 +424,10 @@ def test_jsonl_handler_preserves_stack_trace_and_provider_diagnostics(
             "Structured provider failure.",
             extra={
                 "event": "agent_run_failed",
+                "llm_operation": "planning",
+                "llm_prompt_char_count": 321,
+                "llm_prompt_fingerprint": "0123456789abcdef",
+                "llm_duration_ms": 123.45,
                 **exception_diagnostic_fields(caught),
             },
         )
@@ -419,8 +438,28 @@ def test_jsonl_handler_preserves_stack_trace_and_provider_diagnostics(
     assert record["exception_type"] == "ZhipuLLMClientError"
     assert record["provider_http_status"] == 503
     assert record["provider_error_code"] == "service_unavailable"
+    assert str(record["provider_error_message"]).startswith(
+        "safe provider detail api_key=[REDACTED]"
+    )
+    assert len(str(record["provider_error_message"])) <= 300
+    assert "provider-secret" not in str(record["provider_error_message"])
     assert record["provider_request_id"] == "provider-request-1"
     assert record["finish_reason"] == "length"
+    assert record["llm_operation"] == "planning"
+    assert record["llm_prompt_char_count"] == 321
+    assert record["llm_prompt_fingerprint"] == "0123456789abcdef"
+    assert record["llm_duration_ms"] == 123.45
+    assert record["error_category"] == "provider_server_error"
+    assert record["retryable"] is False
+    assert record["llm_attempt_count"] == 3
+    assert record["llm_max_attempts"] == 3
+    assert record["llm_model"] == "glm-test"
+    assert record["llm_response_mode"] == "json_object"
+    assert record["llm_timeout_seconds"] == 12.5
+    assert record["llm_temperature"] == 0.2
+    assert record["llm_max_tokens"] == 2048
+    assert record["llm_response_format_type"] == "json_object"
+    assert record["llm_thinking_type"] == "disabled"
     assert "Traceback (most recent call last)" in str(record["stack_trace"])
     assert "secret-value" not in str(record["stack_trace"])
 
@@ -526,4 +565,25 @@ def test_retrieval_query_log_fields_are_bounded_and_stable() -> None:
     assert retrieval_query_log_fields(None) == {
         "generated_query": None,
         "query_fingerprint": None,
+    }
+
+
+def test_llm_prompt_log_fields_are_content_free_and_stable() -> None:
+    prompt = "  secret user question\nwith   memory context  "
+    normalized = "secret user question with memory context"
+
+    fields = llm_prompt_log_fields(prompt)
+
+    assert fields == {
+        "llm_prompt_char_count": len(normalized),
+        "llm_prompt_fingerprint": hashlib.sha256(
+            normalized.encode("utf-8")
+        ).hexdigest()[:16],
+    }
+    assert prompt not in json.dumps(fields)
+    assert llm_prompt_log_fields(prompt) == fields
+    assert llm_prompt_log_fields("different prompt") != fields
+    assert llm_prompt_log_fields(None) == {
+        "llm_prompt_char_count": 0,
+        "llm_prompt_fingerprint": None,
     }

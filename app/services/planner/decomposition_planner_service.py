@@ -5,12 +5,16 @@ from __future__ import annotations
 import json
 import logging
 import re
+from time import perf_counter
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.common.observability import exception_diagnostic_fields
+from app.common.observability import (
+    exception_diagnostic_fields,
+    llm_prompt_log_fields,
+)
 from app.domain.enums import TaskType
 from app.domain.models import ContextItem, ExecutionContext
 from app.services.planner.contracts.decomposition_planner_protocol import (
@@ -72,34 +76,67 @@ class DecompositionPlannerService(DecompositionPlannerProtocol):
     ) -> tuple[_LLMPlanningPayload | None, str | None]:
         """调用 LLM，并将合法输出规范化为完整规划 payload。"""
 
+        prompt = self._build_prompt(context)
+        prompt_diagnostics = {
+            "llm_operation": "planning",
+            **llm_prompt_log_fields(prompt),
+        }
+        started_at = perf_counter()
+        llm_duration_ms: float | None = None
         try:
-            raw_payload = await self._llm_client.generate_json_object(
-                self._build_prompt(context)
-            )
+            raw_payload = await self._llm_client.generate_json_object(prompt)
+            llm_duration_ms = round((perf_counter() - started_at) * 1000, 2)
             payload = _LLMPlanningPayload.model_validate(raw_payload)
             payload = self._normalize_payload(payload)
             self._validate_comparison_candidates(context, payload.comparison_candidates)
             return payload, None
         except (KeyError, TypeError, ValueError, ValidationError) as error:
+            duration_ms = llm_duration_ms or round(
+                (perf_counter() - started_at) * 1000,
+                2,
+            )
             logger.warning(
                 "Planning LLM output was invalid; using deterministic fallback.",
                 extra={
                     "event": "planning_llm_invalid_output",
                     "fallback_reason": "invalid_output",
+                    "llm_duration_ms": duration_ms,
+                    **prompt_diagnostics,
+                    **self._validation_diagnostic_fields(error),
                     **exception_diagnostic_fields(error),
                 },
             )
             return None, "invalid_output"
         except Exception as error:
+            duration_ms = llm_duration_ms or round(
+                (perf_counter() - started_at) * 1000,
+                2,
+            )
             logger.warning(
                 "Planning LLM call failed; using deterministic fallback.",
                 extra={
                     "event": "planning_llm_failed",
                     "fallback_reason": "llm_call_failed",
+                    "llm_duration_ms": duration_ms,
+                    **prompt_diagnostics,
                     **exception_diagnostic_fields(error),
                 },
             )
             return None, "llm_call_failed"
+
+    @staticmethod
+    def _validation_diagnostic_fields(error: BaseException) -> dict[str, Any]:
+        if not isinstance(error, ValidationError):
+            return {}
+
+        paths = [
+            ".".join(str(part) for part in item.get("loc", ()))
+            for item in error.errors()
+        ]
+        return {
+            "validation_error_count": error.error_count(),
+            "validation_error_paths": [path for path in paths if path][:20],
+        }
 
     def _build_prompt(self, context: ExecutionContext) -> str:
         """构造无状态 Planning LLM 可独立理解的中文 prompt。"""

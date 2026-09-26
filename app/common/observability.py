@@ -46,8 +46,24 @@ _STRUCTURED_FIELDS = (
     "error_info",
     "provider_http_status",
     "provider_error_code",
+    "provider_error_message",
     "provider_request_id",
     "finish_reason",
+    "llm_operation",
+    "llm_model",
+    "llm_response_mode",
+    "llm_prompt_char_count",
+    "llm_prompt_fingerprint",
+    "llm_duration_ms",
+    "llm_attempt_count",
+    "llm_max_attempts",
+    "llm_timeout_seconds",
+    "llm_temperature",
+    "llm_max_tokens",
+    "llm_response_format_type",
+    "llm_thinking_type",
+    "validation_error_count",
+    "validation_error_paths",
     "exception_type",
     "provider",
     "operation",
@@ -361,6 +377,23 @@ def retrieval_query_log_fields(query: str | None) -> dict[str, str | None]:
     }
 
 
+def llm_prompt_log_fields(prompt: str | None) -> dict[str, int | str | None]:
+    """Return stable LLM prompt metadata without exposing prompt content."""
+
+    normalized_prompt = " ".join(prompt.split()) if prompt else ""
+    if not normalized_prompt:
+        return {
+            "llm_prompt_char_count": 0,
+            "llm_prompt_fingerprint": None,
+        }
+    return {
+        "llm_prompt_char_count": len(normalized_prompt),
+        "llm_prompt_fingerprint": hashlib.sha256(
+            normalized_prompt.encode("utf-8")
+        ).hexdigest()[:16],
+    }
+
+
 def exception_diagnostic_fields(error: BaseException) -> dict[str, Any]:
     """Extract allow-listed provider diagnostics without serializing raw payloads."""
 
@@ -368,15 +401,31 @@ def exception_diagnostic_fields(error: BaseException) -> dict[str, Any]:
     attribute_mapping = {
         "status_code": "provider_http_status",
         "provider_code": "provider_error_code",
+        "provider_message": "provider_error_message",
         "request_id": "provider_request_id",
         "finish_reason": "finish_reason",
         "error_category": "error_category",
         "retryable": "retryable",
+        "attempt_count": "llm_attempt_count",
+        "max_attempts": "llm_max_attempts",
+        "model": "llm_model",
+        "response_mode": "llm_response_mode",
+        "timeout_seconds": "llm_timeout_seconds",
+        "temperature": "llm_temperature",
+        "max_tokens": "llm_max_tokens",
+        "response_format_type": "llm_response_format_type",
+        "thinking_type": "llm_thinking_type",
     }
     for attribute_name, field_name in attribute_mapping.items():
         value = getattr(error, attribute_name, None)
         if value is not None:
+            if field_name == "provider_error_message":
+                value = sanitize_sensitive_text(value, max_length=300)
             fields[field_name] = value
+    if "retryable" not in fields:
+        retriable = getattr(error, "retriable", None)
+        if retriable is not None:
+            fields["retryable"] = retriable
     return fields
 
 
