@@ -155,7 +155,9 @@ def test_history_tracker_records_attempt_after_outcome_and_bounds_history(
     assert recorded_attempt.selected_tool == "research_knowledge_memory_v1"
     assert recorded_attempt.result_utility == RetrievalResultUtility.NOT_USEFUL
     assert state.recent_retrieval_attempts[-1].selected_family == FamilyName.DOCS_SEARCH
-    prompt_history = tracker.assessment_prompt_value(state)
+    prompt_history = tracker.assessment_prompt_value(
+        state.recent_retrieval_attempts
+    )
     assert prompt_history[-2]["query_fingerprint"] == "8faf947b1cee1409"
     assert "generated_query" not in prompt_history[-2]
     history_record = next(

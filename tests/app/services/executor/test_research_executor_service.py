@@ -50,6 +50,9 @@ from app.services.executor.models.evidence_coverage_entry import (
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
 )
+from app.services.executor.models.research_executor_iteration_state import (
+    ResearchExecutorIterationState,
+)
 from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
@@ -1027,6 +1030,42 @@ def test_research_executor_rejects_invalid_coverage_snapshot_contract(
     assert failure_record.failure_stage == "coverage_validation"
     assert failure_record.exception_type == "ValueError"
     assert not hasattr(failure_record, "raw_response")
+
+
+def test_research_executor_does_not_partially_update_state_when_assessment_fails() -> None:
+    stage_input = ResearchStageInput(
+        original_query="Keep assessment state atomic on validation failure."
+    )
+    service = _research_executor(
+        llm_client=_FakeLLMClient(
+            responses=[
+                json.dumps(
+                    _valid_assessment_payload(
+                        coverage_target_key="unknown_target"
+                    ),
+                    ensure_ascii=False,
+                )
+            ]
+        )
+    )
+    run_state = ResearchExecutorRunState(
+        evidence_coverage_map=service._coverage_tracker.initial_map(stage_input),
+        current_iteration=ResearchExecutorIterationState(
+            iteration_index=1,
+            remaining_iteration_budget=1,
+        ),
+    )
+    state_before_assessment = deepcopy(run_state)
+
+    with pytest.raises(ValueError, match="unknown coverage target"):
+        asyncio.run(
+            service._assess_research_state_and_select_next_evidence_need(
+                stage_input,
+                run_state,
+            )
+        )
+
+    assert run_state == state_before_assessment
 
 
 def test_research_executor_refines_when_gap_is_noop(caplog) -> None:

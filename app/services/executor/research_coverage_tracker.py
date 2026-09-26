@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.common.utils.text import unique_non_empty_strings
-from app.domain.models import ResearchStageInput
+from app.domain.models import ProcessedEvidenceUnit, ResearchStageInput
 from app.services.executor.models.evidence_coverage_entry import (
     EvidenceCoverageEntry,
     EvidenceCoverageMap,
@@ -135,17 +135,13 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
 
     def validated_map(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
+        previous_coverage_map: EvidenceCoverageMap,
+        processed_evidence_units: list[ProcessedEvidenceUnit],
         payload: _LLMResearchAssessmentAndGapsPayload,
     ) -> EvidenceCoverageMap:
         """Validate the full LLM coverage snapshot and merge deterministic links."""
 
-        targets_by_key = {
-            target.target_key: target
-            for target in self.coverage_targets(stage_input)
-        }
-        expected_target_keys = set(targets_by_key)
+        expected_target_keys = set(previous_coverage_map)
         snapshot_keys = [entry.target_key for entry in payload.evidence_coverage_snapshot]
         if len(snapshot_keys) != len(set(snapshot_keys)):
             raise ValueError("Research assessment coverage snapshot contains duplicates.")
@@ -154,7 +150,7 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
                 "Research assessment coverage snapshot must cover every configured "
                 "target exactly once."
             )
-        if payload.next_evidence_need.coverage_target_key not in targets_by_key:
+        if payload.next_evidence_need.coverage_target_key not in expected_target_keys:
             raise ValueError(
                 "Research assessment next_evidence_need references an unknown coverage "
                 "target."
@@ -162,9 +158,8 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
 
         valid_evidence_keys = {
             unit.evidence_unit_id
-            for unit in run_state.processed_evidence_units
+            for unit in processed_evidence_units
         }
-        previous_coverage_map = run_state.evidence_coverage_map
 
         normalized_map: EvidenceCoverageMap = {}
         for entry in payload.evidence_coverage_snapshot:
@@ -187,11 +182,10 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
                     "keys."
                 )
 
-            target = targets_by_key[entry.target_key]
             previous_entry = previous_coverage_map[entry.target_key]
             normalized_map[entry.target_key] = EvidenceCoverageEntry(
-                target_type=target.target_type,
-                target_text=target.target_text,
+                target_type=previous_entry.target_type,
+                target_text=previous_entry.target_text,
                 coverage_status=entry.coverage_status,
                 retrieved_evidence_keys=unique_non_empty_strings(
                     [
@@ -211,11 +205,26 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
 
     def to_prompt_value(
         self,
-        run_state: ResearchExecutorRunState,
+        evidence_coverage_map: EvidenceCoverageMap,
     ) -> dict[str, dict[str, object]]:
         """将内部强类型 coverage map 投影为 LLM prompt 所需 JSON 结构。"""
 
         return {
             target_key: entry.model_dump(mode="json")
-            for target_key, entry in run_state.evidence_coverage_map.items()
+            for target_key, entry in evidence_coverage_map.items()
         }
+
+    def targets_for_prompt(
+        self,
+        evidence_coverage_map: EvidenceCoverageMap,
+    ) -> list[dict[str, str]]:
+        """从稳定 coverage map 投影受控 target catalog。"""
+
+        return [
+            {
+                "target_key": target_key,
+                "target_type": entry.target_type,
+                "target_text": entry.target_text,
+            }
+            for target_key, entry in evidence_coverage_map.items()
+        ]

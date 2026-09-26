@@ -11,12 +11,14 @@ from pydantic import ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.common.observability import exception_diagnostic_fields
-from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_executor_llm_payloads import (
     _LLMResearchAssessmentAndGapsPayload,
 )
-from app.services.executor.models.research_executor_run_state import (
-    ResearchExecutorRunState,
+from app.services.executor.models.research_state_assessor_input import (
+    ResearchStateAssessorInput,
+)
+from app.services.executor.models.research_state_assessor_output import (
+    ResearchStateAssessorOutput,
 )
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_executor_collaborator_support import (
@@ -45,18 +47,26 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
 
     async def assess(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-    ) -> None:
-        """Run LLD 4.4: assess state, identify gaps, and select the next evidence need."""
+        assessor_input: ResearchStateAssessorInput,
+    ) -> ResearchStateAssessorOutput:
+        """根据只读输入快照评估研究状态，并返回完整的强类型评估结果。
+
+        Args:
+            assessor_input: ``ResearchStateAssessorInput`` 类型。包含当前任务、
+                规划、证据、覆盖状态、检索历史和运行预算的只读快照。
+
+        Returns:
+            ``ResearchStateAssessorOutput`` 类型。包含 assessment、研究缺口、
+            下一项证据需求、校验后的覆盖状态和优先级摘要。
+        """
 
         started_at = time.perf_counter()
-        prompt = self._build_research_assessment_prompt(stage_input, run_state)
+        prompt = self._build_research_assessment_prompt(assessor_input)
         try:
             llm_output = await self._llm_client.generate_json_object(prompt)
         except Exception as exc:
             self._log_assessment_failure(
-                run_state,
+                assessor_input,
                 started_at=started_at,
                 failure_stage="llm_generation",
                 error=exc,
@@ -67,7 +77,7 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             payload = self._parse_research_assessment_output(llm_output)
         except Exception as exc:
             self._log_assessment_failure(
-                run_state,
+                assessor_input,
                 started_at=started_at,
                 failure_stage="schema_validation",
                 error=exc,
@@ -76,68 +86,79 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
 
         try:
             evidence_coverage_map = self._coverage_tracker.validated_map(
-                stage_input,
-                run_state,
+                assessor_input.evidence_coverage_map,
+                assessor_input.processed_evidence_units,
                 payload,
             )
         except Exception as exc:
             self._log_assessment_failure(
-                run_state,
+                assessor_input,
                 started_at=started_at,
                 failure_stage="coverage_validation",
                 error=exc,
             )
             raise
 
-        run_state.current_assessment = payload.assessment
-        run_state.identified_gaps = list(payload.identified_gaps)
-        run_state.top_gap = payload.top_gap
-        run_state.next_evidence_need = payload.next_evidence_need
-        run_state.evidence_coverage_map = evidence_coverage_map
-        run_state.prioritization_summary = payload.prioritization_summary
-        self._log_assessment_succeeded(run_state, started_at=started_at)
+        output = ResearchStateAssessorOutput(
+            assessment=payload.assessment,
+            identified_gaps=list(payload.identified_gaps),
+            top_gap=payload.top_gap,
+            next_evidence_need=payload.next_evidence_need,
+            evidence_coverage_map=evidence_coverage_map,
+            prioritization_summary=payload.prioritization_summary,
+        )
+        self._log_assessment_succeeded(
+            assessor_input,
+            output,
+            started_at=started_at,
+        )
+        return output
 
 
     def _log_assessment_succeeded(
         self,
-        run_state: ResearchExecutorRunState,
+        assessor_input: ResearchStateAssessorInput,
+        output: ResearchStateAssessorOutput,
         *,
         started_at: float,
     ) -> None:
         """记录本轮最终采用的研究状态判断，不记录 prompt 或证据正文。"""
 
-        iteration = run_state.require_current_iteration()
-        assessment = run_state.current_assessment
-        top_gap = run_state.top_gap
-        next_evidence_need = run_state.next_evidence_need
-        if assessment is None or top_gap is None or next_evidence_need is None:
-            raise ValueError("Research assessment state is incomplete after validation.")
+        assessment = output.assessment
+        top_gap = output.top_gap
+        next_evidence_need = output.next_evidence_need
 
         logger.info(
             "Research state assessed.",
             extra={
                 "event": "research_state_assessed",
-                "iteration_index": iteration.iteration_index,
-                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "iteration_index": assessor_input.iteration_index,
+                "remaining_iteration_budget": (
+                    assessor_input.remaining_iteration_budget
+                ),
                 "duration_ms": round(
                     (time.perf_counter() - started_at) * 1000,
                     2,
                 ),
-                "processed_evidence_count": len(run_state.processed_evidence_units),
-                "retrieval_history_count": len(run_state.recent_retrieval_attempts),
-                "coverage_target_count": len(run_state.evidence_coverage_map),
-                "identified_gap_count": len(run_state.identified_gaps),
+                "processed_evidence_count": len(
+                    assessor_input.processed_evidence_units
+                ),
+                "retrieval_history_count": len(
+                    assessor_input.recent_retrieval_attempts
+                ),
+                "coverage_target_count": len(output.evidence_coverage_map),
+                "identified_gap_count": len(output.identified_gaps),
                 "current_assessment": assessment.model_dump(mode="json"),
                 "identified_gaps": [
                     gap.model_dump(mode="json")
-                    for gap in run_state.identified_gaps
+                    for gap in output.identified_gaps
                 ],
                 "top_gap": top_gap.model_dump(mode="json"),
                 "next_evidence_need": next_evidence_need.model_dump(mode="json"),
-                "prioritization_summary": run_state.prioritization_summary,
+                "prioritization_summary": output.prioritization_summary,
                 "evidence_coverage_map": {
                     target_key: entry.model_dump(mode="json")
-                    for target_key, entry in run_state.evidence_coverage_map.items()
+                    for target_key, entry in output.evidence_coverage_map.items()
                 },
                 "coverage_status": assessment.coverage_status,
                 "support_strength": assessment.support_strength,
@@ -158,7 +179,7 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
 
     def _log_assessment_failure(
         self,
-        run_state: ResearchExecutorRunState,
+        assessor_input: ResearchStateAssessorInput,
         *,
         started_at: float,
         failure_stage: str,
@@ -166,21 +187,28 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
     ) -> None:
         """记录安全的 assessment 失败阶段后，交由调用方维持原有异常语义。"""
 
-        iteration = run_state.require_current_iteration()
         logger.warning(
             "Research state assessment failed.",
             extra={
                 "event": "research_state_assessment_failed",
-                "iteration_index": iteration.iteration_index,
-                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "iteration_index": assessor_input.iteration_index,
+                "remaining_iteration_budget": (
+                    assessor_input.remaining_iteration_budget
+                ),
                 "duration_ms": round(
                     (time.perf_counter() - started_at) * 1000,
                     2,
                 ),
                 "failure_stage": failure_stage,
-                "processed_evidence_count": len(run_state.processed_evidence_units),
-                "retrieval_history_count": len(run_state.recent_retrieval_attempts),
-                "coverage_target_count": len(run_state.evidence_coverage_map),
+                "processed_evidence_count": len(
+                    assessor_input.processed_evidence_units
+                ),
+                "retrieval_history_count": len(
+                    assessor_input.recent_retrieval_attempts
+                ),
+                "coverage_target_count": len(
+                    assessor_input.evidence_coverage_map
+                ),
                 **exception_diagnostic_fields(error),
             },
         )
@@ -188,12 +216,11 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
 
     def _build_research_assessment_prompt(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
+        assessor_input: ResearchStateAssessorInput,
     ) -> str:
         """Build the mandatory LLM prompt for research state assessment."""
 
-        prompt_input = self._research_assessment_prompt_input(stage_input, run_state)
+        prompt_input = self._research_assessment_prompt_input(assessor_input)
         return (
             "你正在执行一次“研究状态判断”任务。\n\n"
             "这是一次无状态调用。\n"
@@ -410,82 +437,106 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
 
     def _research_assessment_prompt_input(
         self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
+        assessor_input: ResearchStateAssessorInput,
     ) -> dict[str, Any]:
         """Create the JSON input shown to the assessment LLM."""
 
         supporting_context: dict[str, Any] = {
-            "research_support": self._context_items_for_prompt(stage_input.research_support),
-            "decision_support": self._context_items_for_prompt(stage_input.decision_support),
-            "action_support": self._context_items_for_prompt(stage_input.action_support),
+            "research_support": self._context_items_for_prompt(
+                assessor_input.research_support
+            ),
+            "decision_support": self._context_items_for_prompt(
+                assessor_input.decision_support
+            ),
+            "action_support": self._context_items_for_prompt(
+                assessor_input.action_support
+            ),
         }
 
         return {
             "task_context": {
                 "current_research_objective": (
-                    stage_input.user_goal or stage_input.original_query
+                    assessor_input.user_goal or assessor_input.original_query
                 ),
-                "task_type": stage_input.task_type,
-                "task_framing": stage_input.task_framing,
-                "constraints": stage_input.constraints,
-                "project_context_summary": stage_input.project_context_summary,
-                "current_bottleneck_summary": stage_input.current_bottleneck_summary,
-                "active_decision_summary": stage_input.active_decision_summary,
-                "current_action_status": stage_input.current_action_status,
+                "task_type": assessor_input.task_type,
+                "task_framing": assessor_input.task_framing,
+                "constraints": assessor_input.constraints,
+                "project_context_summary": assessor_input.project_context_summary,
+                "current_bottleneck_summary": (
+                    assessor_input.current_bottleneck_summary
+                ),
+                "active_decision_summary": assessor_input.active_decision_summary,
+                "current_action_status": assessor_input.current_action_status,
             },
             "planning_guidance": {
-                "plan": stage_input.plan,
-                "sub_questions": stage_input.sub_questions,
-                "comparison_candidates": stage_input.comparison_candidates,
-                "initial_evidence_strategy": stage_input.initial_evidence_strategy,
+                "plan": assessor_input.plan,
+                "sub_questions": assessor_input.sub_questions,
+                "comparison_candidates": assessor_input.comparison_candidates,
+                "initial_evidence_strategy": (
+                    assessor_input.initial_evidence_strategy
+                ),
             },
             "supporting_context": supporting_context,
             "evidence_state": {
-                "processed_evidence": self._processed_evidence_for_prompt(
-                    run_state,
-                ),
-                "coverage_targets": [
-                    target.model_dump(mode="json")
-                    for target in self._coverage_tracker.coverage_targets(stage_input)
+                "processed_evidence": [
+                    unit.model_dump(mode="json")
+                    for unit in assessor_input.processed_evidence_units
                 ],
-                "evidence_coverage_map": self._coverage_tracker.to_prompt_value(
-                    run_state,
+                "coverage_targets": self._coverage_tracker.targets_for_prompt(
+                    assessor_input.evidence_coverage_map
                 ),
-                "intermediate_findings": run_state.intermediate_findings,
+                "evidence_coverage_map": self._coverage_tracker.to_prompt_value(
+                    assessor_input.evidence_coverage_map,
+                ),
+                "intermediate_findings": assessor_input.intermediate_findings,
             },
             "gap_state": {
                 "identified_gaps": [
-                    gap.model_dump(mode="json") for gap in run_state.identified_gaps
+                    gap.model_dump(mode="json")
+                    for gap in assessor_input.identified_gaps
                 ],
                 "top_gap": (
-                    run_state.top_gap.model_dump(mode="json")
-                    if run_state.top_gap is not None
+                    assessor_input.top_gap.model_dump(mode="json")
+                    if assessor_input.top_gap is not None
                     else None
                 ),
                 "next_evidence_need": (
-                    run_state.next_evidence_need.model_dump(mode="json")
-                    if run_state.next_evidence_need is not None
+                    assessor_input.next_evidence_need.model_dump(mode="json")
+                    if assessor_input.next_evidence_need is not None
                     else None
                 ),
             },
             "recent_retrieval_history": (
-                self._retrieval_history_tracker.assessment_prompt_value(run_state)
+                self._retrieval_history_tracker.assessment_prompt_value(
+                    assessor_input.recent_retrieval_attempts
+                )
             ),
             "runtime_control": {
-                "iteration_index": run_state.require_current_iteration().iteration_index,
-                "remaining_iteration_budget": (
-                    run_state.require_current_iteration().remaining_iteration_budget
-                ),
-                "input_budget_pressure": self._input_budget_pressure(
-                    stage_input,
-                    run_state.require_current_iteration(),
+                "iteration_index": assessor_input.iteration_index,
+                "remaining_iteration_budget": assessor_input.remaining_iteration_budget,
+                "input_budget_pressure": self._assessment_input_budget_pressure(
+                    assessor_input
                 ),
                 "available_families": [
-                    family.value for family in stage_input.available_families
+                    family.value for family in assessor_input.available_families
                 ],
             },
         }
+
+    @staticmethod
+    def _assessment_input_budget_pressure(
+        assessor_input: ResearchStateAssessorInput,
+    ) -> str:
+        """根据 assessor 输入快照返回粗粒度预算压力。"""
+
+        if assessor_input.remaining_iteration_budget == 1:
+            return "last_iteration"
+        if (
+            assessor_input.latency_budget_ms is not None
+            and assessor_input.latency_budget_ms <= 1000
+        ):
+            return "latency_constrained"
+        return "normal"
 
 
     def _parse_research_assessment_output(

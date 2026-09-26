@@ -92,19 +92,6 @@ class ResearchExecutorCollaboratorSupport:
             for item in items
         ]
 
-    def _input_budget_pressure(
-        self,
-        stage_input: ResearchStageInput,
-        iteration: ResearchExecutorIterationState,
-    ) -> str:
-        """为 assessment 提供粗粒度预算压力提示。"""
-
-        if iteration.remaining_iteration_budget == 1:
-            return "last_iteration"
-        if stage_input.latency_budget_ms is not None and stage_input.latency_budget_ms <= 1000:
-            return "latency_constrained"
-        return "normal"
-
     def _iteration_input_budget_pressure(
         self,
         stage_input: ResearchStageInput,

@@ -228,7 +228,7 @@ class ResearchRetrievalHistoryTracker:
 
     def assessment_prompt_value(
         self,
-        run_state: ResearchExecutorRunState,
+        recent_retrieval_attempts: list[RecentRetrievalAttempt],
     ) -> list[dict[str, object]]:
         """将 typed history 转为 assessment LLM 可理解且不含 raw trace 的摘要。"""
 
@@ -243,7 +243,7 @@ class ResearchRetrievalHistoryTracker:
                 "result_utility": attempt.result_utility.value,
                 "fallback_applied": attempt.fallback_applied,
             }
-            for attempt in run_state.recent_retrieval_attempts
+            for attempt in recent_retrieval_attempts
         ]
 
     def _target_problem(

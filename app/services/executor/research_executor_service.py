@@ -18,6 +18,9 @@ from app.services.executor.models.research_executor_iteration_state import (
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
 )
+from app.services.executor.models.research_state_assessor_input import (
+    ResearchStateAssessorInput,
+)
 from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
@@ -177,7 +180,46 @@ class ResearchExecutorService(ResearchExecutorProtocol):
     ) -> None:
         """Step 1：评估研究状态、识别 gaps，并选定下一项 evidence need。"""
 
-        await self._state_assessor.assess(stage_input, run_state)
+        iteration = run_state.require_current_iteration()
+        assessor_input = ResearchStateAssessorInput(
+            original_query=stage_input.original_query,
+            task_type=stage_input.task_type,
+            user_goal=stage_input.user_goal,
+            task_framing=stage_input.task_framing,
+            constraints=list(stage_input.constraints),
+            project_context_summary=stage_input.project_context_summary,
+            current_bottleneck_summary=stage_input.current_bottleneck_summary,
+            active_decision_summary=stage_input.active_decision_summary,
+            current_action_status=stage_input.current_action_status,
+            plan=list(stage_input.plan),
+            sub_questions=list(stage_input.sub_questions),
+            comparison_candidates=list(stage_input.comparison_candidates),
+            initial_evidence_strategy=list(stage_input.initial_evidence_strategy),
+            research_support=list(stage_input.research_support),
+            decision_support=list(stage_input.decision_support),
+            action_support=list(stage_input.action_support),
+            iteration_index=iteration.iteration_index,
+            remaining_iteration_budget=iteration.remaining_iteration_budget,
+            latency_budget_ms=stage_input.latency_budget_ms,
+            available_families=list(stage_input.available_families),
+            processed_evidence_units=list(run_state.processed_evidence_units),
+            evidence_coverage_map=dict(run_state.evidence_coverage_map),
+            intermediate_findings=list(run_state.intermediate_findings),
+            identified_gaps=list(run_state.identified_gaps),
+            top_gap=run_state.top_gap,
+            next_evidence_need=run_state.next_evidence_need,
+            recent_retrieval_attempts=list(run_state.recent_retrieval_attempts),
+        )
+        assessor_output = await self._state_assessor.assess(assessor_input)
+
+        run_state.current_assessment = assessor_output.assessment
+        run_state.identified_gaps = list(assessor_output.identified_gaps)
+        run_state.top_gap = assessor_output.top_gap
+        run_state.next_evidence_need = assessor_output.next_evidence_need
+        run_state.evidence_coverage_map = dict(
+            assessor_output.evidence_coverage_map
+        )
+        run_state.prioritization_summary = assessor_output.prioritization_summary
 
     async def _decide_whether_external_action_is_needed(
         self,
