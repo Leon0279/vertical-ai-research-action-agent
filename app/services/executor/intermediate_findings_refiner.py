@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from typing import Any
 
 from pydantic import ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.observability import exception_diagnostic_fields
 from app.common.utils.text import unique_non_empty_strings
 from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_executor_llm_payloads import (
@@ -19,6 +22,8 @@ from app.services.executor.models.research_executor_run_state import (
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
@@ -34,15 +39,121 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
     ) -> None:
         """Step 7. Produce or refine intermediate findings from the working state."""
 
+        started_at = time.perf_counter()
+        previous_finding_count = len(run_state.intermediate_findings)
+        previous_caveat_count = len(run_state.finding_caveats)
         prompt = self._build_intermediate_findings_prompt(stage_input, run_state)
-        llm_output = await self._llm_client.generate_json_object(prompt)
-        payload = self._parse_intermediate_findings_output(llm_output)
+        try:
+            llm_output = await self._llm_client.generate_json_object(prompt)
+        except Exception as exc:
+            self._log_refinement_failure(
+                run_state,
+                started_at=started_at,
+                failure_stage="llm_generation",
+                previous_finding_count=previous_finding_count,
+                previous_caveat_count=previous_caveat_count,
+                error=exc,
+            )
+            raise
+
+        try:
+            payload = self._parse_intermediate_findings_output(llm_output)
+        except Exception as exc:
+            self._log_refinement_failure(
+                run_state,
+                started_at=started_at,
+                failure_stage="schema_validation",
+                previous_finding_count=previous_finding_count,
+                previous_caveat_count=previous_caveat_count,
+                error=exc,
+            )
+            raise
 
         run_state.intermediate_findings = unique_non_empty_strings(
             payload.intermediate_findings,
         )
         run_state.finding_caveats = unique_non_empty_strings(
             payload.finding_caveats,
+        )
+        self._log_refinement_succeeded(
+            run_state,
+            started_at=started_at,
+            previous_finding_count=previous_finding_count,
+            previous_caveat_count=previous_caveat_count,
+        )
+
+    def _log_refinement_succeeded(
+        self,
+        run_state: ResearchExecutorRunState,
+        *,
+        started_at: float,
+        previous_finding_count: int,
+        previous_caveat_count: int,
+    ) -> None:
+        """记录最终采用的 findings，不记录 prompt、原始响应或 evidence 正文。"""
+
+        iteration = run_state.require_current_iteration()
+        logger.info(
+            "Research intermediate findings refined.",
+            extra={
+                "event": "research_intermediate_findings_refined",
+                "iteration_index": iteration.iteration_index,
+                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "duration_ms": round(
+                    (time.perf_counter() - started_at) * 1000,
+                    2,
+                ),
+                "action_mode": iteration.action_mode,
+                "previous_finding_count": previous_finding_count,
+                "previous_caveat_count": previous_caveat_count,
+                "finding_count": len(run_state.intermediate_findings),
+                "caveat_count": len(run_state.finding_caveats),
+                "intermediate_findings": list(run_state.intermediate_findings),
+                "finding_caveats": list(run_state.finding_caveats),
+                "processed_evidence_count": len(
+                    iteration.processed_evidence_units
+                ),
+                "total_processed_evidence_count": len(
+                    run_state.processed_evidence_units
+                ),
+            },
+        )
+
+    def _log_refinement_failure(
+        self,
+        run_state: ResearchExecutorRunState,
+        *,
+        started_at: float,
+        failure_stage: str,
+        previous_finding_count: int,
+        previous_caveat_count: int,
+        error: Exception,
+    ) -> None:
+        """记录安全的 findings refinement 失败诊断并保持原有异常语义。"""
+
+        iteration = run_state.require_current_iteration()
+        logger.warning(
+            "Research intermediate findings refinement failed.",
+            extra={
+                "event": "research_intermediate_findings_refinement_failed",
+                "iteration_index": iteration.iteration_index,
+                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "duration_ms": round(
+                    (time.perf_counter() - started_at) * 1000,
+                    2,
+                ),
+                "action_mode": iteration.action_mode,
+                "failure_stage": failure_stage,
+                "previous_finding_count": previous_finding_count,
+                "previous_caveat_count": previous_caveat_count,
+                "processed_evidence_count": len(
+                    iteration.processed_evidence_units
+                ),
+                "total_processed_evidence_count": len(
+                    run_state.processed_evidence_units
+                ),
+                **exception_diagnostic_fields(error),
+            },
         )
 
 

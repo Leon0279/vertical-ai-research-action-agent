@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from app.domain.enums import (
     AcquisitionStatus,
@@ -104,7 +105,10 @@ def _attempt(
     )
 
 
-def test_history_tracker_records_attempt_after_outcome_and_bounds_history() -> None:
+def test_history_tracker_records_attempt_after_outcome_and_bounds_history(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
     tracker = ResearchRetrievalHistoryTracker()
     old_attempts = [
         _attempt(
@@ -130,7 +134,14 @@ def test_history_tracker_records_attempt_after_outcome_and_bounds_history() -> N
                     selected_tool="research_knowledge_memory_v1",
                     generated_query="memory retrieval query",
                     acquisition_status=AcquisitionStatus.NO_RESULT,
-                )
+                ),
+                RetrievalAttemptTrace(
+                    selected_family=FamilyName.DOCS_SEARCH,
+                    selected_tool="docs_search_v1",
+                    generated_query="docs retrieval query",
+                    acquisition_status=AcquisitionStatus.NO_RESULT,
+                    fallback_applied=True,
+                ),
             ],
         ),
     )
@@ -138,14 +149,115 @@ def test_history_tracker_records_attempt_after_outcome_and_bounds_history() -> N
     tracker.record_completed_iteration(state)
 
     assert len(state.recent_retrieval_attempts) == 8
-    recorded_attempt = state.recent_retrieval_attempts[-1]
+    recorded_attempt = state.recent_retrieval_attempts[-2]
     assert recorded_attempt.coverage_target_key == "objective"
     assert recorded_attempt.selected_family == FamilyName.RESEARCH_KNOWLEDGE_RECALL
     assert recorded_attempt.selected_tool == "research_knowledge_memory_v1"
     assert recorded_attempt.result_utility == RetrievalResultUtility.NOT_USEFUL
+    assert state.recent_retrieval_attempts[-1].selected_family == FamilyName.DOCS_SEARCH
     prompt_history = tracker.assessment_prompt_value(state)
-    assert prompt_history[-1]["query_fingerprint"] == "8faf947b1cee1409"
-    assert "generated_query" not in prompt_history[-1]
+    assert prompt_history[-2]["query_fingerprint"] == "8faf947b1cee1409"
+    assert "generated_query" not in prompt_history[-2]
+    history_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_retrieval_history_updated"
+    )
+    assert history_record.history_update_status == "updated"
+    assert history_record.history_skip_reason is None
+    assert history_record.coverage_target_key == "objective"
+    assert history_record.new_retrieval_attempt_count == 2
+    assert history_record.retrieval_history_count == 8
+    assert history_record.retrieval_history_truncated_count == 2
+    assert history_record.low_value_families == [
+        FamilyName.DOCS_SEARCH,
+        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+    ]
+    assert history_record.retrieval_attempts == [
+        {
+            "selected_family": FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+            "selected_tool": "research_knowledge_memory_v1",
+            "query_fingerprint": "8faf947b1cee1409",
+            "result_status": AcquisitionStatus.NO_RESULT,
+            "result_utility": RetrievalResultUtility.NOT_USEFUL,
+            "fallback_applied": False,
+        },
+        {
+            "selected_family": FamilyName.DOCS_SEARCH,
+            "selected_tool": "docs_search_v1",
+            "query_fingerprint": tracker._query_fingerprint(
+                "docs retrieval query"
+            ),
+            "result_status": AcquisitionStatus.NO_RESULT,
+            "result_utility": RetrievalResultUtility.NOT_USEFUL,
+            "fallback_applied": True,
+        },
+    ]
+    assert "memory retrieval query" not in str(history_record.retrieval_attempts)
+
+
+def test_history_tracker_logs_each_skip_reason(caplog) -> None:
+    caplog.set_level(logging.INFO)
+    tracker = ResearchRetrievalHistoryTracker()
+
+    no_tool_state = _run_state()
+    tracker.record_completed_iteration(no_tool_state)
+    assert caplog.records[-1].history_skip_reason == "no_tool_execution_result"
+
+    no_need_state = _run_state()
+    no_need_state.next_evidence_need = None
+    no_need_state.require_current_iteration().tool_execution_result = (
+        ToolExecutionLayerResult(
+            execution_status="completed",
+            acquisition_status=AcquisitionStatus.NO_RESULT,
+        )
+    )
+    tracker.record_completed_iteration(no_need_state)
+    assert caplog.records[-1].history_skip_reason == "no_next_evidence_need"
+
+    no_attempt_state = _run_state()
+    no_attempt_state.require_current_iteration().tool_execution_result = (
+        ToolExecutionLayerResult(
+            execution_status="completed",
+            acquisition_status=AcquisitionStatus.NO_RESULT,
+        )
+    )
+    tracker.record_completed_iteration(no_attempt_state)
+    assert caplog.records[-1].history_skip_reason == "no_retrieval_attempt"
+
+    no_valid_attempt_state = _run_state()
+    no_valid_attempt_state.require_current_iteration().tool_execution_result = (
+        ToolExecutionLayerResult(
+            execution_status="completed",
+            acquisition_status=AcquisitionStatus.NO_RESULT,
+            retrieval_trace=RetrievalTrace(
+                target_problem="补齐当前目标的可靠支撑材料。",
+                attempts=[
+                    RetrievalAttemptTrace(
+                        generated_query="unroutable query",
+                        acquisition_status=AcquisitionStatus.NO_RESULT,
+                    )
+                ],
+            ),
+        )
+    )
+    tracker.record_completed_iteration(no_valid_attempt_state)
+    assert caplog.records[-1].history_skip_reason == "no_valid_attempt"
+
+    history_records = [
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_retrieval_history_updated"
+    ]
+    assert [record.history_update_status for record in history_records] == [
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+    ]
+    assert all(record.new_retrieval_attempt_count == 0 for record in history_records)
 
 
 def test_memory_low_value_history_switches_current_target_to_external() -> None:

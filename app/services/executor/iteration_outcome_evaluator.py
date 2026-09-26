@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Any
 
 from pydantic import ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.observability import exception_diagnostic_fields
 from app.domain.enums import AcquisitionStatus
 from app.domain.models import ResearchStageInput
 from app.services.executor.models.research_executor_llm_payloads import (
@@ -52,6 +54,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
     ) -> ResearchIterationOutcome | None:
         """Apply rules that make findings/outcome LLM calls unnecessary."""
 
+        started_at = time.perf_counter()
         iteration = run_state.require_current_iteration()
         if (
             iteration.acquisition_paths_exhausted
@@ -69,6 +72,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                 iteration_evaluation_state=ResearchIterationEvaluationState(
                     short_circuit_reason=rationale,
                 ),
+                started_at=started_at,
             )
             return "degrade"
 
@@ -101,6 +105,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                 iteration_evaluation_state=ResearchIterationEvaluationState(
                     short_circuit_reason=rationale,
                 ),
+                started_at=started_at,
             )
             return "continue"
 
@@ -135,6 +140,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
     ) -> ResearchIterationOutcome:
         """Step 8. Evaluate whether the research stage should continue, stop, or degrade."""
 
+        started_at = time.perf_counter()
         short_circuit_outcome = self._short_circuit_iteration_outcome(
             stage_input,
             run_state,
@@ -149,12 +155,32 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                 iteration_evaluation_state=ResearchIterationEvaluationState(
                     short_circuit_reason=rationale,
                 ),
+                started_at=started_at,
             )
             return outcome
 
         prompt = self._build_iteration_outcome_prompt(stage_input, run_state)
-        llm_output = await self._llm_client.generate_json_object(prompt)
-        payload = self._parse_iteration_outcome_output(llm_output)
+        try:
+            llm_output = await self._llm_client.generate_json_object(prompt)
+        except Exception as exc:
+            self._log_outcome_evaluation_failure(
+                run_state,
+                started_at=started_at,
+                failure_stage="llm_generation",
+                error=exc,
+            )
+            raise
+
+        try:
+            payload = self._parse_iteration_outcome_output(llm_output)
+        except Exception as exc:
+            self._log_outcome_evaluation_failure(
+                run_state,
+                started_at=started_at,
+                failure_stage="schema_validation",
+                error=exc,
+            )
+            raise
         final_outcome, final_rationale, guardrail_applied = (
             self._apply_iteration_outcome_guardrails(
                 stage_input,
@@ -169,7 +195,9 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             outcome_decision_source="llm_with_guardrails",
             iteration_evaluation_state=self._iteration_evaluation_state(payload),
             proposed_iteration_outcome=payload.proposed_iteration_outcome,
+            proposed_outcome_rationale=payload.proposed_outcome_rationale,
             outcome_guardrail_applied=guardrail_applied,
+            started_at=started_at,
         )
         return final_outcome
 
@@ -329,7 +357,9 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         outcome_decision_source: str,
         iteration_evaluation_state: ResearchIterationEvaluationState,
         proposed_iteration_outcome: ResearchIterationOutcome | None = None,
+        proposed_outcome_rationale: str | None = None,
         outcome_guardrail_applied: bool = False,
+        started_at: float | None = None,
     ) -> None:
         """写入当前 iteration 的最终 outcome 与可解释 trace。"""
 
@@ -341,6 +371,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         iteration.proposed_iteration_outcome = proposed_iteration_outcome
         iteration.outcome_guardrail_applied = outcome_guardrail_applied
         tool_execution_result = iteration.tool_execution_result
+        evidence_processing_result = iteration.evidence_processing_result
         logger.log(
             logging.WARNING
             if iteration_outcome == "degrade"
@@ -355,14 +386,33 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                     iteration.remaining_iteration_budget - 1,
                 ),
                 "action_mode": iteration.action_mode,
+                "action_decision_reason": iteration.action_decision_reason,
+                "duration_ms": (
+                    round((time.perf_counter() - started_at) * 1000, 2)
+                    if started_at is not None
+                    else None
+                ),
+                "execution_status": (
+                    tool_execution_result.execution_status
+                    if tool_execution_result is not None
+                    else None
+                ),
                 "acquisition_status": (
                     tool_execution_result.acquisition_status
                     if tool_execution_result is not None
                     else None
                 ),
+                "processing_status": (
+                    evidence_processing_result.processing_status
+                    if evidence_processing_result is not None
+                    else None
+                ),
+                "candidate_material_count": len(iteration.candidate_materials),
                 "processed_evidence_count": len(
                     iteration.processed_evidence_units
                 ),
+                "finding_count": len(run_state.intermediate_findings),
+                "caveat_count": len(run_state.finding_caveats),
                 "top_gap_progress": iteration_evaluation_state.top_gap_progress,
                 "evidence_gain": iteration_evaluation_state.evidence_gain,
                 "finding_progress": iteration_evaluation_state.finding_progress,
@@ -373,6 +423,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                     iteration_evaluation_state.short_circuit_reason
                 ),
                 "proposed_iteration_outcome": proposed_iteration_outcome,
+                "proposed_outcome_rationale": proposed_outcome_rationale,
                 "iteration_outcome": iteration_outcome,
                 "outcome_decision_source": outcome_decision_source,
                 "outcome_guardrail_applied": outcome_guardrail_applied,
@@ -380,6 +431,57 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                 "acquisition_paths_exhausted": (
                     iteration.acquisition_paths_exhausted
                 ),
+            },
+        )
+
+    def _log_outcome_evaluation_failure(
+        self,
+        run_state: ResearchExecutorRunState,
+        *,
+        started_at: float,
+        failure_stage: str,
+        error: Exception,
+    ) -> None:
+        """记录安全的 outcome evaluation 失败诊断并保持原有异常语义。"""
+
+        iteration = run_state.require_current_iteration()
+        tool_execution_result = iteration.tool_execution_result
+        evidence_processing_result = iteration.evidence_processing_result
+        logger.warning(
+            "Research iteration outcome evaluation failed.",
+            extra={
+                "event": "research_iteration_outcome_evaluation_failed",
+                "iteration_index": iteration.iteration_index,
+                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "duration_ms": round(
+                    (time.perf_counter() - started_at) * 1000,
+                    2,
+                ),
+                "action_mode": iteration.action_mode,
+                "action_decision_reason": iteration.action_decision_reason,
+                "failure_stage": failure_stage,
+                "execution_status": (
+                    tool_execution_result.execution_status
+                    if tool_execution_result is not None
+                    else None
+                ),
+                "acquisition_status": (
+                    tool_execution_result.acquisition_status
+                    if tool_execution_result is not None
+                    else None
+                ),
+                "processing_status": (
+                    evidence_processing_result.processing_status
+                    if evidence_processing_result is not None
+                    else None
+                ),
+                "candidate_material_count": len(iteration.candidate_materials),
+                "processed_evidence_count": len(
+                    iteration.processed_evidence_units
+                ),
+                "finding_count": len(run_state.intermediate_findings),
+                "caveat_count": len(run_state.finding_caveats),
+                **exception_diagnostic_fields(error),
             },
         )
 

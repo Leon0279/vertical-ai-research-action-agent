@@ -991,6 +991,10 @@ def test_research_executor_refines_when_gap_is_noop(caplog) -> None:
     assert outcome_record.iteration_outcome == "stop"
     assert outcome_record.outcome_decision_source == "rule_short_circuit"
     assert outcome_record.short_circuit_reason == outcome_record.outcome_rationale
+    assert outcome_record.action_decision_reason == "no_actionable_gap"
+    assert outcome_record.execution_status is None
+    assert outcome_record.processing_status is None
+    assert outcome_record.duration_ms >= 0
 
 
 def test_research_executor_refines_when_findings_are_stable_and_strong() -> None:
@@ -1556,7 +1560,8 @@ def test_research_executor_returns_partial_success_when_degraded_with_outputs() 
     )
 
 
-def test_research_executor_returns_failed_when_degraded_without_outputs() -> None:
+def test_research_executor_returns_failed_when_degraded_without_outputs(caplog) -> None:
+    caplog.set_level(logging.INFO)
     findings_payload = json.dumps(
         _valid_findings_payload(intermediate_findings=[], finding_caveats=[]),
         ensure_ascii=False,
@@ -1580,6 +1585,16 @@ def test_research_executor_returns_failed_when_degraded_without_outputs() -> Non
         "runtime 未声明可选 retrieval family" in question
         for question in result.open_questions
     )
+    findings_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_intermediate_findings_refined"
+    )
+    assert findings_record.intermediate_findings == []
+    assert findings_record.finding_caveats == []
+    assert findings_record.finding_count == 0
+    assert findings_record.caveat_count == 0
 
 
 def test_research_executor_continues_when_llm_outcome_allows_more_iterations(
@@ -1633,9 +1648,43 @@ def test_research_executor_continues_when_llm_outcome_allows_more_iterations(
     ]
     assert all(record.levelno == logging.INFO for record in outcome_records)
     assert outcome_records[0].proposed_iteration_outcome == "continue"
+    assert outcome_records[0].proposed_outcome_rationale == (
+        "本轮有有效推进，但仍有中等不确定性，建议继续下一轮。"
+    )
     assert outcome_records[0].outcome_guardrail_applied is False
+    assert outcome_records[0].execution_status == "completed"
+    assert outcome_records[0].acquisition_status == AcquisitionStatus.SUCCESS
+    assert outcome_records[0].processing_status == "success"
+    assert outcome_records[0].candidate_material_count == 0
+    assert outcome_records[0].finding_count == 1
+    assert outcome_records[0].caveat_count == 1
+    assert outcome_records[0].duration_ms >= 0
     assert outcome_records[1].proposed_iteration_outcome == "continue"
     assert outcome_records[1].outcome_guardrail_applied is True
+    loop_events = [
+        getattr(record, "event", None)
+        for record in caplog.records
+        if getattr(record, "event", None)
+        in {
+            "research_state_assessed",
+            "research_action_selected",
+            "research_intermediate_findings_refined",
+            "research_iteration_outcome",
+            "research_retrieval_history_updated",
+        }
+    ]
+    assert loop_events == [
+        "research_state_assessed",
+        "research_action_selected",
+        "research_intermediate_findings_refined",
+        "research_iteration_outcome",
+        "research_retrieval_history_updated",
+        "research_state_assessed",
+        "research_action_selected",
+        "research_intermediate_findings_refined",
+        "research_iteration_outcome",
+        "research_retrieval_history_updated",
+    ]
 
 
 def test_research_executor_tracks_current_iteration_evidence_delta() -> None:
@@ -1753,6 +1802,9 @@ def test_research_executor_degrades_when_last_iteration_has_no_meaningful_gain(
     assert outcome_record.iteration_outcome == "degrade"
     assert outcome_record.outcome_decision_source == "llm_with_guardrails"
     assert outcome_record.outcome_guardrail_applied is True
+    assert outcome_record.proposed_outcome_rationale == (
+        "仍有高不确定性，模型建议继续。"
+    )
     assert outcome_record.top_gap_progress == "not_advanced"
     assert outcome_record.evidence_gain == "no_meaningful_gain"
     assert outcome_record.finding_progress == "no_material_change"
@@ -1857,9 +1909,22 @@ def test_research_executor_preserves_output_when_iteration_outcome_is_not_json(
         if getattr(record, "event", None) == "research_iteration_failed"
     )
     assert failure_record.research_step == "iteration_outcome_evaluation"
+    evaluation_failure_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_iteration_outcome_evaluation_failed"
+    )
+    assert evaluation_failure_record.failure_stage == "llm_generation"
+    assert evaluation_failure_record.exception_type == "ValueError"
+    assert evaluation_failure_record.processing_status == "success"
+    assert not hasattr(evaluation_failure_record, "raw_response")
 
 
-def test_research_executor_preserves_output_when_iteration_outcome_schema_is_invalid() -> None:
+def test_research_executor_preserves_output_when_iteration_outcome_schema_is_invalid(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
     invalid_payload = json.dumps(
         {
             "top_gap_progress": "unknown",
@@ -1894,6 +1959,14 @@ def test_research_executor_preserves_output_when_iteration_outcome_schema_is_inv
     assert result.research_status == "partial_success"
     assert result.executed_iteration_count == 0
     assert result.intermediate_findings
+    evaluation_failure_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_iteration_outcome_evaluation_failed"
+    )
+    assert evaluation_failure_record.failure_stage == "schema_validation"
+    assert evaluation_failure_record.exception_type == "ValueError"
 
 
 def test_fourth_iteration_failure_preserves_three_completed_iterations(
@@ -1937,6 +2010,10 @@ def test_fourth_iteration_failure_preserves_three_completed_iterations(
         == "runtime_failure_boundary"
     )
     assert outcome_record.iteration_outcome == "degrade"
+    assert outcome_record.execution_status is None
+    assert outcome_record.processing_status is None
+    assert outcome_record.finding_count == 3
+    assert outcome_record.proposed_outcome_rationale is None
 
 
 def test_first_iteration_failure_without_output_still_raises() -> None:
@@ -2034,7 +2111,8 @@ def test_iteration_outcome_prompt_contains_required_context_and_boundaries() -> 
     assert "working_state" not in outcome_prompt
 
 
-def test_research_executor_produces_full_intermediate_findings() -> None:
+def test_research_executor_produces_full_intermediate_findings(caplog) -> None:
+    caplog.set_level(logging.INFO)
     findings_payload = json.dumps(
         _valid_findings_payload(
             intermediate_findings=[
@@ -2072,6 +2150,22 @@ def test_research_executor_produces_full_intermediate_findings() -> None:
     assert finding_state.finding_caveats == [
         "fresh facts 仍缺少直接证据。",
     ]
+    findings_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_intermediate_findings_refined"
+    )
+    assert findings_record.iteration_index == 1
+    assert findings_record.previous_finding_count == 1
+    assert findings_record.previous_caveat_count == 0
+    assert findings_record.finding_count == 2
+    assert findings_record.caveat_count == 1
+    assert findings_record.intermediate_findings == finding_state.intermediate_findings
+    assert findings_record.finding_caveats == finding_state.finding_caveats
+    assert findings_record.processed_evidence_count == 0
+    assert findings_record.total_processed_evidence_count == 0
+    assert findings_record.duration_ms >= 0
 
 
 def test_intermediate_findings_prompt_contains_required_context_and_boundaries() -> None:
@@ -2173,7 +2267,10 @@ def test_research_executor_accepts_json_object_intermediate_findings_output() ->
     assert service.finding_states[0].finding_caveats == ["fenced caveat"]
 
 
-def test_research_executor_raises_when_intermediate_findings_output_is_not_json() -> None:
+def test_research_executor_raises_when_intermediate_findings_output_is_not_json(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING)
     service = _research_executor(
         llm_client=_FakeLLMClient(findings_responses=["not json"])
     )
@@ -2185,8 +2282,21 @@ def test_research_executor_raises_when_intermediate_findings_output_is_not_json(
             )
         )
 
+    failure_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_intermediate_findings_refinement_failed"
+    )
+    assert failure_record.failure_stage == "llm_generation"
+    assert failure_record.exception_type == "ValueError"
+    assert not hasattr(failure_record, "raw_response")
 
-def test_research_executor_raises_when_intermediate_findings_schema_is_invalid() -> None:
+
+def test_research_executor_raises_when_intermediate_findings_schema_is_invalid(
+    caplog,
+) -> None:
+    caplog.set_level(logging.WARNING)
     invalid_payload = json.dumps(
         {
             "intermediate_findings": "not a list",
@@ -2206,6 +2316,15 @@ def test_research_executor_raises_when_intermediate_findings_schema_is_invalid()
                 )
             )
         )
+
+    failure_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_intermediate_findings_refinement_failed"
+    )
+    assert failure_record.failure_stage == "schema_validation"
+    assert failure_record.exception_type == "ValueError"
 
 
 def test_research_executor_refines_when_latency_constrained_and_gap_not_blocking() -> None:
@@ -2806,6 +2925,16 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
         for record in log_records
         if record.get("event") == "research_iteration_outcome"
     ]
+    findings_records = [
+        record
+        for record in log_records
+        if record.get("event") == "research_intermediate_findings_refined"
+    ]
+    history_records = [
+        record
+        for record in log_records
+        if record.get("event") == "research_retrieval_history_updated"
+    ]
     assert [record["action_mode"] for record in action_records] == [
         "memory_backed_acquisition",
         "external_acquisition",
@@ -2833,6 +2962,12 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
         1,
     ]
     assert [record["iteration_index"] for record in outcome_records] == [1, 2]
+    assert [record["iteration_index"] for record in findings_records] == [2]
+    assert [record["iteration_index"] for record in history_records] == [1, 2]
+    assert [record["history_update_status"] for record in history_records] == [
+        "updated",
+        "updated",
+    ]
     loop_events = [
         record["event"]
         for record in log_records
@@ -2840,29 +2975,44 @@ def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_ex
         in {
             "research_state_assessed",
             "research_action_selected",
+            "research_intermediate_findings_refined",
             "research_iteration_outcome",
+            "research_retrieval_history_updated",
         }
     ]
     assert loop_events == [
         "research_state_assessed",
         "research_action_selected",
         "research_iteration_outcome",
+        "research_retrieval_history_updated",
         "research_state_assessed",
         "research_action_selected",
+        "research_intermediate_findings_refined",
         "research_iteration_outcome",
+        "research_retrieval_history_updated",
     ]
     assert outcome_records[0]["iteration_outcome"] == "continue"
     assert result.executed_iteration_count == 2
     assert result.executed_iteration_count <= 2
     assert all(
         record["trace_id"] == "trace-two-iterations"
-        for record in [*assessment_records, *action_records, *outcome_records]
+        for record in [
+            *assessment_records,
+            *action_records,
+            *findings_records,
+            *outcome_records,
+            *history_records,
+        ]
     )
     serialized_assessments = json.dumps(assessment_records, ensure_ascii=False)
     assert "输入 JSON" not in serialized_assessments
     assert "memory retrieval ineffective query" not in serialized_assessments
     serialized_actions = json.dumps(action_records, ensure_ascii=False)
     assert "memory retrieval ineffective query" not in serialized_actions
+    serialized_findings = json.dumps(findings_records, ensure_ascii=False)
+    serialized_history = json.dumps(history_records, ensure_ascii=False)
+    assert "memory retrieval ineffective query" not in serialized_findings
+    assert "memory retrieval ineffective query" not in serialized_history
     assert all("current_assessment" not in record for record in action_records)
     assert all("top_gap" not in record for record in action_records)
     assert all("next_evidence_need" not in record for record in action_records)

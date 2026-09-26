@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 
 from app.common.utils.text import normalize_whitespace_or_none
 from app.domain.enums import AcquisitionStatus, FamilyName, RetrievalResultUtility
@@ -13,6 +14,8 @@ from app.services.executor.models.research_executor_iteration_state import (
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchRetrievalHistoryTracker:
@@ -31,11 +34,35 @@ class ResearchRetrievalHistoryTracker:
         iteration = run_state.require_current_iteration()
         tool_execution_result = iteration.tool_execution_result
         next_evidence_need = run_state.next_evidence_need
-        if tool_execution_result is None or next_evidence_need is None:
+        if tool_execution_result is None:
+            self._log_history_update(
+                run_state,
+                coverage_target_key=(
+                    next_evidence_need.coverage_target_key
+                    if next_evidence_need is not None
+                    else None
+                ),
+                update_status="skipped",
+                skip_reason="no_tool_execution_result",
+            )
+            return
+        if next_evidence_need is None:
+            self._log_history_update(
+                run_state,
+                coverage_target_key=None,
+                update_status="skipped",
+                skip_reason="no_next_evidence_need",
+            )
             return
 
         attempts = tool_execution_result.retrieval_trace.attempts
         if not attempts:
+            self._log_history_update(
+                run_state,
+                coverage_target_key=next_evidence_need.coverage_target_key,
+                update_status="skipped",
+                skip_reason="no_retrieval_attempt",
+            )
             return
 
         compressed_attempts: list[RecentRetrievalAttempt] = []
@@ -76,9 +103,87 @@ class ResearchRetrievalHistoryTracker:
                 )
             )
 
-        run_state.recent_retrieval_attempts = (
-            [*run_state.recent_retrieval_attempts, *compressed_attempts]
-        )[-self._MAX_RECENT_ATTEMPTS :]
+        if not compressed_attempts:
+            self._log_history_update(
+                run_state,
+                coverage_target_key=next_evidence_need.coverage_target_key,
+                update_status="skipped",
+                skip_reason="no_valid_attempt",
+            )
+            return
+
+        combined_attempts = [
+            *run_state.recent_retrieval_attempts,
+            *compressed_attempts,
+        ]
+        truncated_count = max(
+            0,
+            len(combined_attempts) - self._MAX_RECENT_ATTEMPTS,
+        )
+        run_state.recent_retrieval_attempts = combined_attempts[
+            -self._MAX_RECENT_ATTEMPTS :
+        ]
+        self._log_history_update(
+            run_state,
+            coverage_target_key=next_evidence_need.coverage_target_key,
+            update_status="updated",
+            new_attempts=compressed_attempts,
+            truncated_count=truncated_count,
+        )
+
+    def _log_history_update(
+        self,
+        run_state: ResearchExecutorRunState,
+        *,
+        coverage_target_key: str | None,
+        update_status: str,
+        skip_reason: str | None = None,
+        new_attempts: list[RecentRetrievalAttempt] | None = None,
+        truncated_count: int = 0,
+    ) -> None:
+        """记录压缩后的本轮 history 变化，不记录 raw query 或完整历史。"""
+
+        iteration = run_state.require_current_iteration()
+        attempts = list(new_attempts or [])
+        low_value_families = (
+            sorted(
+                self.low_value_families_for_target(
+                    run_state,
+                    coverage_target_key,
+                ),
+                key=lambda family: family.value,
+            )
+            if coverage_target_key is not None
+            else []
+        )
+        logger.info(
+            "Research retrieval history processed.",
+            extra={
+                "event": "research_retrieval_history_updated",
+                "iteration_index": iteration.iteration_index,
+                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "coverage_target_key": coverage_target_key,
+                "history_update_status": update_status,
+                "history_skip_reason": skip_reason,
+                "new_retrieval_attempt_count": len(attempts),
+                "retrieval_history_count": len(
+                    run_state.recent_retrieval_attempts
+                ),
+                "retrieval_history_truncated_count": truncated_count,
+                "retrieval_attempts": [
+                    {
+                        "selected_family": attempt.selected_family,
+                        "selected_tool": attempt.selected_tool,
+                        "query_fingerprint": attempt.query_fingerprint,
+                        "result_status": attempt.result_status,
+                        "result_utility": attempt.result_utility,
+                        "fallback_applied": attempt.fallback_applied,
+                    }
+                    for attempt in attempts
+                ],
+                "low_value_families": low_value_families,
+            },
+        )
 
     def attempts_for_target(
         self,

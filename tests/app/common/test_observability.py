@@ -19,7 +19,11 @@ from app.common.observability import (
     reset_trace_id,
     retrieval_query_log_fields,
 )
-from app.domain.enums import FamilyName
+from app.domain.enums import (
+    AcquisitionStatus,
+    FamilyName,
+    RetrievalResultUtility,
+)
 
 
 def _settings(path: Path, *, max_bytes: int = 100_000) -> FileLoggingSettings:
@@ -108,6 +112,36 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                 ],
                 "external_families_after_history": [FamilyName.DOCS_SEARCH],
                 "action_rationale": "api_key=rationale-secret " + ("x" * 2100),
+                "previous_finding_count": 1,
+                "previous_caveat_count": 1,
+                "finding_count": 2,
+                "caveat_count": 1,
+                "intermediate_findings": [
+                    "Finding uses api_key=finding-secret safely."
+                ],
+                "finding_caveats": [
+                    "Bearer caveat-secret still needs validation."
+                ],
+                "total_processed_evidence_count": 3,
+                "processing_status": "success",
+                "candidate_material_count": 2,
+                "history_update_status": "updated",
+                "history_skip_reason": None,
+                "new_retrieval_attempt_count": 1,
+                "retrieval_history_truncated_count": 0,
+                "retrieval_attempts": [
+                    {
+                        "selected_family": FamilyName.DOCS_SEARCH,
+                        "selected_tool": "docs_search_v1",
+                        "query_fingerprint": "abc123",
+                        "result_status": AcquisitionStatus.NO_RESULT,
+                        "result_utility": RetrievalResultUtility.NOT_USEFUL,
+                        "fallback_applied": False,
+                    }
+                ],
+                "proposed_outcome_rationale": (
+                    "Do not expose password=outcome-secret."
+                ),
                 "failure_stage": "search_http",
                 "failure_reason": "timeout",
                 "error_category": "timeout",
@@ -224,6 +258,36 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     ]
     assert record["external_families_after_history"] == ["docs_search"]
     assert len(str(record["action_rationale"])) == 2000
+    assert record["previous_finding_count"] == 1
+    assert record["previous_caveat_count"] == 1
+    assert record["finding_count"] == 2
+    assert record["caveat_count"] == 1
+    assert record["intermediate_findings"] == [
+        "Finding uses api_key=[REDACTED] safely."
+    ]
+    assert record["finding_caveats"] == [
+        "Bearer [REDACTED] still needs validation."
+    ]
+    assert record["total_processed_evidence_count"] == 3
+    assert record["processing_status"] == "success"
+    assert record["candidate_material_count"] == 2
+    assert record["history_update_status"] == "updated"
+    assert record["history_skip_reason"] is None
+    assert record["new_retrieval_attempt_count"] == 1
+    assert record["retrieval_history_truncated_count"] == 0
+    assert record["retrieval_attempts"] == [
+        {
+            "selected_family": "docs_search",
+            "selected_tool": "docs_search_v1",
+            "query_fingerprint": "abc123",
+            "result_status": "no_result",
+            "result_utility": "not_useful",
+            "fallback_applied": False,
+        }
+    ]
+    assert record["proposed_outcome_rationale"] == (
+        "Do not expose password=[REDACTED]"
+    )
     assert record["failure_stage"] == "search_http"
     assert record["failure_reason"] == "timeout"
     assert record["error_category"] == "timeout"
