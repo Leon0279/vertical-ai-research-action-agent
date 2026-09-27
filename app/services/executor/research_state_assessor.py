@@ -11,8 +11,8 @@ from pydantic import ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.common.observability import exception_diagnostic_fields
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMResearchAssessmentAndGapsPayload,
+from app.services.executor.models.llm_research_assessment_and_gaps_payload import (
+    LLMResearchAssessmentAndGapsPayload,
 )
 from app.services.executor.models.research_state_assessor_input import (
     ResearchStateAssessorInput,
@@ -542,11 +542,11 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
     def _parse_research_assessment_output(
         self,
         llm_output: dict[str, Any],
-    ) -> _LLMResearchAssessmentAndGapsPayload:
+    ) -> LLMResearchAssessmentAndGapsPayload:
         """Parse and validate the LLM assessment JSON."""
 
         try:
-            return _LLMResearchAssessmentAndGapsPayload.model_validate(llm_output)
+            return LLMResearchAssessmentAndGapsPayload.model_validate(llm_output)
         except ValidationError as exc:
             raise ValueError(
                 "Research assessment LLM response did not match the required schema."

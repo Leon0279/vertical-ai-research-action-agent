@@ -2,10 +2,14 @@
 
 from app.domain.enums import FamilyName
 from app.services.executor.models.evidence_coverage_entry import EvidenceCoverageEntry
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMNextEvidenceNeedPayload,
-    _LLMResearchAssessmentPayload,
-    _LLMResearchGapPayload,
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
+)
+from app.services.executor.models.llm_research_assessment_payload import (
+    LLMResearchAssessmentPayload,
+)
+from app.services.executor.models.llm_research_gap_payload import (
+    LLMResearchGapPayload,
 )
 from app.services.executor.models.research_state_assessor_input import (
     ResearchStateAssessorInput,
@@ -26,8 +30,8 @@ def _coverage_map() -> dict[str, EvidenceCoverageEntry]:
     }
 
 
-def _gap() -> _LLMResearchGapPayload:
-    return _LLMResearchGapPayload(
+def _gap() -> LLMResearchGapPayload:
+    return LLMResearchGapPayload(
         gap_scope="objective_level",
         gap_nature="missing",
         gap_severity="important",
@@ -37,8 +41,8 @@ def _gap() -> _LLMResearchGapPayload:
     )
 
 
-def _evidence_need() -> _LLMNextEvidenceNeedPayload:
-    return _LLMNextEvidenceNeedPayload(
+def _evidence_need() -> LLMNextEvidenceNeedPayload:
+    return LLMNextEvidenceNeedPayload(
         need_scope="objective_level",
         need_target="当前研究目标",
         need_purpose="establish_coverage",
@@ -95,7 +99,7 @@ def test_research_state_assessor_output_keeps_typed_decision() -> None:
     gap = _gap()
     evidence_need = _evidence_need()
     output = ResearchStateAssessorOutput(
-        assessment=_LLMResearchAssessmentPayload(
+        assessment=LLMResearchAssessmentPayload(
             coverage_status="not_covered",
             support_strength="insufficient_support",
             finding_maturity="tentative",

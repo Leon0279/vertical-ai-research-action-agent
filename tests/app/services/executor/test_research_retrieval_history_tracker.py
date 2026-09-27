@@ -33,10 +33,14 @@ from app.services.executor.models.research_action_decider_output import (
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMNextEvidenceNeedPayload,
-    _LLMResearchAssessmentPayload,
-    _LLMResearchGapPayload,
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
+)
+from app.services.executor.models.llm_research_assessment_payload import (
+    LLMResearchAssessmentPayload,
+)
+from app.services.executor.models.llm_research_gap_payload import (
+    LLMResearchGapPayload,
 )
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
@@ -71,19 +75,19 @@ def _run_state(
                 coverage_summary="尚未形成足够证据。",
             )
         },
-        current_assessment=_LLMResearchAssessmentPayload(
+        current_assessment=LLMResearchAssessmentPayload(
             coverage_status="not_covered",
             support_strength="weak_support",
             finding_maturity="tentative",
             assessment_summary="当前缺少关键证据。",
         ),
-        top_gap=_LLMResearchGapPayload(
+        top_gap=LLMResearchGapPayload(
             gap_scope="objective_level",
             gap_nature="weak",
             gap_severity="important",
             gap_summary="当前目标缺少可靠支撑。",
         ),
-        next_evidence_need=_LLMNextEvidenceNeedPayload(
+        next_evidence_need=LLMNextEvidenceNeedPayload(
             need_scope="objective_level",
             need_purpose="establish_coverage",
             desired_evidence_kind="stronger_supporting_evidence",

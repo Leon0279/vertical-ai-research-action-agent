@@ -13,8 +13,8 @@ from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.common.observability import exception_diagnostic_fields
 from app.domain.enums import AcquisitionStatus
 from app.domain.models import ResearchStageInput
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMIterationOutcomePayload,
+from app.services.executor.models.llm_iteration_outcome_payload import (
+    LLMIterationOutcomePayload,
 )
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
@@ -288,7 +288,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         self,
         stage_input: ResearchStageInput,
         run_state: ResearchExecutorRunState,
-        payload: _LLMIterationOutcomePayload,
+        payload: LLMIterationOutcomePayload,
     ) -> tuple[ResearchIterationOutcome, str, bool]:
         """Constrain the LLM-proposed outcome to hard runtime boundaries."""
 
@@ -487,7 +487,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
 
     def _iteration_evaluation_state(
         self,
-        payload: _LLMIterationOutcomePayload,
+        payload: LLMIterationOutcomePayload,
     ) -> ResearchIterationEvaluationState:
         """Return the LLM evaluation dimensions without the proposed outcome."""
 
@@ -723,11 +723,11 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
     def _parse_iteration_outcome_output(
         self,
         llm_output: dict[str, Any],
-    ) -> _LLMIterationOutcomePayload:
+    ) -> LLMIterationOutcomePayload:
         """Parse and validate the LLM iteration-outcome JSON."""
 
         try:
-            return _LLMIterationOutcomePayload.model_validate(llm_output)
+            return LLMIterationOutcomePayload.model_validate(llm_output)
         except ValidationError as exc:
             raise ValueError(
                 "Iteration outcome LLM response did not match the required schema."

@@ -6,10 +6,14 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums import FamilyName
 from app.domain.models import RecentRetrievalAttempt
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMNextEvidenceNeedPayload,
-    _LLMResearchAssessmentPayload,
-    _LLMResearchGapPayload,
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
+)
+from app.services.executor.models.llm_research_assessment_payload import (
+    LLMResearchAssessmentPayload,
+)
+from app.services.executor.models.llm_research_gap_payload import (
+    LLMResearchGapPayload,
 )
 
 
@@ -34,13 +38,13 @@ class ResearchActionDeciderInput(BaseModel):
     scope_restrictions: list[str] = Field(
         description="必填字段。需要随 acquisition action request 传递的访问或行动范围限制。",
     )
-    current_assessment: _LLMResearchAssessmentPayload = Field(
+    current_assessment: LLMResearchAssessmentPayload = Field(
         description="必填字段。Step 1 对当前 coverage、support 和 finding maturity 的判断。",
     )
-    top_gap: _LLMResearchGapPayload = Field(
+    top_gap: LLMResearchGapPayload = Field(
         description="必填字段。Step 1 选定的最高优先级 research gap。",
     )
-    next_evidence_need: _LLMNextEvidenceNeedPayload = Field(
+    next_evidence_need: LLMNextEvidenceNeedPayload = Field(
         description="必填字段。Step 1 根据 top gap 选定的下一项 evidence need。",
     )
     recent_retrieval_attempts: list[RecentRetrievalAttempt] = Field(

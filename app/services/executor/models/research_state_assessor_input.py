@@ -7,9 +7,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.domain.enums import FamilyName
 from app.domain.models import ContextItem, ProcessedEvidenceUnit, RecentRetrievalAttempt
 from app.services.executor.models.evidence_coverage_entry import EvidenceCoverageMap
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMNextEvidenceNeedPayload,
-    _LLMResearchGapPayload,
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
+)
+from app.services.executor.models.llm_research_gap_payload import (
+    LLMResearchGapPayload,
 )
 
 
@@ -90,13 +92,13 @@ class ResearchStateAssessorInput(BaseModel):
     intermediate_findings: list[str] = Field(
         description="必填字段。进入本轮 assessment 前已有的全量中间发现。",
     )
-    identified_gaps: list[_LLMResearchGapPayload] = Field(
+    identified_gaps: list[LLMResearchGapPayload] = Field(
         description="必填字段。上一轮识别出的全部 research gaps；首轮通常为空。",
     )
-    top_gap: _LLMResearchGapPayload | None = Field(
+    top_gap: LLMResearchGapPayload | None = Field(
         description="可空字段。上一轮选定的最高优先级 gap。",
     )
-    next_evidence_need: _LLMNextEvidenceNeedPayload | None = Field(
+    next_evidence_need: LLMNextEvidenceNeedPayload | None = Field(
         description="可空字段。上一轮选定的下一项 evidence need。",
     )
     recent_retrieval_attempts: list[RecentRetrievalAttempt] = Field(

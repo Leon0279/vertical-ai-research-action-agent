@@ -9,9 +9,11 @@ from app.domain.models.context.context_item import ContextItem
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMNextEvidenceNeedPayload,
-    _LLMResearchGapPayload,
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
+)
+from app.services.executor.models.llm_research_gap_payload import (
+    LLMResearchGapPayload,
 )
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
@@ -30,8 +32,8 @@ class ResearchExecutorCollaboratorSupport:
 
     def _has_no_actionable_evidence_need(
         self,
-        top_gap: _LLMResearchGapPayload | None,
-        next_evidence_need: _LLMNextEvidenceNeedPayload | None,
+        top_gap: LLMResearchGapPayload | None,
+        next_evidence_need: LLMNextEvidenceNeedPayload | None,
     ) -> bool:
         """判断 assessment 是否给出了无需 acquisition 的 no-op evidence need。"""
 

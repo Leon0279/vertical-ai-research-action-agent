@@ -13,8 +13,8 @@ from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
 from app.common.observability import exception_diagnostic_fields
 from app.common.utils.text import unique_non_empty_strings
 from app.domain.models import ResearchStageInput
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMIntermediateFindingsPayload,
+from app.services.executor.models.llm_intermediate_findings_payload import (
+    LLMIntermediateFindingsPayload,
 )
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
@@ -335,11 +335,11 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
     def _parse_intermediate_findings_output(
         self,
         llm_output: dict[str, Any],
-    ) -> _LLMIntermediateFindingsPayload:
+    ) -> LLMIntermediateFindingsPayload:
         """Parse and validate the LLM intermediate-findings JSON."""
 
         try:
-            return _LLMIntermediateFindingsPayload.model_validate(llm_output)
+            return LLMIntermediateFindingsPayload.model_validate(llm_output)
         except ValidationError as exc:
             raise ValueError(
                 "Intermediate findings LLM response did not match the required schema."

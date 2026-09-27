@@ -10,8 +10,8 @@ from app.services.executor.models.evidence_coverage_entry import (
     EvidenceCoverageEntry,
     EvidenceCoverageMap,
 )
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMResearchAssessmentAndGapsPayload,
+from app.services.executor.models.llm_research_assessment_and_gaps_payload import (
+    LLMResearchAssessmentAndGapsPayload,
 )
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
@@ -137,7 +137,7 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
         self,
         previous_coverage_map: EvidenceCoverageMap,
         processed_evidence_units: list[ProcessedEvidenceUnit],
-        payload: _LLMResearchAssessmentAndGapsPayload,
+        payload: LLMResearchAssessmentAndGapsPayload,
     ) -> EvidenceCoverageMap:
         """Validate the full LLM coverage snapshot and merge deterministic links."""
 

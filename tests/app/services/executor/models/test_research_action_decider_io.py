@@ -11,10 +11,14 @@ from app.services.executor.models.research_action_decider_output import (
     ResearchActionDeciderOutput,
 )
 from app.services.executor.models.research_action_request import ResearchActionRequest
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMNextEvidenceNeedPayload,
-    _LLMResearchAssessmentPayload,
-    _LLMResearchGapPayload,
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
+)
+from app.services.executor.models.llm_research_assessment_payload import (
+    LLMResearchAssessmentPayload,
+)
+from app.services.executor.models.llm_research_gap_payload import (
+    LLMResearchGapPayload,
 )
 
 
@@ -28,19 +32,19 @@ def _decider_input() -> ResearchActionDeciderInput:
         ],
         latency_budget_ms=None,
         scope_restrictions=[],
-        current_assessment=_LLMResearchAssessmentPayload(
+        current_assessment=LLMResearchAssessmentPayload(
             coverage_status="not_covered",
             support_strength="weak_support",
             finding_maturity="tentative",
             assessment_summary="当前缺少关键证据。",
         ),
-        top_gap=_LLMResearchGapPayload(
+        top_gap=LLMResearchGapPayload(
             gap_scope="objective_level",
             gap_nature="missing",
             gap_severity="important",
             gap_summary="缺少直接证据。",
         ),
-        next_evidence_need=_LLMNextEvidenceNeedPayload(
+        next_evidence_need=LLMNextEvidenceNeedPayload(
             need_scope="objective_level",
             need_purpose="establish_coverage",
             desired_evidence_kind="direct_fact",

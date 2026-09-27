@@ -14,10 +14,14 @@ from app.services.executor.models.evidence_coverage_entry import EvidenceCoverag
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
-from app.services.executor.models.research_executor_llm_payloads import (
-    _LLMNextEvidenceNeedPayload,
-    _LLMResearchAssessmentPayload,
-    _LLMResearchGapPayload,
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
+)
+from app.services.executor.models.llm_research_assessment_payload import (
+    LLMResearchAssessmentPayload,
+)
+from app.services.executor.models.llm_research_gap_payload import (
+    LLMResearchGapPayload,
 )
 
 
@@ -36,19 +40,19 @@ class ResearchExecutorRunState:
         default_factory=list,
         metadata={"description": "可选字段，默认空列表。本 stage 累积的全部 typed processed evidence。"},
     )
-    current_assessment: _LLMResearchAssessmentPayload | None = field(
+    current_assessment: LLMResearchAssessmentPayload | None = field(
         default=None,
         metadata={"description": "可选字段。最近一次 assessment LLM 的当前研究状态判断。"},
     )
-    identified_gaps: list[_LLMResearchGapPayload] = field(
+    identified_gaps: list[LLMResearchGapPayload] = field(
         default_factory=list,
         metadata={"description": "可选字段，默认空列表。最近一次 assessment 识别出的全部 research gaps。"},
     )
-    top_gap: _LLMResearchGapPayload | None = field(
+    top_gap: LLMResearchGapPayload | None = field(
         default=None,
         metadata={"description": "可选字段。最近一次 assessment 选出的最高优先级 gap。"},
     )
-    next_evidence_need: _LLMNextEvidenceNeedPayload | None = field(
+    next_evidence_need: LLMNextEvidenceNeedPayload | None = field(
         default=None,
         metadata={"description": "可选字段。最近一次 assessment 选定的下一项 evidence need。"},
     )
