@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from app.services.executor.models.research_executor_types import (
+from app.services.executor.enums import (
     ResearchEvidenceGain,
     ResearchFindingProgress,
     ResearchResidualUncertainty,

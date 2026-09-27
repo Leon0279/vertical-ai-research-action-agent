@@ -34,10 +34,8 @@ from app.domain.models import (
     ToolExecutionLayerRequest,
     ToolExecutionLayerResult,
 )
-from app.services.executor.research_executor_service import (
-    ResearchExecutorService,
-    ResearchIterationOutcome,
-)
+from app.services.executor.enums import ResearchIterationOutcome
+from app.services.executor.research_executor_service import ResearchExecutorService
 from app.services.executor.intermediate_findings_refiner import (
     IntermediateFindingsRefiner,
 )

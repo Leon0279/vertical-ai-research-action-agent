@@ -8,7 +8,7 @@ from app.domain.enums import FamilyName
 from app.domain.models.tool_execution_layer.request_completion_evaluation_request import (
     FallbackPolicy,
 )
-from app.services.executor.models.research_executor_types import (
+from app.services.executor.enums import (
     ResearchActionMode,
     ResearchDesiredEvidenceKind,
     ResearchFreshnessRequirement,

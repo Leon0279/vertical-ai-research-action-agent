@@ -12,7 +12,7 @@ from app.domain.models import (
     ResearchStageResult,
     SourceReference,
 )
-from app.services.executor.models.research_executor_types import ResearchIterationOutcome
+from app.services.executor.enums import ResearchIterationOutcome
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
 )
@@ -169,14 +169,14 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
                 )
                 open_questions.append(f"Evidence Processing 未形成可用 evidence：{reason}")
 
-        if final_outcome == "degrade":
+        if final_outcome == ResearchIterationOutcome.DEGRADE:
             rationale = strip_or_none(
                 run_state.require_current_iteration().outcome_rationale
             )
             open_questions.append(rationale or "Research iteration 进入 degrade 收束。")
 
         if (
-            final_outcome == "continue"
+            final_outcome == ResearchIterationOutcome.CONTINUE
             and executed_iteration_count >= self._max_iterations(stage_input)
         ):
             open_questions.append(
@@ -202,7 +202,7 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
         """Map final working-state signals into ResearchStageResult status."""
 
         has_research_output = bool(processed_evidence_units or intermediate_findings)
-        if final_outcome == "degrade":
+        if final_outcome == ResearchIterationOutcome.DEGRADE:
             return "partial_success" if has_research_output else "failed"
 
         if has_research_output:
@@ -248,7 +248,7 @@ class ResearchStageResultBuilder(ResearchExecutorCollaboratorSupport):
             if result.processing_status == "failed":
                 return result.error_info or "Evidence Processing failed."
 
-        if final_outcome == "degrade":
+        if final_outcome == ResearchIterationOutcome.DEGRADE:
             return strip_or_none(
                 run_state.require_current_iteration().outcome_rationale
             ) or (

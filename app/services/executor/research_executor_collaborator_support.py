@@ -6,6 +6,12 @@ from app.common.utils.text import strip_or_none, unique_non_empty_strings
 from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import EvidenceProcessingResult, ResearchStageInput
 from app.domain.models.context.context_item import ContextItem
+from app.services.executor.enums import (
+    ResearchDesiredEvidenceKind,
+    ResearchGapNature,
+    ResearchGapSeverity,
+    ResearchNeedPurpose,
+)
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
@@ -40,10 +46,11 @@ class ResearchExecutorCollaboratorSupport:
         if top_gap is None or next_evidence_need is None:
             return True
         return (
-            top_gap.gap_nature == "none"
-            or top_gap.gap_severity == "none"
-            or next_evidence_need.need_purpose == "none"
-            or next_evidence_need.desired_evidence_kind == "none"
+            top_gap.gap_nature == ResearchGapNature.NONE
+            or top_gap.gap_severity == ResearchGapSeverity.NONE
+            or next_evidence_need.need_purpose == ResearchNeedPurpose.NONE
+            or next_evidence_need.desired_evidence_kind
+            == ResearchDesiredEvidenceKind.NONE
         )
 
     def _available_families(self, stage_input: ResearchStageInput) -> set[FamilyName]:

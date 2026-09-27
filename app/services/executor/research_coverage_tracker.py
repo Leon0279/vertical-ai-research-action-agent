@@ -16,7 +16,10 @@ from app.services.executor.models.llm_research_assessment_and_gaps_payload impor
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
 )
-from app.services.executor.models.research_executor_types import ResearchCoverageTargetType
+from app.services.executor.enums import (
+    ResearchCoverageStatus,
+    ResearchCoverageTargetType,
+)
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
 )
@@ -87,7 +90,7 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
             target.target_key: EvidenceCoverageEntry(
                 target_type=target.target_type,
                 target_text=target.target_text,
-                coverage_status="not_covered",
+                coverage_status=ResearchCoverageStatus.NOT_COVERED,
                 coverage_summary="尚未完成语义覆盖判断。",
             )
             for target in self.coverage_targets(stage_input)
@@ -108,14 +111,14 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
         targets = [
             _EvidenceCoverageTarget(
                 target_key="objective",
-                target_type="objective",
+                target_type=ResearchCoverageTargetType.OBJECTIVE,
                 target_text=objective,
             )
         ]
         targets.extend(
             _EvidenceCoverageTarget(
                 target_key=f"sub_question:{index}",
-                target_type="sub_question",
+                target_type=ResearchCoverageTargetType.SUB_QUESTION,
                 target_text=sub_question,
             )
             for index, sub_question in enumerate(stage_input.sub_questions, start=1)
@@ -124,7 +127,7 @@ class ResearchCoverageTracker(ResearchExecutorCollaboratorSupport):
         targets.extend(
             _EvidenceCoverageTarget(
                 target_key=f"comparison_candidate:{index}",
-                target_type="comparison_candidate",
+                target_type=ResearchCoverageTargetType.COMPARISON_CANDIDATE,
                 target_text=candidate,
             )
             for index, candidate in enumerate(stage_input.comparison_candidates, start=1)

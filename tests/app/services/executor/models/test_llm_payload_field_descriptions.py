@@ -1,6 +1,7 @@
 """Research Executor LLM payload 字段说明测试。"""
 
-from typing import Any, get_args
+from enum import StrEnum
+from typing import Any
 
 import pytest
 from pydantic import BaseModel
@@ -89,6 +90,9 @@ def test_enum_field_description_uses_a_legal_example(
     example: str,
 ) -> None:
     field_info: Any = model.model_fields[field_name]
+    enum_type = field_info.annotation
 
-    assert example in get_args(field_info.annotation)
+    assert isinstance(enum_type, type)
+    assert issubclass(enum_type, StrEnum)
+    assert example in {member.value for member in enum_type}
     assert f"例如：{example}" in field_info.description

@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Literal, TypeAlias
+from typing import TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
 
-EvidenceCoverageStatus = Literal["covered", "partially_covered", "not_covered"]
-EvidenceCoverageTargetType = Literal[
-    "objective",
-    "sub_question",
-    "comparison_candidate",
-]
+from app.services.executor.enums import (
+    ResearchCoverageStatus,
+    ResearchCoverageTargetType,
+)
 
 
 class EvidenceCoverageEntry(BaseModel):
@@ -25,7 +23,7 @@ class EvidenceCoverageEntry(BaseModel):
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    target_type: EvidenceCoverageTargetType = Field(
+    target_type: ResearchCoverageTargetType = Field(
         description=(
             "必填字段。该 map entry 代表的受控研究对象类型。当前由 Research Executor "
             "根据 ResearchStageInput 的 objective、sub_questions 或 comparison_candidates "
@@ -40,7 +38,7 @@ class EvidenceCoverageEntry(BaseModel):
             "map key 对应的研究对象；LLM 不得改写该字段。"
         ),
     )
-    coverage_status: EvidenceCoverageStatus = Field(
+    coverage_status: ResearchCoverageStatus = Field(
         description=(
             "必填字段。该 target 当前的语义 evidence 覆盖状态。当前由 assessment LLM 的 "
             "全量 coverage snapshot 写入；系统不会因为刚取得候选材料而直接提升该状态。"

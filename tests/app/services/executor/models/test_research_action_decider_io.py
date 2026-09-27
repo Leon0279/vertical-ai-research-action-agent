@@ -4,6 +4,10 @@ import pytest
 from pydantic import ValidationError
 
 from app.domain.enums import FamilyName
+from app.services.executor.enums import (
+    ResearchActionDecisionReason,
+    ResearchActionMode,
+)
 from app.services.executor.models.research_action_decider_input import (
     ResearchActionDeciderInput,
 )
@@ -78,15 +82,17 @@ def test_research_action_decider_input_is_json_safe_and_forbids_extra_fields() -
 def test_research_action_decider_output_is_json_safe_and_forbids_extra_fields() -> None:
     output = ResearchActionDeciderOutput(
         candidate_action_modes=[
-            "refine_from_existing_state",
-            "external_acquisition",
+            ResearchActionMode.REFINE_FROM_EXISTING_STATE,
+            ResearchActionMode.EXTERNAL_ACQUISITION,
         ],
-        action_mode="external_acquisition",
-        action_decision_reason="external_only_candidate",
+        action_mode=ResearchActionMode.EXTERNAL_ACQUISITION,
+        action_decision_reason=(
+            ResearchActionDecisionReason.EXTERNAL_ONLY_CANDIDATE
+        ),
         action_rationale="当前只有 external 路径满足约束。",
         acquisition_paths_exhausted=False,
         action_request=ResearchActionRequest(
-            action_mode="external_acquisition",
+            action_mode=ResearchActionMode.EXTERNAL_ACQUISITION,
             target_problem="补充直接事实证据。",
             allowed_source_families=[FamilyName.DOCS_SEARCH],
             fallback_policy="fallback_to_broader_search",

@@ -13,12 +13,15 @@ from app.services.executor.models.research_action_decider_output import (
     ResearchActionDeciderOutput,
 )
 from app.services.executor.models.research_action_request import ResearchActionRequest
-from app.services.executor.models.research_executor_types import (
-    EXTERNAL_ACTION_MODE as _EXTERNAL_ACTION_MODE,
-    MEMORY_ACTION_MODE as _MEMORY_ACTION_MODE,
-    REFINE_ACTION_MODE as _REFINE_ACTION_MODE,
+from app.services.executor.enums import (
     ResearchActionDecisionReason,
     ResearchActionMode,
+    ResearchDesiredEvidenceKind,
+    ResearchFindingMaturity,
+    ResearchFreshnessRequirement,
+    ResearchGapNature,
+    ResearchGapSeverity,
+    ResearchSupportStrength,
 )
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
@@ -212,13 +215,15 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
         """应用确定性 gate，生成本轮可行的 action mode。"""
 
         if self._must_refine_from_existing_state(decider_input):
-            return [_REFINE_ACTION_MODE]
+            return [ResearchActionMode.REFINE_FROM_EXISTING_STATE]
 
-        candidate_modes: list[ResearchActionMode] = [_REFINE_ACTION_MODE]
+        candidate_modes: list[ResearchActionMode] = [
+            ResearchActionMode.REFINE_FROM_EXISTING_STATE
+        ]
         if self._memory_acquisition_available(decider_input):
-            candidate_modes.append(_MEMORY_ACTION_MODE)
+            candidate_modes.append(ResearchActionMode.MEMORY_BACKED_ACQUISITION)
         if self._external_acquisition_available(decider_input):
-            candidate_modes.append(_EXTERNAL_ACTION_MODE)
+            candidate_modes.append(ResearchActionMode.EXTERNAL_ACQUISITION)
         return candidate_modes
 
     def _must_refine_from_existing_state(
@@ -235,15 +240,17 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
         ):
             return True
         if (
-            decider_input.current_assessment.finding_maturity == "stable"
-            and decider_input.current_assessment.support_strength == "strong_enough"
+            decider_input.current_assessment.finding_maturity
+            == ResearchFindingMaturity.STABLE
+            and decider_input.current_assessment.support_strength
+            == ResearchSupportStrength.STRONG_ENOUGH
         ):
             return True
         if not decider_input.available_families:
             return True
         return (
             self._is_latency_constrained(decider_input)
-            and decider_input.top_gap.gap_severity != "blocking"
+            and decider_input.top_gap.gap_severity != ResearchGapSeverity.BLOCKING
         )
 
     def _memory_acquisition_available(
@@ -290,27 +297,45 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
                 acquisition_paths_exhausted,
             )
         if (
-            _EXTERNAL_ACTION_MODE in candidate_action_modes
+            ResearchActionMode.EXTERNAL_ACQUISITION in candidate_action_modes
             and (
                 decider_input.next_evidence_need.freshness_requirement
-                == "fresh_required"
-                or decider_input.top_gap.gap_nature == "stale"
+                == ResearchFreshnessRequirement.FRESH_REQUIRED
+                or decider_input.top_gap.gap_nature == ResearchGapNature.STALE
             )
         ):
-            return _EXTERNAL_ACTION_MODE, "fresh_or_stale_requires_external"
-        if _MEMORY_ACTION_MODE in candidate_action_modes:
-            if _EXTERNAL_ACTION_MODE in candidate_action_modes:
-                return _MEMORY_ACTION_MODE, "memory_preferred_by_default"
-            return _MEMORY_ACTION_MODE, "memory_only_candidate"
-        if _EXTERNAL_ACTION_MODE in candidate_action_modes:
+            return (
+                ResearchActionMode.EXTERNAL_ACQUISITION,
+                ResearchActionDecisionReason.FRESH_OR_STALE_REQUIRES_EXTERNAL,
+            )
+        if ResearchActionMode.MEMORY_BACKED_ACQUISITION in candidate_action_modes:
+            if ResearchActionMode.EXTERNAL_ACQUISITION in candidate_action_modes:
+                return (
+                    ResearchActionMode.MEMORY_BACKED_ACQUISITION,
+                    ResearchActionDecisionReason.MEMORY_PREFERRED_BY_DEFAULT,
+                )
+            return (
+                ResearchActionMode.MEMORY_BACKED_ACQUISITION,
+                ResearchActionDecisionReason.MEMORY_ONLY_CANDIDATE,
+            )
+        if ResearchActionMode.EXTERNAL_ACQUISITION in candidate_action_modes:
             if (
                 diagnostics.memory_eligible_before_history
                 and FamilyName.RESEARCH_KNOWLEDGE_RECALL
                 in diagnostics.low_value_families
             ):
-                return _EXTERNAL_ACTION_MODE, "memory_blocked_by_history"
-            return _EXTERNAL_ACTION_MODE, "external_only_candidate"
-        return _REFINE_ACTION_MODE, "no_eligible_acquisition_path"
+                return (
+                    ResearchActionMode.EXTERNAL_ACQUISITION,
+                    ResearchActionDecisionReason.MEMORY_BLOCKED_BY_HISTORY,
+                )
+            return (
+                ResearchActionMode.EXTERNAL_ACQUISITION,
+                ResearchActionDecisionReason.EXTERNAL_ONLY_CANDIDATE,
+            )
+        return (
+            ResearchActionMode.REFINE_FROM_EXISTING_STATE,
+            ResearchActionDecisionReason.NO_ELIGIBLE_ACQUISITION_PATH,
+        )
 
     def _refine_decision_reason(
         self,
@@ -320,27 +345,29 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
         """按照 refine gate 的实际优先顺序返回唯一原因码。"""
 
         if acquisition_paths_exhausted:
-            return "acquisition_paths_exhausted"
+            return ResearchActionDecisionReason.ACQUISITION_PATHS_EXHAUSTED
         if decider_input.remaining_iteration_budget <= 0:
-            return "iteration_budget_exhausted"
+            return ResearchActionDecisionReason.ITERATION_BUDGET_EXHAUSTED
         if self._has_no_actionable_evidence_need(
             decider_input.top_gap,
             decider_input.next_evidence_need,
         ):
-            return "no_actionable_gap"
+            return ResearchActionDecisionReason.NO_ACTIONABLE_GAP
         if (
-            decider_input.current_assessment.finding_maturity == "stable"
-            and decider_input.current_assessment.support_strength == "strong_enough"
+            decider_input.current_assessment.finding_maturity
+            == ResearchFindingMaturity.STABLE
+            and decider_input.current_assessment.support_strength
+            == ResearchSupportStrength.STRONG_ENOUGH
         ):
-            return "stable_with_strong_support"
+            return ResearchActionDecisionReason.STABLE_WITH_STRONG_SUPPORT
         if not decider_input.available_families:
-            return "no_available_family"
+            return ResearchActionDecisionReason.NO_AVAILABLE_FAMILY
         if (
             self._is_latency_constrained(decider_input)
-            and decider_input.top_gap.gap_severity != "blocking"
+            and decider_input.top_gap.gap_severity != ResearchGapSeverity.BLOCKING
         ):
-            return "latency_constrained"
-        return "no_eligible_acquisition_path"
+            return ResearchActionDecisionReason.LATENCY_CONSTRAINED
+        return ResearchActionDecisionReason.NO_ELIGIBLE_ACQUISITION_PATH
 
     def _build_action_request(
         self,
@@ -350,7 +377,7 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
     ) -> ResearchActionRequest | None:
         """构造 acquisition path 所需的强类型 action request。"""
 
-        if action_mode == _REFINE_ACTION_MODE:
+        if action_mode == ResearchActionMode.REFINE_FROM_EXISTING_STATE:
             return None
         allowed_source_families = self._allowed_source_families_for_action(
             action_mode,
@@ -388,7 +415,7 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
             ),
             fallback_policy=(
                 "fallback_within_same_family"
-                if action_mode == _MEMORY_ACTION_MODE
+                if action_mode == ResearchActionMode.MEMORY_BACKED_ACQUISITION
                 else "fallback_to_broader_search"
             ),
         )
@@ -400,7 +427,7 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
     ) -> list[FamilyName]:
         """Preserve an explicit memory choice without overriding external ranking."""
 
-        if action_mode == _MEMORY_ACTION_MODE:
+        if action_mode == ResearchActionMode.MEMORY_BACKED_ACQUISITION:
             return list(allowed_source_families)
         return []
 
@@ -411,9 +438,9 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
     ) -> list[FamilyName]:
         """解析本轮 action request 的 retrieval family 约束。"""
 
-        if action_mode == _MEMORY_ACTION_MODE:
+        if action_mode == ResearchActionMode.MEMORY_BACKED_ACQUISITION:
             return [FamilyName.RESEARCH_KNOWLEDGE_RECALL]
-        if action_mode == _EXTERNAL_ACTION_MODE:
+        if action_mode == ResearchActionMode.EXTERNAL_ACQUISITION:
             return self._external_source_families_for_current_target(
                 decider_input,
             )
@@ -426,7 +453,7 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
     ) -> list[FamilyName]:
         """仅把当前 target 已验证低价值的 external family 传给 TEL。"""
 
-        if action_mode != _EXTERNAL_ACTION_MODE:
+        if action_mode != ResearchActionMode.EXTERNAL_ACQUISITION:
             return []
         return [
             family
@@ -467,40 +494,40 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
         """根据稳定原因码构造对应的人类可读说明。"""
 
         rationale_by_reason: dict[ResearchActionDecisionReason, str] = {
-            "iteration_budget_exhausted": (
+            ResearchActionDecisionReason.ITERATION_BUDGET_EXHAUSTED: (
                 "当前 iteration budget 已耗尽，因此不再发起 acquisition。"
             ),
-            "no_actionable_gap": (
+            ResearchActionDecisionReason.NO_ACTIONABLE_GAP: (
                 "当前 top_gap / next_evidence_need 表示没有可推进的 actionable gap，因此不发起 acquisition。"
             ),
-            "stable_with_strong_support": (
+            ResearchActionDecisionReason.STABLE_WITH_STRONG_SUPPORT: (
                 "当前 finding 已稳定且支撑强度足够，因此更适合 refine existing state。"
             ),
-            "no_available_family": (
+            ResearchActionDecisionReason.NO_AVAILABLE_FAMILY: (
                 "当前 runtime 未声明 acquisition capability，因此本轮基于已有 state refine。"
             ),
-            "latency_constrained": (
+            ResearchActionDecisionReason.LATENCY_CONSTRAINED: (
                 "当前 latency budget 较紧且 gap 不是 blocking，因此避免新增 acquisition。"
             ),
-            "acquisition_paths_exhausted": (
+            ResearchActionDecisionReason.ACQUISITION_PATHS_EXHAUSTED: (
                 "当前 coverage target 的所有兼容 acquisition 路径都已被近期历史判定为低价值，因此不重复检索并等待降级收束。"
             ),
-            "fresh_or_stale_requires_external": (
+            ResearchActionDecisionReason.FRESH_OR_STALE_REQUIRES_EXTERNAL: (
                 "当前 evidence need 要求 fresh evidence，或 gap 已陈旧，因此优先 external acquisition。"
             ),
-            "memory_preferred_by_default": (
+            ResearchActionDecisionReason.MEMORY_PREFERRED_BY_DEFAULT: (
                 "memory 与 external 路径都可用；当前不要求 fresh evidence，因此按默认优先级选择 memory-backed acquisition。"
             ),
-            "memory_only_candidate": (
+            ResearchActionDecisionReason.MEMORY_ONLY_CANDIDATE: (
                 "当前只有 memory 路径满足 evidence need 与 runtime 约束，因此选择 memory-backed acquisition。"
             ),
-            "memory_blocked_by_history": (
+            ResearchActionDecisionReason.MEMORY_BLOCKED_BY_HISTORY: (
                 "memory 路径此前未有效推进当前 coverage target，因此切换到仍可用的 external acquisition。"
             ),
-            "external_only_candidate": (
+            ResearchActionDecisionReason.EXTERNAL_ONLY_CANDIDATE: (
                 "当前只有 external 路径满足 evidence need 与 runtime 约束，因此选择 external acquisition。"
             ),
-            "no_eligible_acquisition_path": (
+            ResearchActionDecisionReason.NO_ELIGIBLE_ACQUISITION_PATH: (
                 "当前没有满足约束的 acquisition path，因此基于已有 state refine。"
             ),
         }
@@ -546,8 +573,8 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
         return (
             self._has_memory_capability(decider_input)
             and decider_input.next_evidence_need.freshness_requirement
-            != "fresh_required"
-            and decider_input.top_gap.gap_nature not in {"stale", "imbalanced"}
+            != ResearchFreshnessRequirement.FRESH_REQUIRED
+            and decider_input.top_gap.gap_nature not in {ResearchGapNature.STALE, ResearchGapNature.IMBALANCED}
         )
 
     def _external_acquisition_eligible_without_history(
@@ -557,11 +584,11 @@ class ResearchActionDecider(ResearchExecutorCollaboratorSupport):
         """只根据当前 need 与 capability 判断 external path 的基础适用性。"""
 
         return bool(self._external_source_families(decider_input)) and (
-            decider_input.top_gap.gap_nature in {"missing", "stale", "imbalanced"}
+            decider_input.top_gap.gap_nature in {ResearchGapNature.MISSING, ResearchGapNature.STALE, ResearchGapNature.IMBALANCED}
             or decider_input.next_evidence_need.freshness_requirement
-            == "fresh_required"
+            == ResearchFreshnessRequirement.FRESH_REQUIRED
             or decider_input.next_evidence_need.desired_evidence_kind
-            in {"direct_fact", "comparison_evidence", "fresh_status_evidence"}
+            in {ResearchDesiredEvidenceKind.DIRECT_FACT, ResearchDesiredEvidenceKind.COMPARISON_EVIDENCE, ResearchDesiredEvidenceKind.FRESH_STATUS_EVIDENCE}
         )
 
     def _external_source_families_for_current_target(

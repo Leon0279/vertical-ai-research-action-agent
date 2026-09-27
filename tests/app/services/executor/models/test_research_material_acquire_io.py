@@ -11,6 +11,11 @@ from app.domain.models import (
     ToolExecutionLayerRequest,
     ToolExecutionLayerResult,
 )
+from app.services.executor.enums import (
+    ResearchActionMode,
+    ResearchDesiredEvidenceKind,
+    ResearchFreshnessRequirement,
+)
 from app.services.executor.models.research_action_request import ResearchActionRequest
 from app.services.executor.models.research_material_acquire_input import (
     ResearchMaterialAcquireInput,
@@ -30,10 +35,10 @@ def _acquire_input() -> ResearchMaterialAcquireInput:
         latency_budget_ms=5_000,
         iteration_index=2,
         action_request=ResearchActionRequest(
-            action_mode="external_acquisition",
+            action_mode=ResearchActionMode.EXTERNAL_ACQUISITION,
             target_problem="补充直接事实证据。",
-            desired_evidence_kind="direct_fact",
-            freshness_requirement="normal",
+            desired_evidence_kind=ResearchDesiredEvidenceKind.DIRECT_FACT,
+            freshness_requirement=ResearchFreshnessRequirement.NORMAL,
             allowed_source_families=[FamilyName.DOCS_SEARCH],
             preferred_source_families=[FamilyName.DOCS_SEARCH],
             fallback_policy="fallback_to_broader_search",

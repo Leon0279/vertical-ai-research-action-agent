@@ -22,10 +22,14 @@ from app.services.executor.models.research_executor_run_state import (
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
-from app.services.executor.models.research_executor_types import (
-    MEMORY_ACTION_MODE as _MEMORY_ACTION_MODE,
-    REFINE_ACTION_MODE as _REFINE_ACTION_MODE,
+from app.services.executor.enums import (
+    ResearchActionMode,
+    ResearchEvidenceGain,
+    ResearchFindingMaturity,
     ResearchIterationOutcome,
+    ResearchResidualUncertainty,
+    ResearchSupportStrength,
+    ResearchTopGapProgress,
 )
 from app.services.executor.models.research_iteration_evaluation_state import (
     ResearchIterationEvaluationState,
@@ -66,7 +70,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             )
             self._write_iteration_outcome(
                 run_state,
-                iteration_outcome="degrade",
+                iteration_outcome=ResearchIterationOutcome.DEGRADE,
                 outcome_rationale=rationale,
                 outcome_decision_source="pre_findings_rule_short_circuit",
                 iteration_evaluation_state=ResearchIterationEvaluationState(
@@ -74,7 +78,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                 ),
                 started_at=started_at,
             )
-            return "degrade"
+            return ResearchIterationOutcome.DEGRADE
 
         external_families = {
             family
@@ -83,7 +87,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             in {"docs_search", "paper_search", "web_search"}
         }
         if (
-            iteration.action_mode == _MEMORY_ACTION_MODE
+            iteration.action_mode == ResearchActionMode.MEMORY_BACKED_ACQUISITION
             and self._did_tel_fail_or_return_no_result(iteration)
             and not self._did_new_evidence_arrive(iteration)
             and self._remaining_iteration_budget_after_current(
@@ -99,7 +103,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             )
             self._write_iteration_outcome(
                 run_state,
-                iteration_outcome="continue",
+                iteration_outcome=ResearchIterationOutcome.CONTINUE,
                 outcome_rationale=rationale,
                 outcome_decision_source="pre_findings_rule_short_circuit",
                 iteration_evaluation_state=ResearchIterationEvaluationState(
@@ -107,7 +111,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                 ),
                 started_at=started_at,
             )
-            return "continue"
+            return ResearchIterationOutcome.CONTINUE
 
         return None
 
@@ -124,14 +128,14 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         )
         self._write_iteration_outcome(
             run_state,
-            iteration_outcome="degrade",
+            iteration_outcome=ResearchIterationOutcome.DEGRADE,
             outcome_rationale=rationale,
             outcome_decision_source="runtime_failure_boundary",
             iteration_evaluation_state=ResearchIterationEvaluationState(
                 short_circuit_reason=rationale,
             ),
         )
-        return "degrade"
+        return ResearchIterationOutcome.DEGRADE
 
     async def evaluate(
         self,
@@ -215,18 +219,18 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         iteration = run_state.require_current_iteration()
         if self._has_no_actionable_evidence_need(top_gap, next_evidence_need):
             return (
-                "stop",
+                ResearchIterationOutcome.STOP,
                 "当前 top_gap / next_evidence_need 表示没有可继续推进的 actionable gap，因此本轮直接收束。",
             )
 
         if (
-            iteration.action_mode == _REFINE_ACTION_MODE
+            iteration.action_mode == ResearchActionMode.REFINE_FROM_EXISTING_STATE
             and assessment is not None
-            and assessment.finding_maturity == "stable"
-            and assessment.support_strength == "strong_enough"
+            and assessment.finding_maturity == ResearchFindingMaturity.STABLE
+            and assessment.support_strength == ResearchSupportStrength.STRONG_ENOUGH
         ):
             return (
-                "stop",
+                ResearchIterationOutcome.STOP,
                 "当前 findings 已稳定且支撑强度足够，本轮无需继续发起新的 iteration。",
             )
 
@@ -235,7 +239,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             and not self._did_new_evidence_arrive(iteration)
         ):
             return (
-                "degrade",
+                ResearchIterationOutcome.DEGRADE,
                 "当前 coverage target 的所有兼容 acquisition 路径均已在近期尝试中证明低价值，"
                 "且本轮没有新增 evidence，因此不继续重复检索。",
             )
@@ -246,7 +250,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             and evidence_processing_result.processing_status == "failed"
         ):
             return (
-                "degrade",
+                ResearchIterationOutcome.DEGRADE,
                 "Evidence Processing 阶段失败，本轮无法形成可用 evidence，因此进入降级收束。",
             )
 
@@ -267,7 +271,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             )
         ):
             return (
-                "degrade",
+                ResearchIterationOutcome.DEGRADE,
                 "本轮 acquisition failed/no_result 且没有新增 processed evidence，在当前预算约束下继续投入价值较低。",
             )
 
@@ -277,7 +281,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             and not self._did_new_evidence_arrive(iteration)
         ):
             return (
-                "degrade",
+                ResearchIterationOutcome.DEGRADE,
                 "当前存在 actionable gap，但 runtime 未声明可选 retrieval family 且没有新增 evidence，因此进入降级收束。",
             )
 
@@ -293,18 +297,18 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         """Constrain the LLM-proposed outcome to hard runtime boundaries."""
 
         if (
-            payload.top_gap_progress == "resolved"
-            and payload.residual_uncertainty == "minimal"
+            payload.top_gap_progress == ResearchTopGapProgress.RESOLVED
+            and payload.residual_uncertainty == ResearchResidualUncertainty.MINIMAL
         ):
             return (
-                "stop",
+                ResearchIterationOutcome.STOP,
                 "Guardrail: top_gap 已解决且 residual uncertainty 已降到 minimal，因此收束当前 research iteration。",
-                payload.proposed_iteration_outcome != "stop",
+                payload.proposed_iteration_outcome != ResearchIterationOutcome.STOP,
             )
 
         if (
-            payload.evidence_gain == "failed_acquisition"
-            and payload.top_gap_progress == "not_advanced"
+            payload.evidence_gain == ResearchEvidenceGain.FAILED_ACQUISITION
+            and payload.top_gap_progress == ResearchTopGapProgress.NOT_ADVANCED
             and self._iteration_input_budget_pressure(
                 stage_input,
                 run_state.require_current_iteration(),
@@ -312,13 +316,13 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
             == "high"
         ):
             return (
-                "degrade",
+                ResearchIterationOutcome.DEGRADE,
                 "Guardrail: acquisition 失败、top_gap 未推进且预算压力高，因此不继续循环，进入降级收束。",
-                payload.proposed_iteration_outcome != "degrade",
+                payload.proposed_iteration_outcome != ResearchIterationOutcome.DEGRADE,
             )
 
         if (
-            payload.proposed_iteration_outcome == "continue"
+            payload.proposed_iteration_outcome == ResearchIterationOutcome.CONTINUE
             and self._remaining_iteration_budget_after_current(
                 stage_input,
                 run_state.require_current_iteration(),
@@ -327,16 +331,23 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         ):
             if (
                 payload.evidence_gain
-                in {"failed_acquisition", "no_meaningful_gain"}
-                and payload.top_gap_progress in {"not_advanced", "regressed"}
+                in {
+                    ResearchEvidenceGain.FAILED_ACQUISITION,
+                    ResearchEvidenceGain.NO_MEANINGFUL_GAIN,
+                }
+                and payload.top_gap_progress
+                in {
+                    ResearchTopGapProgress.NOT_ADVANCED,
+                    ResearchTopGapProgress.REGRESSED,
+                }
             ):
                 return (
-                    "degrade",
+                    ResearchIterationOutcome.DEGRADE,
                     "Guardrail: 本轮结束后没有剩余 iteration budget，且本轮没有形成有效推进，因此降级收束。",
                     True,
                 )
             return (
-                "stop",
+                ResearchIterationOutcome.STOP,
                 "Guardrail: 本轮结束后没有剩余 iteration budget，因此不能继续下一轮，转为正常收束。",
                 True,
             )
@@ -374,7 +385,7 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
         evidence_processing_result = iteration.evidence_processing_result
         logger.log(
             logging.WARNING
-            if iteration_outcome == "degrade"
+            if iteration_outcome == ResearchIterationOutcome.DEGRADE
             else logging.INFO,
             "Research iteration outcome selected.",
             extra={

@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.services.executor.models.research_executor_types import (
+from app.services.executor.enums import (
     ResearchEvidenceGain,
     ResearchFindingProgress,
     ResearchIterationOutcome,

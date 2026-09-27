@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.executor.models.research_action_request import ResearchActionRequest
-from app.services.executor.models.research_executor_types import (
+from app.services.executor.enums import (
     ResearchActionDecisionReason,
     ResearchActionMode,
 )

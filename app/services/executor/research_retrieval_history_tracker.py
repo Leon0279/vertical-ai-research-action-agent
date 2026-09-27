@@ -8,6 +8,7 @@ import logging
 from app.common.utils.text import normalize_whitespace_or_none
 from app.domain.enums import AcquisitionStatus, FamilyName, RetrievalResultUtility
 from app.domain.models import RecentRetrievalAttempt, ToolExecutionLayerResult
+from app.services.executor.enums import ResearchEvidenceGain, ResearchTopGapProgress
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
@@ -297,13 +298,16 @@ class ResearchRetrievalHistoryTracker:
         evaluation_state = iteration.evaluation_state
         if evaluation_state is None or evaluation_state.evidence_gain is None:
             return RetrievalResultUtility.WEAKLY_USEFUL
-        if evaluation_state.evidence_gain == "limited_gain":
+        if evaluation_state.evidence_gain == ResearchEvidenceGain.LIMITED_GAIN:
             return RetrievalResultUtility.WEAKLY_USEFUL
-        if evaluation_state.evidence_gain != "meaningful_gain":
+        if evaluation_state.evidence_gain != ResearchEvidenceGain.MEANINGFUL_GAIN:
             return RetrievalResultUtility.NOT_USEFUL
-        if evaluation_state.top_gap_progress == "resolved":
+        if evaluation_state.top_gap_progress == ResearchTopGapProgress.RESOLVED:
             return RetrievalResultUtility.HIGHLY_USEFUL
-        if evaluation_state.top_gap_progress == "partially_advanced":
+        if (
+            evaluation_state.top_gap_progress
+            == ResearchTopGapProgress.PARTIALLY_ADVANCED
+        ):
             return RetrievalResultUtility.STRONGLY_USEFUL
         return RetrievalResultUtility.USEFUL
 

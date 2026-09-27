@@ -14,7 +14,7 @@ from app.services.executor.iteration_outcome_evaluator import IterationOutcomeEv
 from app.services.executor.models.research_action_decider_input import (
     ResearchActionDeciderInput,
 )
-from app.services.executor.models.research_executor_types import ResearchIterationOutcome
+from app.services.executor.enums import ResearchActionMode, ResearchIterationOutcome
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
@@ -72,9 +72,12 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         )
         max_iterations = self._result_builder._max_iterations(stage_input)
         executed_iteration_count = 0
-        outcome: ResearchIterationOutcome = "continue"
+        outcome = ResearchIterationOutcome.CONTINUE
 
-        while outcome == "continue" and executed_iteration_count < max_iterations:
+        while (
+            outcome == ResearchIterationOutcome.CONTINUE
+            and executed_iteration_count < max_iterations
+        ):
             run_state.current_iteration = ResearchExecutorIterationState(
                 iteration_index=executed_iteration_count + 1,
                 remaining_iteration_budget=(
@@ -276,7 +279,10 @@ class ResearchExecutorService(ResearchExecutorProtocol):
             decider_output.acquisition_paths_exhausted
         )
         iteration.action_request = decider_output.action_request
-        return decider_output.action_mode != "refine_from_existing_state"
+        return (
+            decider_output.action_mode
+            != ResearchActionMode.REFINE_FROM_EXISTING_STATE
+        )
 
     async def _acquire_candidate_material(
         self,

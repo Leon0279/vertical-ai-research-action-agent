@@ -28,9 +28,10 @@ from app.services.executor.models.research_material_acquire_input import (
 from app.services.executor.models.research_material_acquire_output import (
     ResearchMaterialAcquireOutput,
 )
-from app.services.executor.models.research_executor_types import (
-    EXTERNAL_ACTION_MODE as _EXTERNAL_ACTION_MODE,
-    MEMORY_ACTION_MODE as _MEMORY_ACTION_MODE,
+from app.services.executor.enums import (
+    ResearchActionMode,
+    ResearchDesiredEvidenceKind,
+    ResearchFreshnessRequirement,
 )
 from app.services.executor.research_executor_collaborator_support import (
     ResearchExecutorCollaboratorSupport,
@@ -179,12 +180,12 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
             ),
         )
 
-    def _tel_action_mode(self, action_mode: object) -> ActionMode:
+    def _tel_action_mode(self, action_mode: ResearchActionMode) -> ActionMode:
         """将 Research Executor action mode 映射为 TEL acquisition mode。"""
 
-        if action_mode == _MEMORY_ACTION_MODE:
+        if action_mode == ResearchActionMode.MEMORY_BACKED_ACQUISITION:
             return ActionMode.MEMORY_BACKED_ACQUISITION
-        if action_mode == _EXTERNAL_ACTION_MODE:
+        if action_mode == ResearchActionMode.EXTERNAL_ACQUISITION:
             return ActionMode.EXTERNAL_ACQUISITION
         raise ValueError(f"Unsupported acquisition action mode: {action_mode!r}.")
 
@@ -197,31 +198,43 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
         desired_kind = action_request.desired_evidence_kind
         tel_desired_kind = self._tel_desired_evidence_kind(desired_kind)
         freshness_requirement = action_request.freshness_requirement
-        if freshness_requirement == "none":
-            freshness_requirement = "normal"
+        if freshness_requirement == ResearchFreshnessRequirement.NONE:
+            freshness_requirement = ResearchFreshnessRequirement.NORMAL
         return EvidenceShape(
             desired_evidence_kind=tel_desired_kind,
-            freshness_requirement=freshness_requirement or "normal",
+            freshness_requirement=(
+                freshness_requirement or ResearchFreshnessRequirement.NORMAL
+            ),
             breadth="normal",
         )
 
-    def _tel_desired_evidence_kind(self, desired_kind: str | None) -> str:
+    def _tel_desired_evidence_kind(
+        self,
+        desired_kind: ResearchDesiredEvidenceKind | None,
+    ) -> str:
         """返回 research need 对应的 retrieval-facing TEL evidence kind。"""
 
-        kind_mapping = {
-            "direct_fact": "direct_fact",
-            "stronger_supporting_evidence": "supporting_evidence",
-            "disambiguating_evidence": "disambiguating_evidence",
-            "comparison_evidence": "comparison_evidence",
-            "fresh_status_evidence": "status_evidence",
-            "decision_supporting_evidence": "supporting_evidence",
+        kind_mapping: dict[ResearchDesiredEvidenceKind, str] = {
+            ResearchDesiredEvidenceKind.DIRECT_FACT: "direct_fact",
+            ResearchDesiredEvidenceKind.STRONGER_SUPPORTING_EVIDENCE: (
+                "supporting_evidence"
+            ),
+            ResearchDesiredEvidenceKind.DISAMBIGUATING_EVIDENCE: (
+                "disambiguating_evidence"
+            ),
+            ResearchDesiredEvidenceKind.COMPARISON_EVIDENCE: "comparison_evidence",
+            ResearchDesiredEvidenceKind.FRESH_STATUS_EVIDENCE: "status_evidence",
+            ResearchDesiredEvidenceKind.DECISION_SUPPORTING_EVIDENCE: (
+                "supporting_evidence"
+            ),
         }
-        if desired_kind == "none":
+        if desired_kind is None or desired_kind == ResearchDesiredEvidenceKind.NONE:
             raise ValueError(
-                "desired_evidence_kind='none' should not enter Tool Execution Layer."
+                "desired_evidence_kind must identify an acquisition evidence kind "
+                "before entering Tool Execution Layer."
             )
         try:
-            return kind_mapping[desired_kind or ""]
+            return kind_mapping[desired_kind]
         except KeyError as exc:
             raise ValueError(
                 f"Unsupported desired_evidence_kind for TEL mapping: {desired_kind!r}."
