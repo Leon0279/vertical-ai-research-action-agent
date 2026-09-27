@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.adapters.docs_search.llms_txt_docs_search_client_error import (
     LlmsTxtDocsSearchClientError,
@@ -17,6 +17,8 @@ class LlmsTxtDocsSourceConfig(BaseModel):
     """提供单个 llms.txt 文档来源的类型化配置。
 
 Single llms.txt documentation source configuration."""
+
+    model_config = ConfigDict(extra="forbid")
 
     sub_source_type: str = Field(
         min_length=1,
@@ -60,7 +62,11 @@ Typed runtime settings for llms.txt docs search."""
 
         load_env_file()
         sources_json = os.getenv("DOCS_SEARCH_SOURCES_JSON", "").strip()
-        sources = cls._parse_sources_json(sources_json) if sources_json else cls._default_sources()
+        sources = (
+            cls._parse_sources_json(sources_json)
+            if sources_json
+            else cls._default_sources()
+        )
         return cls(
             sources=sources,
             timeout_seconds=float(
@@ -107,7 +113,16 @@ Typed runtime settings for llms.txt docs search."""
             raise LlmsTxtDocsSearchClientError(
                 "DOCS_SEARCH_SOURCES_JSON must be a JSON array."
             )
-        return [LlmsTxtDocsSourceConfig.model_validate(source) for source in raw_sources]
+        try:
+            return [
+                LlmsTxtDocsSourceConfig.model_validate(source)
+                for source in raw_sources
+            ]
+        except ValidationError as exc:
+            raise LlmsTxtDocsSearchClientError(
+                "DOCS_SEARCH_SOURCES_JSON entries must contain only "
+                "sub_source_type, llms_txt_url, and allowed_url_prefixes."
+            ) from exc
 
     @classmethod
     def _default_sources(cls) -> list[LlmsTxtDocsSourceConfig]:
@@ -129,5 +144,48 @@ Typed runtime settings for llms.txt docs search."""
                 sub_source_type="claude_code",
                 llms_txt_url="https://code.claude.com/docs/llms.txt",
                 allowed_url_prefixes=["https://code.claude.com/docs"],
+            ),
+            LlmsTxtDocsSourceConfig(
+                sub_source_type="zhipu_api",
+                llms_txt_url="https://docs.bigmodel.cn/llms.txt",
+                allowed_url_prefixes=["https://docs.bigmodel.cn"],
+            ),
+            LlmsTxtDocsSourceConfig(
+                sub_source_type="deepseek_api",
+                llms_txt_url="https://api-docs.deepseek.com/llms.txt",
+                allowed_url_prefixes=["https://api-docs.deepseek.com"],
+            ),
+            LlmsTxtDocsSourceConfig(
+                sub_source_type="cohere_api",
+                llms_txt_url="https://docs.cohere.com/llms.txt",
+                allowed_url_prefixes=["https://docs.cohere.com"],
+            ),
+            LlmsTxtDocsSourceConfig(
+                sub_source_type="langchain",
+                llms_txt_url="https://docs.langchain.com/llms.txt",
+                allowed_url_prefixes=["https://docs.langchain.com"],
+            ),
+            LlmsTxtDocsSourceConfig(
+                sub_source_type="pydantic_ai",
+                llms_txt_url="https://pydantic.dev/docs/ai/llms.txt",
+                allowed_url_prefixes=[
+                    "https://pydantic.dev/docs/ai",
+                    "https://ai.pydantic.dev",
+                ],
+            ),
+            LlmsTxtDocsSourceConfig(
+                sub_source_type="model_context_protocol",
+                llms_txt_url="https://modelcontextprotocol.io/llms.txt",
+                allowed_url_prefixes=["https://modelcontextprotocol.io"],
+            ),
+            LlmsTxtDocsSourceConfig(
+                sub_source_type="tavily",
+                llms_txt_url="https://docs.tavily.com/llms.txt",
+                allowed_url_prefixes=["https://docs.tavily.com"],
+            ),
+            LlmsTxtDocsSourceConfig(
+                sub_source_type="qdrant",
+                llms_txt_url="https://qdrant.tech/llms.txt",
+                allowed_url_prefixes=["https://qdrant.tech"],
             ),
         ]

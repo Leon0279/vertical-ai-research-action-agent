@@ -31,6 +31,7 @@ from app.domain.models import (
 
 LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)(?::\s*(.*))?")
 TOKEN_PATTERN = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_.-]*")
+CJK_SEQUENCE_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]+")
 
 
 @dataclass(frozen=True)
@@ -235,7 +236,17 @@ Search configured official documentation sources exposed through llms.txt."""
     def _url_allowed(self, source: LlmsTxtDocsSourceConfig, url: str) -> bool:
         if not source.allowed_url_prefixes:
             return True
-        return any(url.startswith(prefix) for prefix in source.allowed_url_prefixes)
+        for prefix in source.allowed_url_prefixes:
+            normalized_prefix = prefix.rstrip("/")
+            if url == normalized_prefix or url.startswith(
+                (
+                    f"{normalized_prefix}/",
+                    f"{normalized_prefix}?",
+                    f"{normalized_prefix}#",
+                )
+            ):
+                return True
+        return False
 
     def _score_entries(
         self,
@@ -357,8 +368,16 @@ Search configured official documentation sources exposed through llms.txt."""
         return f"docs_{digest[:16]}"
 
     def _tokens(self, value: str) -> set[str]:
-        return {
+        tokens = {
             token.lower()
             for token in TOKEN_PATTERN.findall(value)
             if len(token) > 1
         }
+        for sequence in CJK_SEQUENCE_PATTERN.findall(value):
+            tokens.add(sequence)
+            if len(sequence) > 1:
+                tokens.update(
+                    sequence[index : index + 2]
+                    for index in range(len(sequence) - 1)
+                )
+        return tokens

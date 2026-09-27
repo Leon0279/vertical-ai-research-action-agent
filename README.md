@@ -10,6 +10,25 @@
 - Redis session memory，以及 PostgreSQL + pgvector 长期 memory。
 - Project 创建和查询 API、结构化 JSONL 日志及 request trace。
 
+## Docs Search 来源
+
+`docs_search` 默认检索以下官方 `llms.txt` 文档来源：OpenAI、Anthropic、
+Claude Code、智谱、DeepSeek、Cohere、LangChain、Pydantic AI、Model Context
+Protocol、Tavily 和 Qdrant。
+
+如需替换内置来源，可设置 `DOCS_SEARCH_SOURCES_JSON`。该变量是完整覆盖而不是
+增量合并；留空时继续使用内置来源。每个来源包含以下字段：
+
+```json
+[
+  {
+    "sub_source_type": "custom_docs",
+    "llms_txt_url": "https://docs.example.com/llms.txt",
+    "allowed_url_prefixes": ["https://docs.example.com"]
+  }
+]
+```
+
 ## 本地一键启动
 
 ### 前置要求

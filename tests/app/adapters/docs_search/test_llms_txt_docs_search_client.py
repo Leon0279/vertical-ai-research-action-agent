@@ -36,6 +36,14 @@ ANTHROPIC_MANIFEST = """\
 - [Claude Code Hooks](https://docs.anthropic.com/claude-code/hooks): Configure hooks and tool permissions.
 """
 
+ZHIPU_MANIFEST = """\
+# 智谱开放文档
+
+## 工具能力
+- [联网搜索](https://docs.bigmodel.cn/cn/guide/tools/web-search.md): 为大模型提供联网信息检索能力。
+- [外部页面](https://docs.bigmodel.cn.evil.example/unsafe): 不应进入官方文档检索结果。
+"""
+
 RETRIEVAL_PAGE = """\
 # Retrieval Guide
 
@@ -48,6 +56,12 @@ RESPONSES_PAGE = """\
 # Responses API
 
 Create agent workflows with hosted tools and structured outputs.
+"""
+
+ZHIPU_SEARCH_PAGE = """\
+# 联网搜索
+
+联网搜索能力支持意图增强检索和结构化结果，适合补充最新公开信息。
 """
 
 
@@ -98,14 +112,48 @@ def test_config_uses_vertical_docs_default_sources(monkeypatch: pytest.MonkeyPat
 
     config = LlmsTxtDocsSearchClientConfig.from_env()
 
-    sub_source_types = {source.sub_source_type for source in config.sources}
-    assert {"openai_api", "anthropic_api", "claude_code"} <= sub_source_types
+    sources_by_type = {
+        source.sub_source_type: source for source in config.sources
+    }
+    assert len(sources_by_type) == 11
+    assert {
+        source_type: source.llms_txt_url
+        for source_type, source in sources_by_type.items()
+    } == {
+        "openai_api": "https://platform.openai.com/docs/llms.txt",
+        "anthropic_api": "https://docs.anthropic.com/llms.txt",
+        "claude_code": "https://code.claude.com/docs/llms.txt",
+        "zhipu_api": "https://docs.bigmodel.cn/llms.txt",
+        "deepseek_api": "https://api-docs.deepseek.com/llms.txt",
+        "cohere_api": "https://docs.cohere.com/llms.txt",
+        "langchain": "https://docs.langchain.com/llms.txt",
+        "pydantic_ai": "https://pydantic.dev/docs/ai/llms.txt",
+        "model_context_protocol": "https://modelcontextprotocol.io/llms.txt",
+        "tavily": "https://docs.tavily.com/llms.txt",
+        "qdrant": "https://qdrant.tech/llms.txt",
+    }
+    assert all(source.allowed_url_prefixes for source in config.sources)
 
 
 def test_config_rejects_invalid_sources_json(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DOCS_SEARCH_SOURCES_JSON", "{bad-json")
 
     with pytest.raises(LlmsTxtDocsSearchClientError, match="valid JSON"):
+        LlmsTxtDocsSearchClientConfig.from_env()
+
+
+def test_config_rejects_unknown_source_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(
+        "DOCS_SEARCH_SOURCES_JSON",
+        '[{"source_name":"legacy","llms_txt_url":"https://example.test/llms.txt"}]',
+    )
+
+    with pytest.raises(
+        LlmsTxtDocsSearchClientError,
+        match="sub_source_type",
+    ):
         LlmsTxtDocsSearchClientConfig.from_env()
 
 
@@ -203,6 +251,59 @@ def test_search_docs_filters_to_requested_sources() -> None:
     assert "https://platform.openai.com/docs/llms.txt" not in seen_urls
     assert len(response.results) == 1
     assert response.results[0].source_reference.sub_source_type == "anthropic_api"
+
+
+def test_search_docs_matches_chinese_manifest_text_and_blocks_external_urls() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url) == "https://docs.bigmodel.cn/llms.txt":
+            return httpx.Response(200, text=ZHIPU_MANIFEST)
+        if str(request.url) == (
+            "https://docs.bigmodel.cn/cn/guide/tools/web-search.md"
+        ):
+            return httpx.Response(200, text=ZHIPU_SEARCH_PAGE)
+        return httpx.Response(404)
+
+    async def run_case():
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as client:
+            docs_client = LlmsTxtDocsSearchClient(
+                config=LlmsTxtDocsSearchClientConfig(
+                    sources=[
+                        LlmsTxtDocsSourceConfig(
+                            sub_source_type="zhipu_api",
+                            llms_txt_url="https://docs.bigmodel.cn/llms.txt",
+                            allowed_url_prefixes=["https://docs.bigmodel.cn"],
+                        )
+                    ],
+                    fetch_top_pages=1,
+                ),
+                http_client=client,
+            )
+            return await docs_client.search_docs(
+                DocsSearchQuery(query_text="联网搜索能力", limit=3)
+            )
+
+    response = asyncio.run(run_case())
+
+    assert len(response.results) == 1
+    assert response.results[0].title == "联网搜索"
+    assert response.results[0].source_reference.sub_source_type == "zhipu_api"
+    assert "结构化结果" in response.results[0].content
+    assert response.dropped_item_count == 1
+
+
+def test_tokenization_combines_ascii_and_chinese_terms() -> None:
+    docs_client = LlmsTxtDocsSearchClient(
+        config=_config(),
+        http_client=object(),
+    )
+
+    tokens = docs_client._tokens("GLM-5 联网搜索能力")
+
+    assert "glm-5" in tokens
+    assert "联网搜索能力" in tokens
+    assert {"联网", "网搜", "搜索", "索能", "能力"} <= tokens
 
 
 def test_search_docs_falls_back_to_manifest_summary_when_page_fetch_fails() -> None:
