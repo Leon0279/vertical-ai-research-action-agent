@@ -13,6 +13,7 @@ from app.common.observability import (
     FileLoggingSettings,
     bind_trace_id,
     configure_file_logging,
+    llm_prompt_log_fields,
     remove_file_logging_handler,
     reset_trace_id,
 )
@@ -2518,6 +2519,123 @@ def test_intermediate_findings_prompt_contains_required_context_and_boundaries()
     assert "supporting_context" not in findings_prompt
 
 
+def test_intermediate_findings_prompt_length_log_matches_first_iteration(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
+    stage_input = ResearchStageInput(original_query="Refine first-round evidence.")
+    evidence_unit = _processed_evidence_unit("CURRENT-ITERATION-EVIDENCE")
+    run_state = ResearchExecutorRunState(
+        evidence_coverage_map=ResearchCoverageTracker().initial_map(stage_input),
+        processed_evidence_units=[evidence_unit],
+        current_iteration=ResearchExecutorIterationState(
+            iteration_index=1,
+            remaining_iteration_budget=2,
+            action_mode="external_acquisition",
+            processed_evidence_units=[evidence_unit],
+        ),
+    )
+    fake_llm = _FakeLLMClient()
+    refiner = IntermediateFindingsRefiner(llm_client=fake_llm)
+
+    asyncio.run(refiner.refine(stage_input, run_state))
+
+    assert len(fake_llm.prompts) == 1
+    prompt_fields = llm_prompt_log_fields(fake_llm.prompts[0])
+    prepared_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_intermediate_findings_prompt_prepared"
+    )
+    assert prepared_record.llm_operation == "intermediate_findings_refinement"
+    assert prepared_record.llm_prompt_evidence_scope == "current_iteration"
+    assert prepared_record.llm_prompt_char_count == prompt_fields[
+        "llm_prompt_char_count"
+    ]
+    assert prepared_record.llm_prompt_fingerprint == prompt_fields[
+        "llm_prompt_fingerprint"
+    ]
+    assert (
+        prepared_record.llm_all_evidence_prompt_char_count
+        == prepared_record.llm_prompt_char_count
+    )
+    assert prepared_record.llm_prompt_char_count_reduction == 0
+    assert prepared_record.processed_evidence_count == 1
+    assert prepared_record.total_processed_evidence_count == 1
+    assert prepared_record.iteration_index == 1
+    assert prepared_record.remaining_iteration_budget == 2
+    assert prepared_record.action_mode == "external_acquisition"
+
+
+def test_intermediate_findings_prompt_sends_only_current_iteration_evidence(
+    caplog,
+) -> None:
+    caplog.set_level(logging.INFO)
+    stage_input = ResearchStageInput(original_query="Refine multi-round evidence.")
+    historical_evidence = _processed_evidence_unit(
+        "HISTORICAL-EVIDENCE-MUST-NOT-BE-SENT"
+    )
+    current_evidence = _processed_evidence_unit("CURRENT-EVIDENCE-MUST-BE-SENT")
+    current_evidence = current_evidence.model_copy(
+        update={"evidence_unit_id": "ev_002"}
+    )
+    run_state = ResearchExecutorRunState(
+        evidence_coverage_map=ResearchCoverageTracker().initial_map(stage_input),
+        processed_evidence_units=[historical_evidence, current_evidence],
+        intermediate_findings=["Compressed historical finding remains available."],
+        finding_caveats=["Compressed historical caveat remains available."],
+        current_iteration=ResearchExecutorIterationState(
+            iteration_index=2,
+            remaining_iteration_budget=1,
+            action_mode="external_acquisition",
+            processed_evidence_units=[current_evidence],
+        ),
+    )
+    fake_llm = _FakeLLMClient()
+    refiner = IntermediateFindingsRefiner(llm_client=fake_llm)
+    all_evidence_prompt = refiner._build_intermediate_findings_prompt(
+        stage_input,
+        run_state,
+        evidence_units=run_state.processed_evidence_units,
+    )
+
+    asyncio.run(refiner.refine(stage_input, run_state))
+
+    assert len(fake_llm.prompts) == 1
+    actual_prompt = fake_llm.prompts[0]
+    assert "CURRENT-EVIDENCE-MUST-BE-SENT" in actual_prompt
+    assert "HISTORICAL-EVIDENCE-MUST-NOT-BE-SENT" not in actual_prompt
+    assert "Compressed historical finding remains available." in actual_prompt
+    assert "Compressed historical caveat remains available." in actual_prompt
+    assert "HISTORICAL-EVIDENCE-MUST-NOT-BE-SENT" in all_evidence_prompt
+
+    actual_prompt_fields = llm_prompt_log_fields(actual_prompt)
+    all_prompt_fields = llm_prompt_log_fields(all_evidence_prompt)
+    prepared_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "research_intermediate_findings_prompt_prepared"
+    )
+    assert prepared_record.llm_prompt_char_count == actual_prompt_fields[
+        "llm_prompt_char_count"
+    ]
+    assert prepared_record.llm_all_evidence_prompt_char_count == all_prompt_fields[
+        "llm_prompt_char_count"
+    ]
+    assert prepared_record.llm_prompt_char_count_reduction == (
+        all_prompt_fields["llm_prompt_char_count"]
+        - actual_prompt_fields["llm_prompt_char_count"]
+    )
+    assert prepared_record.llm_prompt_char_count_reduction > 0
+    assert prepared_record.processed_evidence_count == 1
+    assert prepared_record.total_processed_evidence_count == 2
+    serialized_record = json.dumps(prepared_record.__dict__, default=str)
+    assert "CURRENT-EVIDENCE-MUST-BE-SENT" not in serialized_record
+    assert "HISTORICAL-EVIDENCE-MUST-NOT-BE-SENT" not in serialized_record
+
+
 def test_research_executor_accepts_json_object_intermediate_findings_output() -> None:
     payload = json.dumps(
         _valid_findings_payload(
@@ -2543,7 +2661,7 @@ def test_research_executor_accepts_json_object_intermediate_findings_output() ->
 def test_research_executor_raises_when_intermediate_findings_output_is_not_json(
     caplog,
 ) -> None:
-    caplog.set_level(logging.WARNING)
+    caplog.set_level(logging.INFO)
     service = _research_executor(
         llm_client=_FakeLLMClient(findings_responses=["not json"])
     )
@@ -2564,6 +2682,19 @@ def test_research_executor_raises_when_intermediate_findings_output_is_not_json(
     assert failure_record.failure_stage == "llm_generation"
     assert failure_record.exception_type == "ValueError"
     assert not hasattr(failure_record, "raw_response")
+    findings_events = [
+        getattr(record, "event", None)
+        for record in caplog.records
+        if getattr(record, "event", None)
+        in {
+            "research_intermediate_findings_prompt_prepared",
+            "research_intermediate_findings_refinement_failed",
+        }
+    ]
+    assert findings_events == [
+        "research_intermediate_findings_prompt_prepared",
+        "research_intermediate_findings_refinement_failed",
+    ]
 
 
 def test_research_executor_raises_when_intermediate_findings_schema_is_invalid(

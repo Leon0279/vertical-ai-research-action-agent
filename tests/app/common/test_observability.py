@@ -85,6 +85,9 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
             "Provider rejected Authorization: Bearer super-secret and api_key=key-secret.",
             extra={
                 "event": "provider_failed",
+                "llm_prompt_evidence_scope": "current_iteration",
+                "llm_all_evidence_prompt_char_count": 1_234,
+                "llm_prompt_char_count_reduction": 234,
                 "selected_family": "web_search",
                 "generated_query": "safe retrieval query",
                 "candidate_action_modes": [
@@ -244,6 +247,9 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     record = records[-1]
     assert record["event"] == "provider_failed"
     assert record["trace_id"] == "trace-jsonl"
+    assert record["llm_prompt_evidence_scope"] == "current_iteration"
+    assert record["llm_all_evidence_prompt_char_count"] == 1_234
+    assert record["llm_prompt_char_count_reduction"] == 234
     assert record["selected_family"] == "web_search"
     assert record["generated_query"] == "safe retrieval query"
     assert record["candidate_action_modes"] == [

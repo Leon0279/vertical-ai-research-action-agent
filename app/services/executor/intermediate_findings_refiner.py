@@ -10,9 +10,12 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
-from app.common.observability import exception_diagnostic_fields
+from app.common.observability import (
+    exception_diagnostic_fields,
+    llm_prompt_log_fields,
+)
 from app.common.utils.text import unique_non_empty_strings
-from app.domain.models import ResearchStageInput
+from app.domain.models import ProcessedEvidenceUnit, ResearchStageInput
 from app.services.executor.models.llm_intermediate_findings_payload import (
     LLMIntermediateFindingsPayload,
 )
@@ -42,7 +45,22 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
         started_at = time.perf_counter()
         previous_finding_count = len(run_state.intermediate_findings)
         previous_caveat_count = len(run_state.finding_caveats)
-        prompt = self._build_intermediate_findings_prompt(stage_input, run_state)
+        iteration = run_state.require_current_iteration()
+        prompt = self._build_intermediate_findings_prompt(
+            stage_input,
+            run_state,
+            evidence_units=iteration.processed_evidence_units,
+        )
+        all_evidence_prompt = self._build_intermediate_findings_prompt(
+            stage_input,
+            run_state,
+            evidence_units=run_state.processed_evidence_units,
+        )
+        self._log_prompt_prepared(
+            run_state,
+            prompt=prompt,
+            all_evidence_prompt=all_evidence_prompt,
+        )
         try:
             llm_output = await self._llm_client.generate_json_object(prompt)
         except Exception as exc:
@@ -156,17 +174,60 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
             },
         )
 
+    def _log_prompt_prepared(
+        self,
+        run_state: ResearchExecutorRunState,
+        *,
+        prompt: str,
+        all_evidence_prompt: str,
+    ) -> None:
+        """记录实际 prompt 与累计 evidence 对照 prompt 的安全长度元数据。"""
+
+        iteration = run_state.require_current_iteration()
+        prompt_fields = llm_prompt_log_fields(prompt)
+        all_evidence_prompt_fields = llm_prompt_log_fields(all_evidence_prompt)
+        prompt_char_count = int(prompt_fields["llm_prompt_char_count"])
+        all_evidence_prompt_char_count = int(
+            all_evidence_prompt_fields["llm_prompt_char_count"]
+        )
+        logger.info(
+            "Research intermediate findings prompt prepared.",
+            extra={
+                "event": "research_intermediate_findings_prompt_prepared",
+                "llm_operation": "intermediate_findings_refinement",
+                "llm_prompt_evidence_scope": "current_iteration",
+                **prompt_fields,
+                "llm_all_evidence_prompt_char_count": (
+                    all_evidence_prompt_char_count
+                ),
+                "llm_prompt_char_count_reduction": (
+                    all_evidence_prompt_char_count - prompt_char_count
+                ),
+                "processed_evidence_count": len(
+                    iteration.processed_evidence_units
+                ),
+                "total_processed_evidence_count": len(
+                    run_state.processed_evidence_units
+                ),
+                "iteration_index": iteration.iteration_index,
+                "remaining_iteration_budget": iteration.remaining_iteration_budget,
+                "action_mode": iteration.action_mode,
+            },
+        )
 
     def _build_intermediate_findings_prompt(
         self,
         stage_input: ResearchStageInput,
         run_state: ResearchExecutorRunState,
+        *,
+        evidence_units: list[ProcessedEvidenceUnit],
     ) -> str:
         """Build the mandatory LLM prompt for intermediate finding refinement."""
 
         prompt_input = self._intermediate_findings_prompt_input(
             stage_input,
             run_state,
+            evidence_units=evidence_units,
         )
         return (
             "你正在执行一次“中间研究发现更新”任务。\n\n"
@@ -194,7 +255,9 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
             "- finding_caveats：上一轮或进入本轮前已有的限制说明。\n"
             "你需要输出全量更新后的列表：仍成立的保留，不再成立的删除，被新材料修正的改写。\n\n"
             "4. evidence_materials\n"
-            "- 这里是本研究阶段中已经整理成证据单元的材料。\n"
+            "- 这里仅包含当前 iteration 新整理出的证据单元，不包含此前 iteration 的 evidence 正文。\n"
+            "- 此前 iteration 的研究成果已经压缩进 current_findings；你需要结合它们和本轮新证据，"
+            "输出全量更新后的 findings 与 caveats。\n"
             "- 每个证据单元通常包含 content、evidence_type、source_references、source_family、"
             "target_problem、evidence_goal、metadata 等字段。\n"
             "- 这些材料适合用来支撑或修正 intermediate_findings。\n\n"
@@ -253,11 +316,12 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
             f"{json.dumps(prompt_input, ensure_ascii=False, indent=2)}"
         )
 
-
     def _intermediate_findings_prompt_input(
         self,
         stage_input: ResearchStageInput,
         run_state: ResearchExecutorRunState,
+        *,
+        evidence_units: list[ProcessedEvidenceUnit],
     ) -> dict[str, Any]:
         """Create the JSON input shown to the intermediate-findings LLM."""
 
@@ -282,9 +346,9 @@ class IntermediateFindingsRefiner(ResearchExecutorCollaboratorSupport):
                     run_state.finding_caveats,
                 ),
             },
-            "evidence_materials": self._processed_evidence_for_prompt(
-                run_state,
-            ),
+            "evidence_materials": [
+                unit.model_dump(mode="json") for unit in evidence_units
+            ],
             "background_support_materials": {
                 "research_memory_summaries": self._context_items_for_prompt(
                     stage_input.research_support,

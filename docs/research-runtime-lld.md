@@ -618,6 +618,8 @@ canonical research loop 的基本目标是：
 
 基于更新后的 working state，生成或修正当前的 intermediate findings。
 
+Findings Refiner 的 LLM 输入只携带当前 iteration 新增的 processed evidence，避免在多轮研究中重复发送历史 evidence 正文。此前轮次形成的研究成果通过累计的 `intermediate_findings` 和 `finding_caveats` 作为压缩状态继续传递；Refiner 每轮仍输出全量更新后的 findings 与 caveats。stage-level 的累计 processed evidence 不会因此被删除，仍供 coverage、conclusion、citation 和 memory writeback 使用。
+
 这一步的目标不是直接产出最终用户响应，而是逐步形成更完整、更可支撑 downstream conclusion generation 的 research-stage result。
 
 #### Step 8. Evaluate Iteration Outcome
