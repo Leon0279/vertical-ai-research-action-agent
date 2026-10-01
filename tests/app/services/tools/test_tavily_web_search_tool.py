@@ -116,6 +116,8 @@ def test_run_normal_path_uses_fetched_content_for_selected_candidates() -> None:
         "https://example.test/blog",
     ]
     assert content_client.last_request.format == "markdown"
+    assert content_client.last_request.query == "agent frameworks"
+    assert content_client.last_request.chunks_per_source == 3
 
     assert result.acquisition_status == AcquisitionStatus.PARTIAL_SUCCESS
     assert len(result.normalized_items) == 3

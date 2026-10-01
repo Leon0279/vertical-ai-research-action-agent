@@ -281,9 +281,15 @@ class ApplicationServiceProvider(Provider):
         return TaskInterpreterService(llm_client=llm_client)
 
     @provide
-    def evidence_processing(self) -> EvidenceProcessingService:
-        # Preserve the current deterministic Evidence Processing default behavior.
-        return EvidenceProcessingService()
+    def evidence_processing(
+        self,
+        llm_client: LLMClientProtocol,
+        embedding_client: EmbeddingClientProtocol,
+    ) -> EvidenceProcessingService:
+        return EvidenceProcessingService(
+            llm_client=llm_client,
+            embedding_client=embedding_client,
+        )
 
     @provide
     def conclusion_generator(

@@ -32,17 +32,16 @@ class WebContentFetchRequest(BaseModel):
         default=None,
         description=(
             "可选字段；面向 provider 的内容抽取聚焦 query，用于要求 provider 只返回与该 query "
-            "更相关的正文片段。当前项目中暂未由 `TavilyWebSearchTool` 设置，"
-            "通常为空；如果未来需要 query-based extraction，可由上游传入 retrieval query "
-            "或子问题作为聚焦依据。"
+            "更相关的正文片段。当前项目中 `TavilyWebSearchTool` 会传入本次 retrieval query，"
+            "使 Tavily Extract 先完成一次 query-focused 内容筛选。"
         ),
     )
     chunks_per_source: int | None = Field(
         default=None,
         description=(
             "可选字段；query-based extraction 时每个 URL 希望返回的 chunk 数量。"
-            "当前项目中暂未使用，通常为空；`TavilyWebContentFetchClient` 会要求该字段只有在 "
-            "`query` 非空时才能使用，并限制在 provider 支持的范围内。"
+            "当前项目中 `TavilyWebSearchTool` 会在 query-based extraction 时设置为 3；"
+            "`TavilyWebContentFetchClient` 会要求该字段只有在 `query` 非空时才能使用，并限制在 provider 支持的范围内。"
         ),
     )
     extract_depth: Literal["basic", "advanced"] | None = Field(

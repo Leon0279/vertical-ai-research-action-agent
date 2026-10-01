@@ -70,6 +70,10 @@ from app.services.executor.research_retrieval_history_tracker import (
 )
 from app.services.executor.research_stage_result_builder import ResearchStageResultBuilder
 from app.services.executor.research_state_assessor import ResearchStateAssessor
+from app.services.evidence.contracts.evidence_processing_service_protocol import (
+    EvidenceProcessingServiceProtocol,
+)
+from app.services.evidence.evidence_processing_service import EvidenceProcessingService
 from app.services.memory.memory_distiller_service import MemoryDistillerService
 from app.services.memory.action_memory_service import ActionMemoryService
 from app.services.memory.contracts.action_memory_service_protocol import (
@@ -158,6 +162,13 @@ def test_app_dependencies_are_singletons_and_protocol_aliases_share_instances() 
             llm = await container.get(LLMClientProtocol)
             assert llm is await container.get(LLMClientProtocol)
             assert llm is await container.get(ZhipuLLMClient)
+            embedding = await container.get(EmbeddingClientProtocol)
+            evidence_processing = await container.get(EvidenceProcessingService)
+            assert evidence_processing is await container.get(
+                EvidenceProcessingServiceProtocol
+            )
+            assert evidence_processing._llm_client is llm
+            assert evidence_processing._material_selector._embedding_client is embedding
 
             project_service = await container.get(ProjectService)
             assert project_service is await container.get(ProjectServiceProtocol)

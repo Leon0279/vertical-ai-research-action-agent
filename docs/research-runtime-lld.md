@@ -7294,7 +7294,7 @@ dedup_summary
 本节主要负责：
 
 - 判断当前 material 是否值得进入 evidence set
-- 从保留的 material 中抽取 `1..n` 个 evidence unit
+- 从保留的 external material 中抽取 `1..3` 个 evidence unit
 - 为每个 evidence unit 标注 `evidence_type`
 - 将当前轮已知上下文直接附着到 evidence unit 上
 
@@ -7343,12 +7343,12 @@ MVP 阶段，建议对每条 material 在**同一个 LLM call**中同时完成�
 
 **2. Evidence extraction**
 
-若 `decision = keep`，则从当前 material 中抽取 `1..n` 个 evidence unit。
+若 `decision = keep`，则从当前 material 中抽取 `1..3` 个 evidence unit；每条 content 最多 1,200 字符。
 
 需要强调：
 
 - 一个 material 可能抽不出任何有效 evidence，因此最终可被丢弃
-- 一个 material 也可能包含多个不同 signal，因此允许抽出多个 evidence unit
+- 一个 material 也可能包含多个不同 signal，因此允许抽出最多 3 个 evidence unit
 
 **3. Evidence type assignment**
 
@@ -7380,11 +7380,19 @@ evidence extraction 必须保持 source-grounded。
 
 因此，evidence unit 是面向当前任务的抽取结果，而不是对 material 的静态唯一解释。
 
-**3. No mechanical re-chunking**
+**3. Bounded external-material preselection**
 
-本节不再对 `normalized_items` 做机械二次 chunking。
+`research_knowledge_recall` 产生的 material 是已经蒸馏过的 compact knowledge，直接以
+`memory_passthrough` 形成 evidence，不调用 LLM 或 Embedding。
 
-其目标是抽取 evidence signal，而不是重新切分 retrieval unit。
+Docs、Web、Paper 以及未知 external family 均需要经过 LLM evidence extraction。若单条 external
+material 不超过 24,000 字符，则完整进入本次抽取；若超过该上限，则先按约 6,000 字符、约 300
+字符 overlap 切成临时 chunks，再基于 `generated_query`、`target_problem`、`sub_question` 和 `gap`
+组成的研究意图选择最多 4 个相关 chunks。优先使用 Embedding cosine similarity；Embedding 不可用或
+结果无效时降级到确定性中英文词项评分。最终材料仍受 24,000 字符硬上限约束。
+
+这里的 chunks 只是 LLM 输入预算与相关性选择的内部对象，不直接成为 processed evidence，也不改变
+material/evidence 的正式领域模型。
 
 ---
 
@@ -7477,7 +7485,7 @@ structuring_summary
    - 不要把弱提示改写成强结论
 6. 你当前只需要做三件事：
    - 判断当前 material 是 keep 还是 drop
-   - 如果 keep，则抽取 1..n 个 evidence_unit
+   - 如果 keep，则抽取 1..3 个 evidence_unit
    - 为每个 evidence_unit 标注 evidence_type
 7. 不要做机械摘要，不要输出解释过程，只输出 JSON。
 
@@ -7500,7 +7508,7 @@ evidence_type 只能从以下枚举中选择：
 - decision: "keep" 或 "drop"
 - evidence_units: 数组
   - 若 decision = "drop"，则必须返回空数组 []
-  - 若 decision = "keep"，则返回 1..n 个 evidence unit
+  - 若 decision = "keep"，则返回 1..3 个 evidence unit；每条 content 最多 1,200 字符
 
 每个 evidence unit 必须包含以下字段：
 - content
@@ -7959,7 +7967,8 @@ Cross-round merge 放在 `Research Executor / Step 6` 中处理，并采用保�
 
 **Current Direction**
 
-`6.4 Evidence Structuring` 直接从 dedup 后的 material 抽取 `1..n` 个 evidence unit，不做机械 re-chunking。
+`6.4 Evidence Structuring` 对 Memory 做 deterministic passthrough；对 external material 先执行有界 chunk
+选择，再从选中的材料中抽取 `1..3` 个 evidence unit。临时 chunks 只用于控制 LLM 输入预算。
 
 **Why Not Finalized**
 

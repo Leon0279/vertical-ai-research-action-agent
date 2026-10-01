@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
+import logging
 import re
+import time
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from app.adapters.embedding.contracts.embedding_client_protocol import (
+    EmbeddingClientProtocol,
+)
 from app.adapters.llm.contracts.llm_client_protocol import LLMClientProtocol
+from app.common.observability import (
+    exception_diagnostic_fields,
+    llm_prompt_log_fields,
+    sanitize_sensitive_text,
+)
 from app.domain.enums import AcquisitionStatus, FamilyName
 from app.domain.models import (
     EvidenceProcessingSummary,
@@ -23,6 +35,10 @@ from app.domain.models.evidence.processed_evidence_unit import EvidenceType
 from app.services.evidence.contracts.evidence_processing_service_protocol import (
     EvidenceProcessingServiceProtocol,
 )
+from app.services.evidence.evidence_material_selector import EvidenceMaterialSelector
+from app.services.evidence.models import EvidenceMaterialSelection
+
+logger = logging.getLogger(__name__)
 
 
 class _LLMEvidenceUnitPayload(BaseModel):
@@ -34,6 +50,7 @@ Strict evidence unit payload expected from the LLM."""
 
     content: str = Field(
         min_length=1,
+        max_length=1_200,
         description="必填字段。LLM 从单条候选材料中保留的结构化证据正文，不应包含来源 attribution 或推理过程。",
     )
     evidence_type: EvidenceType = Field(
@@ -53,6 +70,7 @@ Strict structuring payload expected from the LLM."""
     )
     evidence_units: list[_LLMEvidenceUnitPayload] = Field(
         default_factory=list,
+        max_length=3,
         description="可选字段，默认空列表。当 decision 为 keep 时从材料提取出的一个或多个 evidence unit；drop 时应为空。",
     )
 
@@ -62,7 +80,7 @@ class EvidenceProcessingService(EvidenceProcessingServiceProtocol):
 
 Convert candidate materials into current-round processed evidence units."""
 
-    _POLICY_NAME = "evidence_processing_v1"
+    _POLICY_NAME = "evidence_processing_v2"
     _MIN_CONTENT_LENGTH = 8
     _CONTAINMENT_BLOCKERS = {
         "but",
@@ -77,8 +95,16 @@ Convert candidate materials into current-round processed evidence units."""
         "trade-off",
     }
 
-    def __init__(self, llm_client: LLMClientProtocol | None = None) -> None:
+    def __init__(
+        self,
+        llm_client: LLMClientProtocol | None = None,
+        embedding_client: EmbeddingClientProtocol | None = None,
+        *,
+        max_external_concurrency: int = 2,
+    ) -> None:
         self._llm_client = llm_client
+        self._material_selector = EvidenceMaterialSelector(embedding_client)
+        self._max_external_concurrency = max(1, max_external_concurrency)
 
     async def process(
         self,
@@ -89,6 +115,7 @@ Convert candidate materials into current-round processed evidence units."""
         try:
             short_circuit_result = self._short_circuit_result(request)
             if short_circuit_result is not None:
+                self._log_processing_completed(short_circuit_result)
                 return short_circuit_result
 
             deduped_materials, dedup_summary = self._dedup_materials(
@@ -110,7 +137,7 @@ Convert candidate materials into current-round processed evidence units."""
                 input_count=len(request.normalized_items),
             )
 
-            return self._create_result(
+            result = self._create_result(
                 request=request,
                 final_units=final_units,
                 deduped_material_count=len(deduped_materials),
@@ -121,8 +148,23 @@ Convert candidate materials into current-round processed evidence units."""
                 llm_error_count=llm_error_count,
                 processing_status=processing_status,
             )
+            self._log_processing_completed(result)
+            return result
         except Exception as exc:
-            return self._create_failed_result(request=request, error_info=str(exc))
+            logger.exception(
+                "Evidence Processing failed unexpectedly.",
+                extra={
+                    "event": "evidence_processing_material_failed",
+                    "failure_stage": "evidence_processing",
+                    **exception_diagnostic_fields(exc),
+                },
+            )
+            result = self._create_failed_result(
+                request=request,
+                error_info=sanitize_sensitive_text(exc, max_length=300),
+            )
+            self._log_processing_completed(result)
+            return result
 
     def _short_circuit_result(
         self,
@@ -152,28 +194,46 @@ Convert candidate materials into current-round processed evidence units."""
         request: EvidenceProcessingRequest,
         materials: list[NormalizedRetrievalItem],
     ) -> tuple[list[ProcessedEvidenceUnit], int, int]:
-        structured_units: list[ProcessedEvidenceUnit] = []
-        dropped_material_count = 0
-        llm_error_count = 0
-
-        for material in materials:
-            if not self._is_quality_material(material):
-                dropped_material_count += 1
-                continue
-
-            try:
-                units = await self._structure_material(request, material)
-            except Exception:
-                llm_error_count += 1
-                dropped_material_count += 1
-                continue
-
-            if not units:
-                dropped_material_count += 1
-                continue
-            structured_units.extend(units)
-
+        semaphore = asyncio.Semaphore(self._max_external_concurrency)
+        results = await asyncio.gather(
+            *(
+                self._structure_material_safely(
+                    request=request,
+                    material=material,
+                    semaphore=semaphore,
+                )
+                for material in materials
+            )
+        )
+        structured_units = [
+            unit
+            for units, _failed in results
+            for unit in units
+        ]
+        dropped_material_count = sum(1 for units, _failed in results if not units)
+        llm_error_count = sum(1 for _units, failed in results if failed)
         return structured_units, dropped_material_count, llm_error_count
+
+    async def _structure_material_safely(
+        self,
+        *,
+        request: EvidenceProcessingRequest,
+        material: NormalizedRetrievalItem,
+        semaphore: asyncio.Semaphore,
+    ) -> tuple[list[ProcessedEvidenceUnit], bool]:
+        if not self._is_quality_material(material):
+            return [], False
+
+        family = self._source_family(request, material)
+        if family == FamilyName.RESEARCH_KNOWLEDGE_RECALL:
+            return [self._memory_passthrough_evidence_unit(request, material)], False
+
+        async with semaphore:
+            try:
+                units = await self._structure_external_material(request, material)
+            except Exception:
+                return [], True
+        return units, False
 
     def _create_result(
         self,
@@ -210,6 +270,8 @@ Convert candidate materials into current-round processed evidence units."""
             error_info=(
                 "Some materials could not be structured."
                 if processing_status == "partial_success"
+                else "All eligible external materials failed evidence extraction."
+                if processing_status == "failed"
                 else None
             ),
         )
@@ -322,37 +384,100 @@ Convert candidate materials into current-round processed evidence units."""
             return False
         return True
 
-    async def _structure_material(
+    async def _structure_external_material(
         self,
         request: EvidenceProcessingRequest,
         material: NormalizedRetrievalItem,
     ) -> list[ProcessedEvidenceUnit]:
-        if self._llm_client is None:
-            return [self._fallback_evidence_unit(request, material)]
+        selection: EvidenceMaterialSelection | None = None
+        prompt_fields: dict[str, int | str | None] = {}
+        started_at: float | None = None
+        try:
+            if self._llm_client is None:
+                raise RuntimeError("Evidence Processing LLM client is not configured.")
 
-        prompt = self._build_prompt(request, material)
-        llm_output = await self._llm_client.generate_json_object(prompt)
-        payload = self._parse_llm_output(llm_output)
-        if payload.decision == "drop":
-            return []
-
-        units: list[ProcessedEvidenceUnit] = []
-        for payload_unit in payload.evidence_units:
-            content = payload_unit.content.strip()
-            if not content:
-                continue
-            units.append(
-                self._evidence_unit(
-                    request=request,
-                    material=material,
-                    content=content,
-                    evidence_type=payload_unit.evidence_type,
-                    metadata={"structuring_method": "llm"},
-                )
+            selection = await self._material_selector.select(request, material)
+            self._log_chunk_selection_completed(request, material, selection)
+            prompt = self._build_prompt(
+                request,
+                material,
+                selected_content=selection.content,
             )
-        return units
+            prompt_fields = llm_prompt_log_fields(prompt)
+            material_fields = self._material_log_fields(request, material)
+            logger.info(
+                "External evidence material is ready for LLM extraction.",
+                extra={
+                    "event": "evidence_processing_material_prepared",
+                    **material_fields,
+                    **self._selection_log_fields(selection),
+                    **prompt_fields,
+                },
+            )
 
-    def _fallback_evidence_unit(
+            started_at = time.perf_counter()
+            llm_output = await self._llm_client.generate_json_object(prompt)
+            payload = self._parse_llm_output(llm_output)
+
+            if payload.decision == "drop":
+                logger.info(
+                    "External evidence material was dropped by the LLM.",
+                    extra={
+                        "event": "evidence_processing_material_completed",
+                        **material_fields,
+                        **self._selection_log_fields(selection),
+                        **prompt_fields,
+                        "evidence_decision": payload.decision,
+                        "output_evidence_count": 0,
+                        "llm_duration_ms": self._duration_ms(started_at),
+                    },
+                )
+                return []
+
+            units: list[ProcessedEvidenceUnit] = []
+            for payload_unit in payload.evidence_units:
+                content = payload_unit.content.strip()
+                if not content:
+                    continue
+                units.append(
+                    self._evidence_unit(
+                        request=request,
+                        material=material,
+                        content=content,
+                        evidence_type=payload_unit.evidence_type,
+                        metadata={"structuring_method": "llm"},
+                    )
+                )
+            logger.info(
+                "External evidence material was processed by the LLM.",
+                extra={
+                    "event": "evidence_processing_material_completed",
+                    **material_fields,
+                    **self._selection_log_fields(selection),
+                    **prompt_fields,
+                    "evidence_decision": payload.decision,
+                    "output_evidence_count": len(units),
+                    "output_evidence_char_count": sum(
+                        len(unit.content) for unit in units
+                    ),
+                    "llm_duration_ms": self._duration_ms(started_at),
+                },
+            )
+            return units
+        except Exception as exc:
+            self._log_material_failed(
+                request,
+                material,
+                exc,
+                selection=selection,
+                prompt_fields=prompt_fields,
+                llm_duration_ms=(
+                    self._duration_ms(started_at) if started_at is not None else None
+                ),
+            )
+            raise
+
+    def _memory_passthrough_evidence_unit(
         self,
         request: EvidenceProcessingRequest,
         material: NormalizedRetrievalItem,
@@ -362,7 +487,7 @@ Convert candidate materials into current-round processed evidence units."""
             material=material,
             content=self._content(material).strip(),
             evidence_type="supporting_signal",
-            metadata={"structuring_method": "deterministic_fallback"},
+            metadata={"structuring_method": "memory_passthrough"},
         )
 
     def _evidence_unit(
@@ -403,9 +528,11 @@ Convert candidate materials into current-round processed evidence units."""
         self,
         request: EvidenceProcessingRequest,
         material: NormalizedRetrievalItem,
+        *,
+        selected_content: str,
     ) -> str:
         material_input: dict[str, Any] = {
-            "content": self._content(material),
+            "content": selected_content,
             "source_types": self._source_types(material),
         }
         material_context = self._prompt_material_context(material)
@@ -439,7 +566,8 @@ Convert candidate materials into current-round processed evidence units."""
             "整理规则：\n"
             "1. 只能保留 material.content 中明确表达或可直接支持的内容；不要补充外部知识或推测。\n"
             "2. 不要改变 task_context 中的研究问题、范围、子问题、比较对象或信息缺口。\n"
-            "3. decision 为 keep 时，可以提炼一条或多条证据；每条都应简短、具体且与研究问题相关。\n"
+            "3. decision 为 keep 时，必须提炼 1 到 3 条证据；每条都应简短、具体、与研究问题相关，"
+            "且 content 最多 1200 个字符。\n"
             "4. evidence_type 只能是以下值之一：direct_fact（直接事实）、supporting_signal（支持性信号）、"
             "comparison_signal（比较信号）、status_signal（状态信号）、background_signal（背景信号）。\n"
             "5. 系统会另行关联材料来源，因此不要输出来源链接、来源标识或任何其他关联信息。\n\n"
@@ -453,7 +581,8 @@ Convert candidate materials into current-round processed evidence units."""
             "    }\n"
             "  ]\n"
             "}\n"
-            "当 decision 为 drop 时，evidence_units 必须是空数组。\n\n"
+            "当 decision 为 drop 时，evidence_units 必须是空数组；当 decision 为 keep 时，"
+            "evidence_units 必须包含 1 到 3 个元素。\n\n"
             "输入 JSON：\n"
             f"{json.dumps(prompt_input, ensure_ascii=False, indent=2)}"
         )
@@ -486,11 +615,13 @@ Convert candidate materials into current-round processed evidence units."""
     ) -> _LLMStructuringPayload:
         try:
             payload = _LLMStructuringPayload.model_validate(llm_output)
-        except ValidationError as exc:
-            raise ValueError("LLM response did not match evidence schema.") from exc
+        except ValidationError:
+            raise ValueError("LLM response did not match evidence schema.") from None
 
         if payload.decision == "drop" and payload.evidence_units:
             raise ValueError("Drop decisions must return an empty evidence_units list.")
+        if payload.decision == "keep" and not payload.evidence_units:
+            raise ValueError("Keep decisions must return at least one evidence unit.")
         return payload
 
     def _consolidate_evidence(
@@ -646,7 +777,7 @@ Convert candidate materials into current-round processed evidence units."""
         input_count: int,
     ) -> str:
         if output_count == 0:
-            return "no_result"
+            return "failed" if llm_error_count > 0 else "no_result"
         if llm_error_count > 0 or dropped_material_count > max(0, input_count - output_count):
             return "partial_success"
         return "success"
@@ -773,6 +904,111 @@ Convert candidate materials into current-round processed evidence units."""
 
     def _string_value(self, value: Any) -> str:
         return value.strip() if isinstance(value, str) else ""
+
+    def _log_chunk_selection_completed(
+        self,
+        request: EvidenceProcessingRequest,
+        material: NormalizedRetrievalItem,
+        selection: EvidenceMaterialSelection,
+    ) -> None:
+        fields = {
+            **self._material_log_fields(request, material),
+            **self._selection_log_fields(selection),
+        }
+        if selection.degradation_reason:
+            logger.warning(
+                "Embedding chunk selection degraded to lexical scoring.",
+                extra={
+                    "event": "evidence_processing_chunk_selection_degraded",
+                    **fields,
+                    "embedding_fallback_reason": selection.degradation_reason,
+                },
+            )
+        logger.info(
+            "External evidence material selection completed.",
+            extra={
+                "event": "evidence_processing_chunk_selection_completed",
+                **fields,
+            },
+        )
+
+    def _log_material_failed(
+        self,
+        request: EvidenceProcessingRequest,
+        material: NormalizedRetrievalItem,
+        error: BaseException,
+        *,
+        selection: EvidenceMaterialSelection | None,
+        prompt_fields: dict[str, int | str | None],
+        llm_duration_ms: int | None,
+    ) -> None:
+        selection_fields = (
+            self._selection_log_fields(selection)
+            if isinstance(selection, EvidenceMaterialSelection)
+            else {}
+        )
+        logger.warning(
+            "External evidence material processing failed.",
+            extra={
+                "event": "evidence_processing_material_failed",
+                **self._material_log_fields(request, material),
+                **selection_fields,
+                **prompt_fields,
+                **exception_diagnostic_fields(error),
+                "llm_duration_ms": llm_duration_ms,
+            },
+        )
+
+    def _log_processing_completed(self, result: EvidenceProcessingResult) -> None:
+        summary = result.evidence_processing_summary
+        log_method = logger.warning if result.processing_status == "failed" else logger.info
+        log_method(
+            "Evidence Processing completed.",
+            extra={
+                "event": "evidence_processing_completed",
+                "processing_status": result.processing_status,
+                "candidate_material_count": summary.input_material_count,
+                "processed_evidence_count": summary.output_evidence_count,
+                "dropped_material_count": summary.dropped_material_count,
+                "llm_error_count": summary.llm_invalid_output_count,
+            },
+        )
+
+    def _material_log_fields(
+        self,
+        request: EvidenceProcessingRequest,
+        material: NormalizedRetrievalItem,
+    ) -> dict[str, Any]:
+        family = self._source_family(request, material)
+        fingerprint_input = "|".join(
+            (
+                material.item_id.strip(),
+                self._source_ref(material),
+                family.value if family is not None else "unknown",
+            )
+        )
+        return {
+            "source_family": family.value if family is not None else "unknown",
+            "material_fingerprint": hashlib.sha256(
+                fingerprint_input.encode("utf-8")
+            ).hexdigest()[:16],
+        }
+
+    def _selection_log_fields(
+        self,
+        selection: EvidenceMaterialSelection,
+    ) -> dict[str, Any]:
+        return {
+            "original_material_char_count": selection.original_char_count,
+            "selected_material_char_count": selection.selected_char_count,
+            "material_chunk_count": selection.total_chunk_count,
+            "embedding_candidate_count": selection.embedding_candidate_count,
+            "selected_chunk_count": selection.selected_chunk_count,
+            "selection_method": selection.selection_method,
+        }
+
+    def _duration_ms(self, started_at: float) -> int:
+        return max(0, int((time.perf_counter() - started_at) * 1000))
 
     def _normalized_text(self, value: str) -> str:
         lower = value.lower().strip()

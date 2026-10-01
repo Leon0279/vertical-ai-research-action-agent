@@ -71,7 +71,10 @@ Tool service that searches the web and fetches content for top candidates."""
             return self._no_result()
 
         selected_candidates = self._select_fetch_candidates(candidates, normalized_request)
-        fetch_response, fetch_error = await self._fetch_selected_candidates(selected_candidates)
+        fetch_response, fetch_error = await self._fetch_selected_candidates(
+            selected_candidates,
+            query_text=normalized_request.query_text,
+        )
         normalized_items, execution_summary, retrieval_trace = self._assemble_items(
             candidates=candidates,
             selected_candidates=selected_candidates,
@@ -267,6 +270,8 @@ Tool service that searches the web and fetches content for top candidates."""
     async def _fetch_selected_candidates(
         self,
         selected_candidates: list[WebSearchResult],
+        *,
+        query_text: str,
     ) -> tuple[WebContentFetchResponse | None, str | None]:
         if not selected_candidates:
             return None, None
@@ -275,6 +280,8 @@ Tool service that searches the web and fetches content for top candidates."""
             response = await self._web_content_fetch_client.fetch_content(
                 WebContentFetchRequest(
                     urls=urls,
+                    query=query_text,
+                    chunks_per_source=3,
                     format="markdown",
                 )
             )

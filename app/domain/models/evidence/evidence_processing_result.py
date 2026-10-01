@@ -56,7 +56,8 @@ class EvidenceProcessingResult(BaseModel):
             "必填字段。Evidence Processing 阶段自身的处理状态。当前项目中有用：Research Executor 可用它判断当前轮 evidence 是否可继续交给后续阶段。"
             "可选值包括 success、partial_success、no_result、failed。success 表示成功产出 evidence 且没有明显处理降级；"
             "partial_success 表示产出了 evidence 但部分 material 结构化失败或被丢弃；no_result 表示未产出 evidence，可能因为上游 no_result/failed、"
-            "normalized_items 为空或全部材料被过滤；failed 表示 EvidenceProcessingService 自身遇到未预期异常。"
+            "normalized_items 为空、全部材料被过滤或被 LLM 正常判定为 drop；failed 表示没有产出 evidence 且至少一条外部材料的 LLM 抽取失败，"
+            "或 EvidenceProcessingService 自身遇到未预期异常。"
             "它不同于 EvidenceProcessingRequest.acquisition_status：后者是上游 retrieval 获取状态，本字段是 evidence processing 处理结果。"
         ),
     )
@@ -64,7 +65,8 @@ class EvidenceProcessingResult(BaseModel):
         default=None,
         description=(
             "可选字段。Evidence Processing 阶段的顶层错误或降级说明。当前项目中有用：processing_status='partial_success' 时，"
-            "当前可能为 Some materials could not be structured；processing_status='failed' 时会保存异常的简短字符串；"
+            "当前可能为 Some materials could not be structured；processing_status='failed' 时会保存脱敏的简短错误或"
+            "全量 external extraction 失败摘要；"
             "success/no_result 常为 None。该字段应保持简短，不承载完整 LLM 原始输出、完整 prompt、provider raw payload 或 stack trace；"
             "更细的计数和原因应查看 evidence_processing_summary。"
         ),

@@ -18,7 +18,7 @@ class EvidenceProcessingSummary(BaseModel):
         default=None,
         description=(
             "可选字段。Evidence Processing 使用的策略版本。当前项目中有用：EvidenceProcessingService 当前写入 "
-            "evidence_processing_v1，用于后续排查处理行为是否来自同一版规则。"
+            "evidence_processing_v2，用于后续排查处理行为是否来自同一版规则。"
         ),
     )
     input_material_count: int = Field(
@@ -76,8 +76,8 @@ class EvidenceProcessingSummary(BaseModel):
         ge=0,
         description=(
             "可选字段，默认 0，必须大于等于 0。consolidation 前初步结构化出的 evidence unit 数量。当前项目中有用："
-            "如果未注入 LLM client，每条合格 material 会通过 deterministic fallback 生成 supporting_signal；如果注入 LLM，"
-            "则来自 LLM JSON payload 中通过校验的 evidence_units。"
+            "Research Knowledge material 会通过 memory passthrough 生成 supporting_signal；外部 material 则来自 LLM JSON payload "
+            "中通过校验的 evidence_units。"
         ),
     )
     merged_evidence_count: int = Field(

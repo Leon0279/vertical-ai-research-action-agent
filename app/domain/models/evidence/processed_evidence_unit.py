@@ -58,7 +58,7 @@ class ProcessedEvidenceUnit(BaseModel):
         min_length=1,
         description=(
             "必填字段，不能为空字符串。面向当前任务整理后的 evidence 内容。当前项目中有用："
-            "如果未注入 LLM client，deterministic fallback 会直接使用 material.content；如果注入 LLM client，"
+            "Research Knowledge Memory 通过 memory passthrough 使用 compact material.content；外部材料"
             "则来自 LLM 结构化输出的 evidence_units[*].content。该字段应只包含 source-grounded 内容，"
             "不应包含最终结论、建议、行动计划或额外推理过程。"
         ),
@@ -67,7 +67,7 @@ class ProcessedEvidenceUnit(BaseModel):
         description=(
             "必填字段。该 evidence 的信号类型。当前项目中有用：后续 synthesis / finding 阶段可用它区分事实、"
             "背景、状态、对比等不同 evidence。可选值包括 direct_fact、supporting_signal、comparison_signal、"
-            "status_signal、background_signal。deterministic fallback 当前默认生成 supporting_signal。"
+            "status_signal、background_signal。memory passthrough 当前默认生成 supporting_signal。"
         ),
     )
     target_problem: str | None = Field(

@@ -3468,10 +3468,14 @@ Typical failure or degradation cases include:
 
 Typical fallback behavior may include:
 
-- preserving minimally normalized evidence when richer processing fails
+- preserving already processed evidence from other materials when one external-material LLM extraction fails
 - returning partial summaries
 - surfacing uncertainty signals instead of forcing overconfident synthesis
 - allowing the Research Executor to continue with partial evidence when appropriate
+
+For external Docs, Web, or Paper materials, a failed LLM extraction must not fall back to passing raw or merely
+truncated source text downstream. Research Knowledge Memory is the exception: it is already compact, durable
+knowledge and follows a deterministic passthrough path without an additional LLM or Embedding call.
 
 The component should degrade gracefully rather than require perfect retrieval quality.
 

@@ -613,3 +613,52 @@ def test_llm_prompt_log_fields_are_content_free_and_stable() -> None:
         "llm_prompt_char_count": 0,
         "llm_prompt_fingerprint": None,
     }
+
+
+def test_evidence_processing_log_fields_are_allowlisted_without_content(
+    tmp_path: Path,
+) -> None:
+    log_path = tmp_path / "evidence.jsonl"
+    logger = _logger("app.tests.observability.evidence")
+    handler = configure_file_logging(_settings(log_path), logger=logger)
+    assert handler is not None
+
+    logger.info(
+        "External evidence material selection completed.",
+        extra={
+            "event": "evidence_processing_chunk_selection_completed",
+            "source_family": "paper_search",
+            "material_fingerprint": "0123456789abcdef",
+            "original_material_char_count": 80_000,
+            "selected_material_char_count": 23_900,
+            "material_chunk_count": 14,
+            "embedding_candidate_count": 14,
+            "selected_chunk_count": 4,
+            "selection_method": "embedding",
+            "embedding_fallback_reason": None,
+            "evidence_decision": "keep",
+            "output_evidence_count": 3,
+            "output_evidence_char_count": 2_100,
+            "material_content": "private material must not be serialized",
+            "query": "private query must not be serialized",
+            "embedding": [0.1, 0.2, 0.3],
+        },
+    )
+    handler.flush()
+    remove_file_logging_handler(logger=logger)
+
+    record = _json_lines(log_path)[-1]
+    assert record["source_family"] == "paper_search"
+    assert record["material_fingerprint"] == "0123456789abcdef"
+    assert record["original_material_char_count"] == 80_000
+    assert record["selected_material_char_count"] == 23_900
+    assert record["material_chunk_count"] == 14
+    assert record["embedding_candidate_count"] == 14
+    assert record["selected_chunk_count"] == 4
+    assert record["selection_method"] == "embedding"
+    assert record["output_evidence_count"] == 3
+    assert record["output_evidence_char_count"] == 2_100
+    serialized = json.dumps(record, ensure_ascii=False)
+    assert "private material" not in serialized
+    assert "private query" not in serialized
+    assert "0.1" not in serialized

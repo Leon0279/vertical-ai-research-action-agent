@@ -50,7 +50,7 @@ class NormalizedRetrievalItem(BaseModel):
         default="",
         description=(
             "可选字段，默认空字符串。候选材料正文。当前项目中该字段有用：EvidenceProcessingService 会读取该字段做质量过滤、"
-            "dedup、LLM structuring 或 deterministic fallback。docs tool 当前填 docs snippet/content；web/paper tool 可能填 "
+            "dedup；Memory 走 deterministic passthrough，外部材料走有界选择和 LLM structuring。docs tool 当前填 docs snippet/content；web/paper tool 可能填 "
             "search snippet、summary 或 fetched full content；memory tool 填 reusable knowledge summary。"
         ),
     )
