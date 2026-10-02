@@ -737,6 +737,55 @@ def test_research_executor_runs_acquisition_steps_when_action_decision_requires_
     assert result.executed_iteration_count == 1
 
 
+def test_memory_no_result_still_runs_findings_and_outcome_evaluation() -> None:
+    assessment_payload = _valid_assessment_payload(
+        action_mode="memory_backed_acquisition",
+        preferred_family="research_knowledge_recall",
+        retrieval_query="已有研究记忆中的直接证据",
+    )
+    llm_client = _FakeLLMClient(
+        responses=[json.dumps(assessment_payload, ensure_ascii=False)],
+    )
+    service = _SpyResearchExecutorService(
+        llm_client=llm_client,
+        tool_execution_layer_service=_FakeToolExecutionLayerService(
+            result=ToolExecutionLayerResult(
+                execution_status="completed",
+                acquisition_status=AcquisitionStatus.NO_RESULT,
+            )
+        ),
+        evidence_processing_service=_FakeEvidenceProcessingService(
+            result=EvidenceProcessingResult(processing_status="no_result"),
+        ),
+    )
+
+    result = asyncio.run(
+        service.execute(
+            ResearchStageInput(
+                original_query="Memory 无结果后仍统一完成本轮判断。",
+                owner_user_id="user-1",
+                available_families=[
+                    FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+                    FamilyName.DOCS_SEARCH,
+                ],
+                iteration_budget=2,
+            )
+        )
+    )
+
+    assert service.calls == [
+        "assess_research_state_and_select_next_evidence_need",
+        "acquire_candidate_material",
+        "process_candidate_material_into_usable_evidence",
+        "update_stage_local_working_state",
+        "produce_or_refine_intermediate_findings",
+        "evaluate_iteration_outcome",
+    ]
+    assert len(_findings_prompts(llm_client)) == 1
+    assert len(_outcome_prompts(llm_client)) == 1
+    assert result.executed_iteration_count == 1
+
+
 def test_research_material_acquirer_logs_request_before_tel_failure(caplog) -> None:
     tel_service = _FailingToolExecutionLayerService()
     service = _research_executor(tool_execution_layer_service=tel_service)

@@ -55,6 +55,3 @@ class ResearchStateAssessorOutput(BaseModel):
         min_length=1,
         description="必填字段。Assessor 选择 action mode、family 和 query 的简短理由。",
     )
-    acquisition_paths_exhausted: bool = Field(
-        description="必填字段。当前 coverage target 的全部可用路径是否已被历史判定为低价值。",
-    )

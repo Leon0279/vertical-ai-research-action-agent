@@ -102,19 +102,6 @@ class ResearchExecutorService(ResearchExecutorProtocol):
 
                 research_step = "coverage_update"
                 await self._update_stage_local_working_state(stage_input, run_state)
-                research_step = "pre_findings_outcome_evaluation"
-                pre_findings_outcome = self._evaluate_before_findings(
-                    stage_input,
-                    run_state,
-                )
-                if pre_findings_outcome is not None:
-                    outcome = pre_findings_outcome
-                    self._retrieval_history_tracker.record_completed_iteration(
-                        run_state
-                    )
-                    executed_iteration_count += 1
-                    continue
-
                 research_step = "findings_refinement"
                 await self._produce_or_refine_intermediate_findings(
                     stage_input,
@@ -156,15 +143,6 @@ class ResearchExecutorService(ResearchExecutorProtocol):
             executed_iteration_count=executed_iteration_count,
             final_outcome=outcome,
         )
-
-    def _evaluate_before_findings(
-        self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-    ) -> ResearchIterationOutcome | None:
-        """Return a deterministic outcome when no findings LLM call is useful."""
-
-        return self._outcome_evaluator.evaluate_before_findings(stage_input, run_state)
 
     @staticmethod
     def _has_usable_research_output(run_state: ResearchExecutorRunState) -> bool:
@@ -227,9 +205,6 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         iteration.preferred_family = assessor_output.preferred_family
         iteration.retrieval_query = assessor_output.retrieval_query
         iteration.action_rationale = assessor_output.action_rationale
-        iteration.acquisition_paths_exhausted = (
-            assessor_output.acquisition_paths_exhausted
-        )
 
     async def _acquire_candidate_material(
         self,

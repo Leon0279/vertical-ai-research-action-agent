@@ -106,7 +106,7 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             raise
 
         try:
-            acquisition_paths_exhausted = self._validate_action_decision(
+            self._validate_action_decision(
                 assessor_input,
                 payload,
             )
@@ -130,7 +130,6 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             preferred_family=payload.preferred_family,
             retrieval_query=payload.retrieval_query,
             action_rationale=payload.action_rationale,
-            acquisition_paths_exhausted=acquisition_paths_exhausted,
         )
         self._log_assessment_succeeded(
             assessor_input,
@@ -200,13 +199,8 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
                 ),
                 "action_mode": output.action_mode,
                 "preferred_family": output.preferred_family,
-                "query_fingerprint": retrieval_query_log_fields(
-                    output.retrieval_query
-                )["query_fingerprint"],
+                **retrieval_query_log_fields(output.retrieval_query),
                 "action_rationale": output.action_rationale,
-                "acquisition_paths_exhausted": (
-                    output.acquisition_paths_exhausted
-                ),
             },
         )
 
@@ -586,7 +580,7 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
         self,
         assessor_input: ResearchStateAssessorInput,
         payload: LLMResearchAssessmentAndGapsPayload,
-    ) -> bool:
+    ) -> None:
         """用 runtime 能力和历史校验 LLM 的 action、family 与 query。"""
 
         target_key = payload.next_evidence_need.coverage_target_key
@@ -595,12 +589,9 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             target_key,
         )
         available_families = list(dict.fromkeys(assessor_input.available_families))
-        acquisition_paths_exhausted = bool(available_families) and all(
-            family in low_value_families for family in available_families
-        )
 
         if payload.action_mode == ResearchActionMode.REFINE_FROM_EXISTING_STATE:
-            return acquisition_paths_exhausted
+            return
 
         preferred_family = payload.preferred_family
         if preferred_family not in available_families:
@@ -631,7 +622,6 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
                 "Research assessment preferred_family is blocked by low-value history."
             )
         payload.retrieval_query = normalized_query
-        return acquisition_paths_exhausted
 
     @staticmethod
     def _assessment_input_budget_pressure(

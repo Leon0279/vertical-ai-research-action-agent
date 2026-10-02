@@ -1,6 +1,7 @@
 """ResearchStateAssessor typed boundary tests."""
 
 import asyncio
+import logging
 from copy import deepcopy
 from typing import Any
 
@@ -122,7 +123,11 @@ def _valid_response() -> dict[str, Any]:
     }
 
 
-def test_assess_returns_typed_output_without_mutating_input_snapshot() -> None:
+def test_assess_returns_typed_output_without_mutating_input_snapshot(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.executor.research_state_assessor",
+    )
     llm_client = _FakeLLMClient(_valid_response())
     assessor = ResearchStateAssessor(
         llm_client=llm_client,
@@ -146,6 +151,13 @@ def test_assess_returns_typed_output_without_mutating_input_snapshot() -> None:
     )
     assert assessor_input.model_dump(mode="json") == input_before_assessment
     assert len(llm_client.prompts) == 1
+    assessment_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "research_state_assessed"
+    )
+    assert assessment_record.generated_query == "当前研究目标 官方直接证据"
+    assert len(assessment_record.query_fingerprint) == 16
 
 
 @pytest.mark.parametrize(
@@ -276,7 +288,7 @@ def test_assess_rejects_repeated_low_value_query() -> None:
         asyncio.run(assessor.assess(assessor_input))
 
 
-def test_assess_computes_acquisition_paths_exhausted_for_refine() -> None:
+def test_assess_allows_refine_when_current_target_paths_are_low_value() -> None:
     response = _valid_response()
     response.update(
         action_mode="refine_from_existing_state",
@@ -306,4 +318,6 @@ def test_assess_computes_acquisition_paths_exhausted_for_refine() -> None:
 
     output = asyncio.run(assessor.assess(assessor_input))
 
-    assert output.acquisition_paths_exhausted is True
+    assert output.action_mode == "refine_from_existing_state"
+    assert output.preferred_family is None
+    assert output.retrieval_query is None

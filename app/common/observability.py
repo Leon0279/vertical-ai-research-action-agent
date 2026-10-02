@@ -88,7 +88,6 @@ _STRUCTURED_FIELDS = (
     "action_mode",
     "preferred_family",
     "action_rationale",
-    "acquisition_paths_exhausted",
     "available_families",
     "low_value_families",
     "top_gap_nature",

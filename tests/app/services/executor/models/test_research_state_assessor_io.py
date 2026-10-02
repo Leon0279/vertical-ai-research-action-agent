@@ -114,7 +114,6 @@ def test_research_state_assessor_output_keeps_typed_decision() -> None:
         preferred_family=FamilyName.DOCS_SEARCH,
         retrieval_query="当前研究目标 官方直接证据",
         action_rationale="当前需要补充官方直接证据。",
-        acquisition_paths_exhausted=False,
     )
 
     dumped = output.model_dump(mode="json")

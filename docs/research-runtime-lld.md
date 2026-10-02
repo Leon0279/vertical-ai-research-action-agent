@@ -1829,11 +1829,10 @@ action_mode
 preferred_family
 retrieval_query
 action_rationale
-acquisition_paths_exhausted
 ```
 
-`acquisition_paths_exhausted` 由系统根据当前 available families 与 bounded low-value history 计算，不由 LLM 自报。
-Assessment 日志记录 action、preferred family、query fingerprint、rationale 和路径耗尽状态；不记录完整 query。
+Assessment 日志记录 action、preferred family、query、query fingerprint 和 rationale。
+当前调试期不根据单个 coverage target 的低价值路径历史提前退出 Agent Loop；每轮统一进入 findings 与 outcome evaluation。
 
 ## 4.6 Relationship Between Planning Artifacts and Execution
 

@@ -56,15 +56,6 @@ class ResearchExecutorIterationState:
         default=None,
         metadata={"description": "可选字段。Assessor 选择本轮 action mode、family 和 query 的说明。"},
     )
-    acquisition_paths_exhausted: bool = field(
-        default=False,
-        metadata={
-            "description": (
-                "可选字段，默认 False。当前 coverage target 的全部兼容 acquisition 路径是否已被近期历史"
-                "判定为低价值；为 True 时本轮仅 refine，Step 7 会避免无意义继续循环。"
-            )
-        },
-    )
     tool_execution_request: ToolExecutionLayerRequest | None = field(
         default=None,
         metadata={"description": "可选字段。本轮实际发送给 Tool Execution Layer 的请求。"},
