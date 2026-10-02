@@ -69,7 +69,8 @@ class RetrievalQueryGenerationResult(BaseModel):
             "可选字段，默认空 dict。query generation 的稳定摘要信息，供 TEL 汇总和轻量观测使用。当前项目中有用，但它不是主数据；"
             "调用方应优先读取 selected_family、generated_query、query_focus、generation_status 等正式字段。"
             "当前 RetrievalQueryGenerationService 写入的 key 包括：selected_family（FamilyName）、status（succeeded 或 failed）、"
-            "policy（当前固定为 llm_retrieval_query_generation_v1）、recent_low_value_query_count（归一化后实际进入 prompt 的低价值 query 数量）。"
+            "policy、query_source（upstream_assessment 或 tel_query_generation）、recent_low_value_query_count"
+            "（归一化后实际进入 prompt 的低价值 query 数量）。"
             "该 dict 不应放 selected_tool、完整 prompt、LLM 原始输出、provider raw payload 或 executable retrieval request。"
         ),
     )

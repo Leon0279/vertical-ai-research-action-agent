@@ -4,7 +4,6 @@ from app.domain.enums import FamilyName
 from app.domain.enums import AcquisitionStatus, RetrievalResultUtility
 from app.domain.models import RecentRetrievalAttempt
 from app.services.executor.models.evidence_coverage_entry import EvidenceCoverageEntry
-from app.services.executor.models.research_action_request import ResearchActionRequest
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
@@ -53,21 +52,13 @@ def test_research_executor_run_state_requires_current_iteration() -> None:
 
 
 def test_iteration_state_keeps_action_and_evaluation_as_typed_models() -> None:
-    action_request = ResearchActionRequest(
-        action_mode="external_acquisition",
-        target_problem="补充当前研究目标的直接事实证据。",
-        allowed_source_families=[FamilyName.DOCS_SEARCH],
-        preferred_source_families=[FamilyName.DOCS_SEARCH],
-        evidence_goal="establish_coverage",
-        desired_evidence_kind="direct_fact",
-        freshness_requirement="normal",
-    )
     iteration = ResearchExecutorIterationState(
         iteration_index=1,
         remaining_iteration_budget=2,
         action_mode="external_acquisition",
-        action_decision_reason="external_only_candidate",
-        action_request=action_request,
+        preferred_family=FamilyName.DOCS_SEARCH,
+        retrieval_query="补充当前研究目标的直接事实证据",
+        action_rationale="当前需要官方直接证据。",
         evaluation_state=ResearchIterationEvaluationState(
             top_gap_progress="partially_advanced",
             evidence_gain="meaningful_gain",
@@ -81,11 +72,8 @@ def test_iteration_state_keeps_action_and_evaluation_as_typed_models() -> None:
     )
 
     assert state.require_current_iteration() is iteration
-    assert iteration.action_request is action_request
-    assert iteration.action_decision_reason == "external_only_candidate"
-    assert iteration.action_request.allowed_source_families == [
-        FamilyName.DOCS_SEARCH
-    ]
+    assert iteration.preferred_family == FamilyName.DOCS_SEARCH
+    assert iteration.retrieval_query == "补充当前研究目标的直接事实证据"
     assert iteration.evaluation_state is not None
     assert iteration.evaluation_state.evidence_gain == "meaningful_gain"
 

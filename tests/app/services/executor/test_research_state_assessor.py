@@ -4,7 +4,14 @@ import asyncio
 from copy import deepcopy
 from typing import Any
 
-from app.domain.enums import FamilyName
+import pytest
+
+from app.domain.enums import (
+    AcquisitionStatus,
+    FamilyName,
+    RetrievalResultUtility,
+)
+from app.domain.models import RecentRetrievalAttempt
 from app.services.executor.models.evidence_coverage_entry import (
     EvidenceCoverageEntry,
 )
@@ -108,6 +115,10 @@ def _valid_response() -> dict[str, Any]:
             }
         ],
         "prioritization_summary": "优先补充目标级直接证据。",
+        "action_mode": "external_acquisition",
+        "preferred_family": "docs_search",
+        "retrieval_query": "当前研究目标 官方直接证据",
+        "action_rationale": "当前需要官方直接证据。",
     }
 
 
@@ -127,8 +138,172 @@ def test_assess_returns_typed_output_without_mutating_input_snapshot() -> None:
     assert output.assessment.coverage_status == "not_covered"
     assert output.top_gap.gap_summary == "缺少直接证据。"
     assert output.next_evidence_need.coverage_target_key == "objective"
+    assert output.action_mode == "external_acquisition"
+    assert output.preferred_family == FamilyName.DOCS_SEARCH
+    assert output.retrieval_query == "当前研究目标 官方直接证据"
     assert output.evidence_coverage_map["objective"].target_text == (
         "评估当前研究目标。"
     )
     assert assessor_input.model_dump(mode="json") == input_before_assessment
     assert len(llm_client.prompts) == 1
+
+
+@pytest.mark.parametrize(
+    ("action_mode", "preferred_family", "retrieval_query"),
+    [
+        ("refine_from_existing_state", None, None),
+        (
+            "memory_backed_acquisition",
+            FamilyName.RESEARCH_KNOWLEDGE_RECALL,
+            "当前研究目标 已有知识",
+        ),
+        (
+            "external_acquisition",
+            FamilyName.DOCS_SEARCH,
+            "当前研究目标 官方直接证据",
+        ),
+    ],
+)
+def test_assess_accepts_each_consistent_action_contract(
+    action_mode: str,
+    preferred_family: FamilyName | None,
+    retrieval_query: str | None,
+) -> None:
+    response = _valid_response()
+    response.update(
+        action_mode=action_mode,
+        preferred_family=preferred_family,
+        retrieval_query=retrieval_query,
+    )
+    available_families = (
+        [preferred_family]
+        if preferred_family is not None
+        else [FamilyName.DOCS_SEARCH]
+    )
+    assessor_input = _assessor_input().model_copy(
+        update={"available_families": available_families}
+    )
+    assessor = ResearchStateAssessor(
+        llm_client=_FakeLLMClient(response),
+        coverage_tracker=ResearchCoverageTracker(),
+        retrieval_history_tracker=ResearchRetrievalHistoryTracker(),
+    )
+
+    output = asyncio.run(assessor.assess(assessor_input))
+
+    assert output.action_mode == action_mode
+    assert output.preferred_family == preferred_family
+    assert output.retrieval_query == retrieval_query
+
+
+def test_assess_rejects_action_family_query_schema_mismatch() -> None:
+    response = _valid_response()
+    response["action_mode"] = "memory_backed_acquisition"
+    response["preferred_family"] = "docs_search"
+    assessor = ResearchStateAssessor(
+        llm_client=_FakeLLMClient(response),
+        coverage_tracker=ResearchCoverageTracker(),
+        retrieval_history_tracker=ResearchRetrievalHistoryTracker(),
+    )
+
+    with pytest.raises(ValueError, match="required schema"):
+        asyncio.run(assessor.assess(_assessor_input()))
+
+
+def test_assess_rejects_unavailable_preferred_family() -> None:
+    response = _valid_response()
+    response["preferred_family"] = "web_search"
+    assessor = ResearchStateAssessor(
+        llm_client=_FakeLLMClient(response),
+        coverage_tracker=ResearchCoverageTracker(),
+        retrieval_history_tracker=ResearchRetrievalHistoryTracker(),
+    )
+
+    with pytest.raises(ValueError, match="not currently available"):
+        asyncio.run(assessor.assess(_assessor_input()))
+
+
+def test_assess_rejects_family_blocked_by_low_value_history() -> None:
+    assessor_input = _assessor_input().model_copy(
+        update={
+            "recent_retrieval_attempts": [
+                RecentRetrievalAttempt(
+                    coverage_target_key="objective",
+                    selected_family=FamilyName.DOCS_SEARCH,
+                    target_problem="评估当前研究目标。",
+                    generated_query="旧的低价值 query",
+                    query_fingerprint="old-query",
+                    result_status=AcquisitionStatus.NO_RESULT,
+                    result_utility=RetrievalResultUtility.NOT_USEFUL,
+                )
+            ]
+        }
+    )
+    assessor = ResearchStateAssessor(
+        llm_client=_FakeLLMClient(_valid_response()),
+        coverage_tracker=ResearchCoverageTracker(),
+        retrieval_history_tracker=ResearchRetrievalHistoryTracker(),
+    )
+
+    with pytest.raises(ValueError, match="blocked by low-value history"):
+        asyncio.run(assessor.assess(assessor_input))
+
+
+def test_assess_rejects_repeated_low_value_query() -> None:
+    response = _valid_response()
+    assessor_input = _assessor_input().model_copy(
+        update={
+            "recent_retrieval_attempts": [
+                RecentRetrievalAttempt(
+                    coverage_target_key="objective",
+                    selected_family=FamilyName.DOCS_SEARCH,
+                    target_problem="评估当前研究目标。",
+                    generated_query=response["retrieval_query"],
+                    query_fingerprint="repeated-query",
+                    result_status=AcquisitionStatus.FAILED,
+                    result_utility=RetrievalResultUtility.NOT_USEFUL,
+                )
+            ]
+        }
+    )
+    assessor = ResearchStateAssessor(
+        llm_client=_FakeLLMClient(response),
+        coverage_tracker=ResearchCoverageTracker(),
+        retrieval_history_tracker=ResearchRetrievalHistoryTracker(),
+    )
+
+    with pytest.raises(ValueError, match="repeats a known low-value query"):
+        asyncio.run(assessor.assess(assessor_input))
+
+
+def test_assess_computes_acquisition_paths_exhausted_for_refine() -> None:
+    response = _valid_response()
+    response.update(
+        action_mode="refine_from_existing_state",
+        preferred_family=None,
+        retrieval_query=None,
+    )
+    assessor_input = _assessor_input().model_copy(
+        update={
+            "recent_retrieval_attempts": [
+                RecentRetrievalAttempt(
+                    coverage_target_key="objective",
+                    selected_family=FamilyName.DOCS_SEARCH,
+                    target_problem="评估当前研究目标。",
+                    generated_query="旧的低价值 query",
+                    query_fingerprint="old-query",
+                    result_status=AcquisitionStatus.NO_RESULT,
+                    result_utility=RetrievalResultUtility.NOT_USEFUL,
+                )
+            ]
+        }
+    )
+    assessor = ResearchStateAssessor(
+        llm_client=_FakeLLMClient(response),
+        coverage_tracker=ResearchCoverageTracker(),
+        retrieval_history_tracker=ResearchRetrievalHistoryTracker(),
+    )
+
+    output = asyncio.run(assessor.assess(assessor_input))
+
+    assert output.acquisition_paths_exhausted is True

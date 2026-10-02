@@ -163,10 +163,6 @@ Select a retrieval family without resolving a concrete tool."""
         fallback_index = {family: index for index, family in enumerate(fallback_order)}
         scores = {family: 0 for family in families}
 
-        for family in request.preferred_source_families:
-            if family in scores:
-                scores[family] += 100
-
         self._apply_evidence_goal_scores(scores=scores, evidence_goal=request.evidence_goal)
         self._apply_evidence_shape_scores(scores=scores, evidence_shape=request.evidence_shape)
         self._apply_contextual_scores(
@@ -175,14 +171,21 @@ Select a retrieval family without resolving a concrete tool."""
             evidence_strategy=request.evidence_strategy,
         )
 
-        return sorted(
-            families,
+        preferred = [
+            family
+            for family in request.preferred_source_families
+            if family in scores
+        ]
+        remaining = [family for family in families if family not in set(preferred)]
+        ranked_remaining = sorted(
+            remaining,
             key=lambda family: (
                 -scores[family],
                 fallback_index.get(family, len(fallback_order)),
                 family,
             ),
         )
+        return [*preferred, *ranked_remaining]
 
     def _fallback_order(self, action_mode: ActionMode) -> tuple[FamilyName, ...]:
         if action_mode == ActionMode.MEMORY_BACKED_ACQUISITION:

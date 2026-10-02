@@ -12,12 +12,11 @@ from app.domain.models import (
     ToolExecutionLayerRequest,
     ToolExecutionLayerResult,
 )
-from app.services.executor.models.research_action_request import ResearchActionRequest
 from app.services.executor.enums import (
-    ResearchActionDecisionReason,
     ResearchActionMode,
     ResearchIterationOutcome,
 )
+from app.domain.enums import FamilyName
 from app.services.executor.models.research_iteration_evaluation_state import (
     ResearchIterationEvaluationState,
 )
@@ -37,25 +36,25 @@ class ResearchExecutorIterationState:
     remaining_iteration_budget: int = field(
         metadata={"description": "必填字段。本轮开始时包含当前轮在内的剩余 iteration 预算。"},
     )
-    candidate_action_modes: list[ResearchActionMode] = field(
-        default_factory=list,
-        metadata={"description": "可选字段，默认空列表。规则筛出的本轮可选 action mode。"},
-    )
     action_mode: ResearchActionMode | None = field(
         default=None,
-        metadata={"description": "可选字段。本轮最终选定的 action mode；action decision 前为空。"},
+        metadata={"description": "可选字段。本轮由 Assessor 选定的 action mode；assessment 前为空。"},
     )
-    action_decision_reason: ResearchActionDecisionReason | None = field(
+    preferred_family: FamilyName | None = field(
         default=None,
         metadata={
             "description": (
-                "可选字段。本轮 action mode 对应的稳定规则原因码，供 Agent Loop 日志和诊断使用。"
+                "可选字段。Assessor 建议 TEL 优先选择的 retrieval family；refine 路径为空。"
             )
         },
     )
+    retrieval_query: str | None = field(
+        default=None,
+        metadata={"description": "可选字段。Assessor 生成并交给 TEL 复用的检索短语。"},
+    )
     action_rationale: str | None = field(
         default=None,
-        metadata={"description": "可选字段。系统选择本轮 action mode 的确定性说明。"},
+        metadata={"description": "可选字段。Assessor 选择本轮 action mode、family 和 query 的说明。"},
     )
     acquisition_paths_exhausted: bool = field(
         default=False,
@@ -65,10 +64,6 @@ class ResearchExecutorIterationState:
                 "判定为低价值；为 True 时本轮仅 refine，Step 7 会避免无意义继续循环。"
             )
         },
-    )
-    action_request: ResearchActionRequest | None = field(
-        default=None,
-        metadata={"description": "可选字段。进入 acquisition 时构造的强类型内部请求；refine 路径为空。"},
     )
     tool_execution_request: ToolExecutionLayerRequest | None = field(
         default=None,

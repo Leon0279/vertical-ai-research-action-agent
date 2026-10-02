@@ -94,14 +94,6 @@ class RuntimeContext(BaseModel):
             "该字段约束迭代次数，不表示 tool 内部 retry_budget。"
         ),
     )
-    scope_restrictions: list[str] = Field(
-        default_factory=list,
-        description=(
-            "可选字段，默认空列表。当前 run 的访问或行动范围限制。当前项目中有用但当前执行逻辑较轻："
-            "未来 stage input projection、memory recall、tool execution 或 action generation 可读取它避免越界。"
-            "列表项应是简短 scope restriction 描述或标识。"
-        ),
-    )
     environment_flags: list[str] = Field(
         default_factory=list,
         description=(

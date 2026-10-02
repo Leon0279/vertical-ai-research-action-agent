@@ -400,7 +400,6 @@ Fixed outer workflow with stage-by-stage execution."""
             available_families=runtime_context.available_families,
             latency_budget_ms=runtime_context.latency_budget_ms,
             iteration_budget=runtime_context.iteration_budget,
-            scope_restrictions=runtime_context.scope_restrictions,
         )
 
     def _apply_research_stage_result(

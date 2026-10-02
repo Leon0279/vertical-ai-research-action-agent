@@ -77,8 +77,8 @@ class ToolExecutionLayerRequest(BaseModel):
         default_factory=list,
         description=(
             "可选字段，默认空列表。Research Executor 提供的 family 偏好顺序。当前项目中有用："
-            "FamilySelectionService 会优先考虑这里列出的 family，但仍必须满足 allowed/blocked/available 约束。"
-            "它只是偏好，不是强制选择。"
+            "FamilySelectionService 会先应用 allowed/blocked/available 约束，再将仍合法的 preferred family "
+            "按输入顺序放在所有其它候选之前。preferred 不会绕过强约束。"
         ),
     )
     blocked_source_families: list[FamilyName] = Field(
@@ -102,6 +102,14 @@ class ToolExecutionLayerRequest(BaseModel):
             "可选字段。描述“什么样的 retrieval result 算有用”的提示。当前项目中有用："
             "RetrievalQueryGenerationService 会把它放入 prompt，辅助 LLM 生成更可执行的 query。"
             "TEL/evaluator 当前不直接依据该字段判断完成度。"
+        ),
+    )
+    provided_query: str | None = Field(
+        default=None,
+        description=(
+            "可选字段。上游已经生成、希望 TEL 直接复用的 retrieval query。"
+            "非空时 TEL 仍会执行 Family Selection，但跳过 RetrievalQueryGenerationService；"
+            "same-tool retry 与 broader-family fallback 也复用同一 query。为空时保持 TEL 现有 query generation 路径。"
         ),
     )
     recent_low_value_queries: list[str] = Field(

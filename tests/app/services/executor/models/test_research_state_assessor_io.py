@@ -110,6 +110,11 @@ def test_research_state_assessor_output_keeps_typed_decision() -> None:
         next_evidence_need=evidence_need,
         evidence_coverage_map=_coverage_map(),
         prioritization_summary="优先补齐目标级直接证据。",
+        action_mode="external_acquisition",
+        preferred_family=FamilyName.DOCS_SEARCH,
+        retrieval_query="当前研究目标 官方直接证据",
+        action_rationale="当前需要补充官方直接证据。",
+        acquisition_paths_exhausted=False,
     )
 
     dumped = output.model_dump(mode="json")
@@ -120,3 +125,5 @@ def test_research_state_assessor_output_keeps_typed_decision() -> None:
     assert dumped["evidence_coverage_map"]["objective"]["coverage_status"] == (
         "not_covered"
     )
+    assert dumped["action_mode"] == "external_acquisition"
+    assert dumped["preferred_family"] == "docs_search"

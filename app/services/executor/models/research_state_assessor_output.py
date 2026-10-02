@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.domain.enums import FamilyName
+from app.services.executor.enums import ResearchActionMode
 from app.services.executor.models.evidence_coverage_entry import EvidenceCoverageMap
 from app.services.executor.models.llm_next_evidence_need_payload import (
     LLMNextEvidenceNeedPayload,
@@ -39,4 +41,20 @@ class ResearchStateAssessorOutput(BaseModel):
     prioritization_summary: str = Field(
         min_length=1,
         description="必填字段。选择 top gap 与 next evidence need 的简短优先级说明。",
+    )
+    action_mode: ResearchActionMode = Field(
+        description="必填字段。本轮由 Assessor 选定的高层推进方式。",
+    )
+    preferred_family: FamilyName | None = Field(
+        description="可空字段。本轮 acquisition 建议 TEL 优先选择的 family。",
+    )
+    retrieval_query: str | None = Field(
+        description="可空字段。本轮 acquisition 交给 TEL 复用的检索短语。",
+    )
+    action_rationale: str = Field(
+        min_length=1,
+        description="必填字段。Assessor 选择 action mode、family 和 query 的简短理由。",
+    )
+    acquisition_paths_exhausted: bool = Field(
+        description="必填字段。当前 coverage target 的全部可用路径是否已被历史判定为低价值。",
     )

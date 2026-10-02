@@ -121,6 +121,46 @@ def test_preferred_source_families_raise_available_family() -> None:
     assert result.ranked_candidate_families[0] == "web_search"
 
 
+def test_legal_preferred_family_has_priority_over_higher_heuristic_score() -> None:
+    result = _select(
+        FamilySelectionRequest(
+            target_problem="Find a direct fact in official documentation",
+            evidence_goal="establish_coverage",
+            evidence_shape=EvidenceShape(desired_evidence_kind="direct_fact"),
+            available_families=["docs_search", "web_search"],
+            preferred_source_families=["web_search"],
+        )
+    )
+
+    assert result.selected_family == "web_search"
+    assert result.ranked_candidate_families == ["web_search", "docs_search"]
+
+
+def test_unavailable_preferred_family_falls_back_to_legal_family() -> None:
+    result = _select(
+        FamilySelectionRequest(
+            target_problem="Find official API guidance",
+            available_families=["docs_search"],
+            preferred_source_families=["web_search"],
+        )
+    )
+
+    assert result.selected_family == "docs_search"
+
+
+def test_blocked_preferred_family_falls_back_to_other_legal_family() -> None:
+    result = _select(
+        FamilySelectionRequest(
+            target_problem="Find current public evidence",
+            available_families=["docs_search", "web_search"],
+            preferred_source_families=["docs_search"],
+            blocked_source_families=["docs_search"],
+        )
+    )
+
+    assert result.selected_family == "web_search"
+
+
 def test_allowed_blocked_and_available_families_filter_candidates() -> None:
     result = _select(
         FamilySelectionRequest(

@@ -5,15 +5,13 @@ from __future__ import annotations
 import logging
 
 from app.common.observability import exception_diagnostic_fields
+from app.domain.enums import FamilyName
 from app.domain.models import ResearchStageInput, ResearchStageResult
 from app.services.executor.contracts.research_executor_protocol import ResearchExecutorProtocol
 from app.services.executor.intermediate_findings_refiner import (
     IntermediateFindingsRefiner,
 )
 from app.services.executor.iteration_outcome_evaluator import IterationOutcomeEvaluator
-from app.services.executor.models.research_action_decider_input import (
-    ResearchActionDeciderInput,
-)
 from app.services.executor.enums import ResearchActionMode, ResearchIterationOutcome
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
@@ -27,7 +25,6 @@ from app.services.executor.models.research_material_acquire_input import (
 from app.services.executor.models.research_state_assessor_input import (
     ResearchStateAssessorInput,
 )
-from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
 from app.services.executor.research_retrieval_history_tracker import (
@@ -48,7 +45,6 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         coverage_tracker: ResearchCoverageTracker,
         retrieval_history_tracker: ResearchRetrievalHistoryTracker,
         state_assessor: ResearchStateAssessor,
-        action_decider: ResearchActionDecider,
         material_acquirer: ResearchMaterialAcquirer,
         findings_refiner: IntermediateFindingsRefiner,
         outcome_evaluator: IterationOutcomeEvaluator,
@@ -57,7 +53,6 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         self._coverage_tracker = coverage_tracker
         self._retrieval_history_tracker = retrieval_history_tracker
         self._state_assessor = state_assessor
-        self._action_decider = action_decider
         self._material_acquirer = material_acquirer
         self._findings_refiner = findings_refiner
         self._outcome_evaluator = outcome_evaluator
@@ -91,12 +86,10 @@ class ResearchExecutorService(ResearchExecutorProtocol):
                     stage_input,
                     run_state,
                 )
-                research_step = "action_selection"
+                iteration = run_state.require_current_iteration()
                 should_acquire_candidate_material = (
-                    await self._decide_whether_external_action_is_needed(
-                        stage_input,
-                        run_state,
-                    )
+                    iteration.action_mode
+                    != ResearchActionMode.REFINE_FROM_EXISTING_STATE
                 )
                 if should_acquire_candidate_material:
                     research_step = "material_acquisition"
@@ -210,7 +203,7 @@ class ResearchExecutorService(ResearchExecutorProtocol):
             iteration_index=iteration.iteration_index,
             remaining_iteration_budget=iteration.remaining_iteration_budget,
             latency_budget_ms=stage_input.latency_budget_ms,
-            available_families=list(stage_input.available_families),
+            available_families=self._effective_available_families(stage_input),
             processed_evidence_units=list(run_state.processed_evidence_units),
             evidence_coverage_map=dict(run_state.evidence_coverage_map),
             intermediate_findings=list(run_state.intermediate_findings),
@@ -229,59 +222,13 @@ class ResearchExecutorService(ResearchExecutorProtocol):
             assessor_output.evidence_coverage_map
         )
         run_state.prioritization_summary = assessor_output.prioritization_summary
-
-    async def _decide_whether_external_action_is_needed(
-        self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-    ) -> bool:
-        """Step 2：依据规则决定本轮是否进入材料获取分支。"""
-
-        assessment = run_state.current_assessment
-        if assessment is None:
-            raise ValueError(
-                "current_assessment is required before action decision."
-            )
-        top_gap = run_state.top_gap
-        if top_gap is None:
-            raise ValueError("top_gap is required before action decision.")
-        next_evidence_need = run_state.next_evidence_need
-        if next_evidence_need is None:
-            raise ValueError(
-                "next_evidence_need is required before action decision."
-            )
-
         iteration = run_state.require_current_iteration()
-        decider_input = ResearchActionDeciderInput(
-            original_query=stage_input.original_query,
-            user_goal=stage_input.user_goal,
-            available_families=list(stage_input.available_families),
-            latency_budget_ms=stage_input.latency_budget_ms,
-            scope_restrictions=list(stage_input.scope_restrictions),
-            current_assessment=assessment,
-            top_gap=top_gap,
-            next_evidence_need=next_evidence_need,
-            recent_retrieval_attempts=list(
-                run_state.recent_retrieval_attempts
-            ),
-            iteration_index=iteration.iteration_index,
-            remaining_iteration_budget=iteration.remaining_iteration_budget,
-        )
-        decider_output = await self._action_decider.decide(decider_input)
-
-        iteration.candidate_action_modes = list(
-            decider_output.candidate_action_modes
-        )
-        iteration.action_mode = decider_output.action_mode
-        iteration.action_decision_reason = decider_output.action_decision_reason
-        iteration.action_rationale = decider_output.action_rationale
+        iteration.action_mode = assessor_output.action_mode
+        iteration.preferred_family = assessor_output.preferred_family
+        iteration.retrieval_query = assessor_output.retrieval_query
+        iteration.action_rationale = assessor_output.action_rationale
         iteration.acquisition_paths_exhausted = (
-            decider_output.acquisition_paths_exhausted
-        )
-        iteration.action_request = decider_output.action_request
-        return (
-            decider_output.action_mode
-            != ResearchActionMode.REFINE_FROM_EXISTING_STATE
+            assessor_output.acquisition_paths_exhausted
         )
 
     async def _acquire_candidate_material(
@@ -292,10 +239,13 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         """Step 3：通过 Tool Execution Layer 获取候选材料。"""
 
         iteration = run_state.require_current_iteration()
-        action_request = iteration.action_request
-        if action_request is None:
+        if (
+            iteration.action_mode is None
+            or iteration.preferred_family is None
+            or iteration.retrieval_query is None
+        ):
             raise ValueError(
-                "action_request is required before material acquisition."
+                "assessment action, preferred family, and query are required before material acquisition."
             )
         if run_state.top_gap is None or run_state.next_evidence_need is None:
             raise ValueError(
@@ -310,10 +260,12 @@ class ResearchExecutorService(ResearchExecutorProtocol):
             project_scope_id=stage_input.project_scope_id,
             latency_budget_ms=stage_input.latency_budget_ms,
             iteration_index=iteration.iteration_index,
-            action_request=action_request,
-            coverage_target_key=(
-                run_state.next_evidence_need.coverage_target_key
-            ),
+            action_mode=iteration.action_mode,
+            preferred_family=iteration.preferred_family,
+            retrieval_query=iteration.retrieval_query,
+            available_families=self._effective_available_families(stage_input),
+            top_gap=run_state.top_gap,
+            next_evidence_need=run_state.next_evidence_need,
             recent_retrieval_attempts=list(
                 run_state.recent_retrieval_attempts
             ),
@@ -326,6 +278,21 @@ class ResearchExecutorService(ResearchExecutorProtocol):
         run_state.tool_execution_results.append(
             acquire_output.tool_execution_result
         )
+
+    @staticmethod
+    def _effective_available_families(
+        stage_input: ResearchStageInput,
+    ) -> list[FamilyName]:
+        """返回当前 executor 真正可执行的 family，并去重保序。"""
+
+        families = list(dict.fromkeys(stage_input.available_families))
+        if stage_input.owner_user_id is None:
+            return [
+                family
+                for family in families
+                if family.value != "research_knowledge_recall"
+            ]
+        return families
 
     async def _process_candidate_material_into_usable_evidence(
         self,

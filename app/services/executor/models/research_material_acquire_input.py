@@ -4,8 +4,15 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.domain.enums import FamilyName
 from app.domain.models import RecentRetrievalAttempt
-from app.services.executor.models.research_action_request import ResearchActionRequest
+from app.services.executor.enums import ResearchActionMode
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
+)
+from app.services.executor.models.llm_research_gap_payload import (
+    LLMResearchGapPayload,
+)
 
 
 class ResearchMaterialAcquireInput(BaseModel):
@@ -40,12 +47,24 @@ class ResearchMaterialAcquireInput(BaseModel):
         ge=1,
         description="必填字段。当前 Research Executor iteration 从 1 开始的序号。",
     )
-    action_request: ResearchActionRequest = Field(
-        description="必填字段。ResearchActionDecider 生成的内部 acquisition 请求。",
+    action_mode: ResearchActionMode = Field(
+        description="必填字段。Assessor 选定的 acquisition action mode。",
     )
-    coverage_target_key: str = Field(
+    preferred_family: FamilyName = Field(
+        description="必填字段。Assessor 建议 TEL 优先选择的 retrieval family。",
+    )
+    retrieval_query: str = Field(
         min_length=1,
-        description="必填字段。本轮 acquisition 所服务的稳定 coverage target key。",
+        description="必填字段。Assessor 生成并由 TEL 直接复用的检索短语。",
+    )
+    available_families: list[FamilyName] = Field(
+        description="必填字段。当前 runtime 真正可用的 retrieval family 快照。",
+    )
+    top_gap: LLMResearchGapPayload = Field(
+        description="必填字段。触发本轮 acquisition 的最高优先级研究缺口。",
+    )
+    next_evidence_need: LLMNextEvidenceNeedPayload = Field(
+        description="必填字段。本轮 acquisition 要满足的证据需求。",
     )
     recent_retrieval_attempts: list[RecentRetrievalAttempt] = Field(
         description=(

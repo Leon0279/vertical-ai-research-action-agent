@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from app.domain.enums import ActionMode
+from app.domain.enums import ActionMode, FamilyName
 from app.domain.models import (
     EvidenceProcessingRequest,
     EvidenceShape,
@@ -15,7 +15,6 @@ from app.domain.models import (
 from app.services.evidence.contracts.evidence_processing_service_protocol import (
     EvidenceProcessingServiceProtocol,
 )
-from app.services.executor.models.research_action_request import ResearchActionRequest
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
@@ -24,6 +23,9 @@ from app.services.executor.models.research_executor_run_state import (
 )
 from app.services.executor.models.research_material_acquire_input import (
     ResearchMaterialAcquireInput,
+)
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
 )
 from app.services.executor.models.research_material_acquire_output import (
     ResearchMaterialAcquireOutput,
@@ -47,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 
 class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
-    """把强类型 action request 映射为 TEL 与 Evidence Processing 调用。"""
+    """把 Assessor 的 action、family、query 映射为 TEL 与 Evidence Processing 调用。"""
 
     def __init__(
         self,
@@ -67,8 +69,8 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
         """根据只读输入快照调用 TEL，并返回完整的强类型材料获取结果。
 
         Args:
-            acquire_input: ``ResearchMaterialAcquireInput`` 类型。包含 action
-                request、scope、覆盖目标、检索历史和运行预算快照。
+            acquire_input: ``ResearchMaterialAcquireInput`` 类型。包含 action、
+                preferred family、query、scope、证据需求、检索历史和预算快照。
 
         Returns:
             ``ResearchMaterialAcquireOutput`` 类型。包含实际 TEL request、
@@ -139,32 +141,45 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
         self,
         acquire_input: ResearchMaterialAcquireInput,
     ) -> ToolExecutionLayerRequest:
-        """将当前强类型 action request 投影为 TEL public request。"""
+        """将 Assessor 的结构化决策投影为 TEL public request。"""
 
-        action_request = acquire_input.action_request
-        max_results = self._positive_int(action_request.max_results, default=5)
+        next_evidence_need = acquire_input.next_evidence_need
+        low_value_families = self._retrieval_history_tracker.low_value_families_for_target(
+            acquire_input.recent_retrieval_attempts,
+            next_evidence_need.coverage_target_key,
+        )
+        allowed_families = self._allowed_source_families(acquire_input)
+        blocked_families = [
+            family
+            for family in allowed_families
+            if family in low_value_families
+        ]
+        max_results = 5
         return ToolExecutionLayerRequest(
             target_problem=self._required_text(
-                action_request.target_problem,
+                next_evidence_need.need_summary or acquire_input.top_gap.gap_summary,
                 fallback=acquire_input.user_goal or acquire_input.original_query,
                 field_name="target_problem",
             ),
-            action_mode=self._tel_action_mode(action_request.action_mode),
-            evidence_goal=action_request.evidence_goal,
-            evidence_shape=self._tel_evidence_shape_from_action_request(action_request),
+            action_mode=self._tel_action_mode(acquire_input.action_mode),
+            evidence_goal=next_evidence_need.need_purpose,
+            evidence_shape=self._tel_evidence_shape(next_evidence_need),
             task_framing=acquire_input.task_framing,
-            allowed_source_families=list(action_request.allowed_source_families),
-            preferred_source_families=list(action_request.preferred_source_families),
-            blocked_source_families=list(action_request.blocked_source_families),
-            available_families=list(action_request.allowed_source_families),
-            success_hint=action_request.success_hint,
+            allowed_source_families=allowed_families,
+            preferred_source_families=[acquire_input.preferred_family],
+            blocked_source_families=blocked_families,
+            available_families=list(acquire_input.available_families),
+            success_hint=(
+                next_evidence_need.need_summary
+                or acquire_input.top_gap.gap_actionability
+            ),
+            provided_query=acquire_input.retrieval_query,
             recent_retrieval_attempts=(
                 self._retrieval_history_tracker.attempts_for_target(
                     acquire_input.recent_retrieval_attempts,
-                    acquire_input.coverage_target_key,
+                    next_evidence_need.coverage_target_key,
                 )
             ),
-            preferred_tool=action_request.preferred_tool,
             max_search_results=max_results,
             max_content_fetches=3,
             owner_user_id=acquire_input.owner_user_id,
@@ -174,7 +189,12 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
             ),
             memory_recall_limit=max_results,
             retry_budget=1,
-            fallback_policy=action_request.fallback_policy,
+            fallback_policy=(
+                "fallback_within_same_family"
+                if acquire_input.action_mode
+                == ResearchActionMode.MEMORY_BACKED_ACQUISITION
+                else "fallback_to_broader_search"
+            ),
             timeout_limit_ms=self._positive_optional_int(
                 acquire_input.latency_budget_ms
             ),
@@ -189,15 +209,15 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
             return ActionMode.EXTERNAL_ACQUISITION
         raise ValueError(f"Unsupported acquisition action mode: {action_mode!r}.")
 
-    def _tel_evidence_shape_from_action_request(
+    def _tel_evidence_shape(
         self,
-        action_request: ResearchActionRequest,
+        next_evidence_need: LLMNextEvidenceNeedPayload,
     ) -> EvidenceShape:
         """将 Research Executor evidence need 语义映射为 TEL EvidenceShape。"""
 
-        desired_kind = action_request.desired_evidence_kind
+        desired_kind = next_evidence_need.desired_evidence_kind
         tel_desired_kind = self._tel_desired_evidence_kind(desired_kind)
-        freshness_requirement = action_request.freshness_requirement
+        freshness_requirement = next_evidence_need.freshness_requirement
         if freshness_requirement == ResearchFreshnessRequirement.NONE:
             freshness_requirement = ResearchFreshnessRequirement.NORMAL
         return EvidenceShape(
@@ -206,6 +226,29 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
                 freshness_requirement or ResearchFreshnessRequirement.NORMAL
             ),
             breadth="normal",
+        )
+
+    @staticmethod
+    def _allowed_source_families(
+        acquire_input: ResearchMaterialAcquireInput,
+    ) -> list[FamilyName]:
+        """根据 Assessor 选定的高层 action 限定 TEL family 范围。"""
+
+        if acquire_input.action_mode == ResearchActionMode.MEMORY_BACKED_ACQUISITION:
+            return [FamilyName.RESEARCH_KNOWLEDGE_RECALL]
+        if acquire_input.action_mode == ResearchActionMode.EXTERNAL_ACQUISITION:
+            external = {
+                FamilyName.DOCS_SEARCH,
+                FamilyName.PAPER_SEARCH,
+                FamilyName.WEB_SEARCH,
+            }
+            return [
+                family
+                for family in acquire_input.available_families
+                if family in external
+            ]
+        raise ValueError(
+            "refine_from_existing_state must not enter material acquisition."
         )
 
     def _tel_desired_evidence_kind(

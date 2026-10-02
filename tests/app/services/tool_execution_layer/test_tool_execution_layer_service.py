@@ -169,7 +169,7 @@ def _query_result(
         query_focus="focus" if generated_query else None,
         preserved_terms=[],
         generation_status=status,
-        generation_summary={},
+        generation_summary={"query_source": "tel_query_generation"},
         generation_trace={},
         error_info=None if status == "succeeded" else "query failed",
     )
@@ -242,7 +242,11 @@ def _evaluation_result(
     )
 
 
-def test_happy_path_executes_docs_and_stops() -> None:
+def test_happy_path_executes_docs_and_stops(caplog) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.tool_execution_layer.tool_execution_layer_service",
+    )
     selector = FakeFamilySelectionService([_selection_result("docs_search")])
     docs = FakeFamilyService(selected_family="docs_search")
     service = _service(selector=selector, docs=docs)
@@ -268,6 +272,127 @@ def test_happy_path_executes_docs_and_stops() -> None:
     assert "family_execution_result" not in result.model_dump().keys()
     assert "completion_evaluation_result" not in result.model_dump().keys()
     assert len(docs.requests) == 1
+    attempt_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "retrieval_attempt_completed"
+    )
+    assert attempt_record.query_source == "tel_query_generation"
+
+
+def test_provided_query_skips_query_generation_but_keeps_family_selection(
+    caplog,
+) -> None:
+    caplog.set_level(
+        logging.INFO,
+        logger="app.services.tool_execution_layer.tool_execution_layer_service",
+    )
+    selector = FakeFamilySelectionService([_selection_result("docs_search")])
+    query = FakeQueryGenerationService()
+    docs = FakeFamilyService(selected_family="docs_search")
+    service = _service(selector=selector, query=query, docs=docs)
+
+    result = _execute(
+        service,
+        ToolExecutionLayerRequest(
+            target_problem="Find official docs",
+            provided_query="official API authentication docs",
+            preferred_source_families=[FamilyName.DOCS_SEARCH],
+        ),
+    )
+
+    assert len(selector.requests) == 1
+    assert query.requests == []
+    assert docs.requests[0].query_text == "official API authentication docs"
+    assert result.retrieval_trace["generated_query"] == (
+        "official API authentication docs"
+    )
+    assert result.retrieval_trace["query_generation_summary"]["query_source"] == (
+        "upstream_assessment"
+    )
+    attempt_record = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None) == "retrieval_attempt_completed"
+    )
+    assert attempt_record.preferred_source_families == [FamilyName.DOCS_SEARCH]
+    assert attempt_record.query_source == "upstream_assessment"
+
+
+def test_provided_query_is_reused_when_selected_family_differs_from_preference() -> None:
+    selector = FakeFamilySelectionService([_selection_result("web_search")])
+    query = FakeQueryGenerationService()
+    web = FakeFamilyService(selected_family="web_search")
+    service = _service(selector=selector, query=query, web=web)
+
+    result = _execute(
+        service,
+        ToolExecutionLayerRequest(
+            target_problem="Find current public evidence",
+            provided_query="current API availability status",
+            preferred_source_families=[FamilyName.DOCS_SEARCH],
+            available_families=[FamilyName.WEB_SEARCH],
+        ),
+    )
+
+    assert query.requests == []
+    assert result.retrieval_trace["selected_family"] == "web_search"
+    assert web.requests[0].query_text == "current API availability status"
+
+
+def test_broader_fallback_reuses_provided_query_for_new_family() -> None:
+    selector = FakeFamilySelectionService(
+        [_selection_result("docs_search"), _selection_result("web_search")]
+    )
+    query = FakeQueryGenerationService()
+    evaluator = FakeCompletionEvaluationService(
+        [
+            _evaluation_result("fallback", "fallback_to_broader_search"),
+            _evaluation_result("stop", "none", request_completed=True),
+        ]
+    )
+    docs = FakeFamilyService(
+        selected_family="docs_search",
+        results=[
+            _family_result(
+                "docs_search",
+                acquisition_status=AcquisitionStatus.NO_RESULT,
+            )
+        ],
+    )
+    web = FakeFamilyService(
+        selected_family="web_search",
+        results=[
+            _family_result(
+                "web_search",
+                acquisition_status=AcquisitionStatus.SUCCESS,
+            )
+        ],
+    )
+    service = _service(
+        selector=selector,
+        query=query,
+        evaluator=evaluator,
+        docs=docs,
+        web=web,
+    )
+
+    result = _execute(
+        service,
+        ToolExecutionLayerRequest(
+            target_problem="Find current public evidence",
+            provided_query="cross-family reusable query",
+            fallback_policy="fallback_to_broader_search",
+        ),
+    )
+
+    assert query.requests == []
+    assert docs.requests[0].query_text == "cross-family reusable query"
+    assert web.requests[0].query_text == "cross-family reusable query"
+    assert [attempt.generated_query for attempt in result.retrieval_trace.attempts] == [
+        "cross-family reusable query",
+        "cross-family reusable query",
+    ]
 
 
 def test_history_low_value_queries_are_scoped_to_selected_family_and_target() -> None:

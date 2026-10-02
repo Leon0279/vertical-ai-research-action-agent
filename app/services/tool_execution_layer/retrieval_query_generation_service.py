@@ -200,6 +200,7 @@ Generate a retrieval query without selecting tools or executing retrieval."""
             "selected_family": normalized_request.selected_family,
             "status": status,
             "policy": self._POLICY_NAME,
+            "query_source": "tel_query_generation",
             "recent_low_value_query_count": len(normalized_request.recent_low_value_queries),
         }
 
@@ -219,6 +220,7 @@ Generate a retrieval query without selecting tools or executing retrieval."""
             "success_hint": normalized_request.success_hint,
             "task_framing": normalized_request.task_framing,
             "recent_low_value_queries": normalized_request.recent_low_value_queries,
+            "query_source": "tel_query_generation",
             "llm_output_format": "json",
             "parser": self._PARSER_NAME,
         }

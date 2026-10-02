@@ -19,7 +19,7 @@ class RecentRetrievalAttempt(BaseModel):
         default=None,
         description=(
             "可选字段。此次尝试要推进的 Research Executor coverage target key，例如 objective 或 "
-            "sub_question:1。当前项目中有用：ResearchActionDecider 只使用与下一项 evidence "
+            "sub_question:1。当前项目中有用：ResearchStateAssessor 只使用与下一项 evidence "
             "need 相同 target 的历史，避免不同子问题互相影响路径选择。非 Research Executor 调用方可省略。"
         ),
     )

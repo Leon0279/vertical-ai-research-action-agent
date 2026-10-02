@@ -1,6 +1,9 @@
-"""LLM 完整研究评估决策块的 service-private 输出模型。"""
+"""LLM 完整研究评估与下一步行动的 service-private 输出模型。"""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.domain.enums import FamilyName
+from app.services.executor.enums import ResearchActionMode
 
 from app.services.executor.models.llm_evidence_coverage_entry_payload import (
     LLMEvidenceCoverageEntryPayload,
@@ -86,3 +89,62 @@ class LLMResearchAssessmentAndGapsPayload(BaseModel):
             "项目峰值流量要求，因此优先补强该证据。"
         ),
     )
+    action_mode: ResearchActionMode = Field(
+        description=(
+            "必填字段。当前轮在利用现有状态、回忆研究记忆或外部检索之间选择的"
+            "高层推进方式。例如：\"external_acquisition\"。"
+        ),
+    )
+    preferred_family: FamilyName | None = Field(
+        default=None,
+        description=(
+            "可空字段。需要 acquisition 时建议 TEL 优先选择的 retrieval family；"
+            "refine 时必须为 null。例如：\"docs_search\"。"
+        ),
+    )
+    retrieval_query: str | None = Field(
+        default=None,
+        description=(
+            "可空字段。需要 acquisition 时交给 TEL 复用的非空检索短语；"
+            "refine 时必须为 null。例如：\"FastAPI lifespan dependency injection official docs\"。"
+        ),
+    )
+    action_rationale: str = Field(
+        min_length=1,
+        description=(
+            "必填字段。说明为何选择当前 action mode 与 preferred family 的简短理由。"
+            "例如：当前缺口需要官方实现说明，因此优先检索官方文档。"
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_action_contract(self) -> "LLMResearchAssessmentAndGapsPayload":
+        """校验 action mode、family 和 query 的结构一致性。"""
+
+        query = (self.retrieval_query or "").strip() or None
+        self.retrieval_query = query
+        if self.action_mode == ResearchActionMode.REFINE_FROM_EXISTING_STATE:
+            if self.preferred_family is not None or query is not None:
+                raise ValueError(
+                    "refine_from_existing_state requires null preferred_family and retrieval_query."
+                )
+            return self
+
+        if query is None:
+            raise ValueError("Acquisition action modes require a non-empty retrieval_query.")
+        if self.action_mode == ResearchActionMode.MEMORY_BACKED_ACQUISITION:
+            if self.preferred_family != FamilyName.RESEARCH_KNOWLEDGE_RECALL:
+                raise ValueError(
+                    "memory_backed_acquisition requires research_knowledge_recall."
+                )
+            return self
+
+        if self.preferred_family not in {
+            FamilyName.DOCS_SEARCH,
+            FamilyName.PAPER_SEARCH,
+            FamilyName.WEB_SEARCH,
+        }:
+            raise ValueError(
+                "external_acquisition requires docs_search, paper_search, or web_search."
+            )
+        return self

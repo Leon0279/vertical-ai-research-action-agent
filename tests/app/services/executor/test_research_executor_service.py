@@ -46,7 +46,6 @@ from app.services.executor.iteration_outcome_evaluator import (
 from app.services.executor.models.evidence_coverage_entry import (
     EvidenceCoverageEntry,
 )
-from app.services.executor.models.research_action_request import ResearchActionRequest
 from app.services.executor.models.research_executor_run_state import (
     ResearchExecutorRunState,
 )
@@ -62,7 +61,6 @@ from app.services.executor.models.llm_research_assessment_payload import (
 from app.services.executor.models.llm_research_gap_payload import (
     LLMResearchGapPayload,
 )
-from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
 from app.services.executor.research_retrieval_history_tracker import (
@@ -94,6 +92,10 @@ def _valid_assessment_payload(
     need_summary: str = "补充 memory-backed retrieval 的直接事实证据。",
     coverage_target_key: str = "objective",
     evidence_coverage_snapshot: list[dict[str, Any]] | None = None,
+    action_mode: str = "external_acquisition",
+    preferred_family: str | None = "docs_search",
+    retrieval_query: str | None = "memory-backed retrieval direct evidence",
+    action_rationale: str = "当前需要补充直接证据。",
 ) -> dict[str, Any]:
     return {
         "assessment": {
@@ -142,6 +144,10 @@ def _valid_assessment_payload(
             }
         ],
         "prioritization_summary": "该 gap 直接影响当前轮 research objective，因此优先推进。",
+        "action_mode": action_mode,
+        "preferred_family": preferred_family,
+        "retrieval_query": retrieval_query,
+        "action_rationale": action_rationale,
     }
 
 
@@ -263,6 +269,38 @@ class _FakeLLMClient:
             }
             for target in targets
         ]
+        available_families = prompt_input["runtime_control"]["available_families"]
+        history = prompt_input["recent_retrieval_history"]
+        low_value_families = {
+            item["selected_family"]
+            for item in history
+            if item["result_status"] in {"failed", "no_result"}
+            or item["result_utility"] in {"weakly_useful", "not_useful"}
+        }
+        eligible_families = [
+            family
+            for family in available_families
+            if family not in low_value_families
+        ]
+        if payload["top_gap"]["gap_nature"] == "none" or not eligible_families:
+            payload.update(
+                action_mode="refine_from_existing_state",
+                preferred_family=None,
+                retrieval_query=None,
+                action_rationale="当前没有可执行的获取路径或可推进缺口。",
+            )
+        else:
+            preferred_family = eligible_families[0]
+            payload.update(
+                action_mode=(
+                    "memory_backed_acquisition"
+                    if preferred_family == "research_knowledge_recall"
+                    else "external_acquisition"
+                ),
+                preferred_family=preferred_family,
+                retrieval_query=f"{payload['next_evidence_need']['need_summary']} {preferred_family}",
+                action_rationale="根据当前证据缺口和检索历史选择可用 family。",
+            )
         return json.dumps(payload, ensure_ascii=False)
 
     def _next_response(self, responses: list[str], default_response: str) -> str:
@@ -341,12 +379,6 @@ class _FakeEvidenceProcessingService:
         return self.result
 
 
-class _FailingResearchActionDecider:
-    async def decide(self, decider_input: Any) -> Any:
-        _ = decider_input
-        raise RuntimeError("simulated action decision failure")
-
-
 def _research_executor(
     *,
     llm_client: _FakeLLMClient | None = None,
@@ -379,9 +411,6 @@ def _research_executor_collaborators(
         "state_assessor": ResearchStateAssessor(
             llm_client=llm,
             coverage_tracker=coverage_tracker,
-            retrieval_history_tracker=retrieval_history_tracker,
-        ),
-        "action_decider": ResearchActionDecider(
             retrieval_history_tracker=retrieval_history_tracker,
         ),
         "material_acquirer": ResearchMaterialAcquirer(
@@ -473,17 +502,6 @@ class _SpyResearchExecutorService(_TestResearchExecutorService):
             run_state,
         )
 
-    async def _decide_whether_external_action_is_needed(
-        self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-    ) -> bool:
-        self.calls.append("decide_whether_external_action_is_needed")
-        return await super()._decide_whether_external_action_is_needed(
-            stage_input,
-            run_state,
-        )
-
     async def _acquire_candidate_material(
         self,
         stage_input: ResearchStageInput,
@@ -545,7 +563,6 @@ class _StateCapturingResearchExecutorService(_TestResearchExecutorService):
             evidence_processing_service=evidence_processing_service,
         )
         self.captured_states: list[ResearchExecutorRunState] = []
-        self.action_states: list[ResearchExecutorRunState] = []
         self.processed_states: list[ResearchExecutorRunState] = []
         self.updated_states: list[ResearchExecutorRunState] = []
         self.finding_states: list[ResearchExecutorRunState] = []
@@ -562,18 +579,6 @@ class _StateCapturingResearchExecutorService(_TestResearchExecutorService):
             run_state,
         )
         self.captured_states.append(deepcopy(run_state))
-
-    async def _decide_whether_external_action_is_needed(
-        self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-    ) -> bool:
-        result = await super()._decide_whether_external_action_is_needed(
-            stage_input,
-            run_state,
-        )
-        self.action_states.append(deepcopy(run_state))
-        return result
 
     async def _evaluate_iteration_outcome(
         self,
@@ -623,16 +628,9 @@ class _FailingFourthFindingsResearchExecutorService(_TestResearchExecutorService
         run_state: ResearchExecutorRunState,
     ) -> None:
         _ = stage_input
-        _ = run_state
-
-    async def _decide_whether_external_action_is_needed(
-        self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-    ) -> bool:
-        _ = stage_input
-        _ = run_state
-        return False
+        iteration = run_state.require_current_iteration()
+        iteration.action_mode = "refine_from_existing_state"
+        iteration.action_rationale = "测试中直接使用现有状态。"
 
     async def _update_stage_local_working_state(
         self,
@@ -666,19 +664,6 @@ class _FailingFourthFindingsResearchExecutorService(_TestResearchExecutorService
         iteration.outcome_rationale = "continue test loop"
         self._retrieval_history_tracker.record_completed_iteration(run_state)
         return "continue"
-
-
-class _PathsExhaustedResearchExecutorService(_TestResearchExecutorService):
-    async def _decide_whether_external_action_is_needed(
-        self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-    ) -> bool:
-        _ = stage_input
-        iteration = run_state.require_current_iteration()
-        iteration.action_mode = "refine_from_existing_state"
-        iteration.acquisition_paths_exhausted = True
-        return False
 
 
 class _HistorySeededResearchExecutorService(
@@ -720,7 +705,6 @@ def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:
 
     assert service.calls == [
         "assess_research_state_and_select_next_evidence_need",
-        "decide_whether_external_action_is_needed",
         "update_stage_local_working_state",
         "produce_or_refine_intermediate_findings",
         "evaluate_iteration_outcome",
@@ -743,7 +727,6 @@ def test_research_executor_runs_acquisition_steps_when_action_decision_requires_
 
     assert service.calls == [
         "assess_research_state_and_select_next_evidence_need",
-        "decide_whether_external_action_is_needed",
         "acquire_candidate_material",
         "process_candidate_material_into_usable_evidence",
         "update_stage_local_working_state",
@@ -1097,55 +1080,6 @@ def test_research_executor_does_not_partially_update_state_when_assessment_fails
     assert run_state == state_before_assessment
 
 
-def test_research_executor_does_not_partially_update_iteration_when_decider_fails() -> None:
-    stage_input = ResearchStageInput(
-        original_query="Keep action decision state atomic on failure.",
-        available_families=[FamilyName.DOCS_SEARCH],
-    )
-    collaborators = _research_executor_collaborators()
-    collaborators["action_decider"] = _FailingResearchActionDecider()
-    service = ResearchExecutorService(**collaborators)
-    run_state = ResearchExecutorRunState(
-        evidence_coverage_map=service._coverage_tracker.initial_map(stage_input),
-        current_assessment=LLMResearchAssessmentPayload(
-            coverage_status="not_covered",
-            support_strength="weak_support",
-            finding_maturity="tentative",
-            assessment_summary="当前缺少关键证据。",
-        ),
-        top_gap=LLMResearchGapPayload(
-            gap_scope="objective_level",
-            gap_nature="missing",
-            gap_severity="important",
-            gap_summary="缺少直接证据。",
-        ),
-        next_evidence_need=LLMNextEvidenceNeedPayload(
-            need_scope="objective_level",
-            need_purpose="establish_coverage",
-            desired_evidence_kind="direct_fact",
-            freshness_requirement="normal",
-            minimum_support_requirement="any_relevant_signal",
-            need_summary="补充直接事实证据。",
-            coverage_target_key="objective",
-        ),
-        current_iteration=ResearchExecutorIterationState(
-            iteration_index=1,
-            remaining_iteration_budget=1,
-        ),
-    )
-    iteration_before_decision = deepcopy(
-        run_state.require_current_iteration()
-    )
-
-    with pytest.raises(RuntimeError, match="simulated action decision failure"):
-        asyncio.run(
-            service._decide_whether_external_action_is_needed(
-                stage_input,
-                run_state,
-            )
-        )
-
-    assert run_state.require_current_iteration() == iteration_before_decision
 
 
 def test_research_executor_does_not_partially_update_state_when_acquisition_fails() -> None:
@@ -1184,13 +1118,9 @@ def test_research_executor_does_not_partially_update_state_when_acquisition_fail
             iteration_index=1,
             remaining_iteration_budget=1,
             action_mode="external_acquisition",
-            action_request=ResearchActionRequest(
-                action_mode="external_acquisition",
-                target_problem="补充直接事实证据。",
-                desired_evidence_kind="direct_fact",
-                freshness_requirement="normal",
-                allowed_source_families=[FamilyName.DOCS_SEARCH],
-            ),
+            preferred_family=FamilyName.DOCS_SEARCH,
+            retrieval_query="补充直接事实证据",
+            action_rationale="当前需要补充官方直接证据。",
         ),
     )
     state_before_acquisition = deepcopy(run_state)
@@ -1204,428 +1134,24 @@ def test_research_executor_does_not_partially_update_state_when_acquisition_fail
     assert run_state == state_before_acquisition
 
 
-def test_research_executor_refines_when_gap_is_noop(caplog) -> None:
-    caplog.set_level(logging.INFO)
-    payload = _valid_assessment_payload(
-        gap_nature="none",
-        gap_severity="none",
-        gap_summary="没有需要继续推进的 gap。",
-        gap_target=None,
-        gap_actionability=None,
-        need_target=None,
-        need_purpose="none",
-        desired_evidence_kind="none",
-        freshness_requirement="none",
-        minimum_support_requirement="none",
-        need_summary="无需补充 evidence。",
-    )
-    service = _StateCapturingResearchExecutorService(
-        llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
-    )
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="No further evidence needed.",
-                available_families=[FamilyName.DOCS_SEARCH],
-            )
-        )
-    )
-
-    action_iteration = service.action_states[0].require_current_iteration()
-    outcome_iteration = service.outcome_states[0].require_current_iteration()
-    assert action_iteration.candidate_action_modes == [
-        "refine_from_existing_state"
-    ]
-    assert action_iteration.action_mode == "refine_from_existing_state"
-    assert action_iteration.action_decision_reason == "no_actionable_gap"
-    assert action_iteration.action_request is None
-    assert outcome_iteration.iteration_outcome == "stop"
-    assert outcome_iteration.outcome_decision_source == "rule_short_circuit"
-    assert _outcome_prompts(service.llm_client) == []
-    action_record = next(
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "research_action_selected"
-    )
-    assert action_record.iteration_index == 1
-    assert action_record.action_mode == "refine_from_existing_state"
-    assert action_record.action_decision_reason == "no_actionable_gap"
-    assert action_record.candidate_action_modes == [
-        "refine_from_existing_state"
-    ]
-    assert action_record.allowed_source_families == []
-    assert action_record.fallback_policy is None
-    outcome_record = next(
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "research_iteration_outcome"
-    )
-    assert outcome_record.levelno == logging.INFO
-    assert outcome_record.iteration_outcome == "stop"
-    assert outcome_record.outcome_decision_source == "rule_short_circuit"
-    assert outcome_record.short_circuit_reason == outcome_record.outcome_rationale
-    assert outcome_record.action_decision_reason == "no_actionable_gap"
-    assert outcome_record.execution_status is None
-    assert outcome_record.processing_status is None
-    assert outcome_record.duration_ms >= 0
 
 
-def test_research_executor_refines_when_findings_are_stable_and_strong() -> None:
-    payload = _valid_assessment_payload(
-        coverage_status="covered",
-        support_strength="strong_enough",
-        finding_maturity="stable",
-    )
-    service = _StateCapturingResearchExecutorService(
-        llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
-    )
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Stable findings should not fetch more.",
-                available_families=[FamilyName.DOCS_SEARCH],
-            )
-        )
-    )
-
-    iteration = service.action_states[0].require_current_iteration()
-    assert iteration.action_mode == "refine_from_existing_state"
-    assert iteration.action_decision_reason == "stable_with_strong_support"
-    assert iteration.action_request is None
 
 
-def test_research_executor_refines_when_no_acquisition_capability_is_declared() -> None:
-    service = _StateCapturingResearchExecutorService()
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(original_query="No available tools means refine.")
-        )
-    )
-
-    iteration = service.action_states[0].require_current_iteration()
-    assert iteration.candidate_action_modes == [
-        "refine_from_existing_state"
-    ]
-    assert iteration.action_mode == "refine_from_existing_state"
-    assert iteration.action_decision_reason == "no_available_family"
-    assert iteration.action_request is None
 
 
-def test_research_executor_selects_memory_backed_acquisition_when_available(
-    caplog,
-) -> None:
-    caplog.set_level(logging.INFO)
-    service = _StateCapturingResearchExecutorService()
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Prefer memory when freshness is normal.",
-                owner_user_id="user-1",
-                project_scope_id="project-1",
-                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL],
-            )
-        )
-    )
-
-    action_iteration = service.action_states[0].require_current_iteration()
-    action_request = action_iteration.action_request
-    assert action_request is not None
-    assert action_iteration.candidate_action_modes == [
-        "refine_from_existing_state",
-        "memory_backed_acquisition",
-    ]
-    assert action_iteration.action_mode == "memory_backed_acquisition"
-    assert action_iteration.action_decision_reason == "memory_only_candidate"
-    assert action_request.action_mode == "memory_backed_acquisition"
-    assert action_request.fallback_policy == "fallback_within_same_family"
-    assert action_request.preferred_tool is None
-    assert action_request.allowed_source_families == [
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL
-    ]
-    assert action_request.preferred_source_families == [
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL
-    ]
-    tel_request = service.tool_execution_layer_service.requests[0]
-    assert tel_request.action_mode == "memory_backed_acquisition"
-    assert tel_request.owner_user_id == "user-1"
-    assert tel_request.project_scope_id == "project-1"
-    assert tel_request.allowed_visibility_scopes == ["user", "project"]
-    assert tel_request.allowed_source_families == [
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL
-    ]
-    action_record = next(
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "research_action_selected"
-    )
-    assert action_record.action_mode == "memory_backed_acquisition"
-    assert action_record.action_decision_reason == "memory_only_candidate"
-    assert action_record.available_families == [
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL
-    ]
-    assert action_record.low_value_families == []
-    assert action_record.memory_eligible_before_history is True
-    assert action_record.external_eligible_before_history is False
-    assert action_record.external_families_before_history == []
-    assert action_record.external_families_after_history == []
-    assert action_record.allowed_source_families == [
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL
-    ]
-    assert action_record.preferred_source_families == [
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL
-    ]
-    assert action_record.blocked_source_families == []
-    assert action_record.fallback_policy == "fallback_within_same_family"
 
 
-def test_research_executor_selects_external_acquisition_for_fresh_required_need(
-    caplog,
-) -> None:
-    caplog.set_level(logging.INFO)
-    payload = _valid_assessment_payload(
-        gap_nature="stale",
-        freshness_requirement="fresh_required",
-        desired_evidence_kind="fresh_status_evidence",
-        need_summary="补充最新状态 evidence。",
-    )
-    service = _StateCapturingResearchExecutorService(
-        llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
-    )
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Fresh external evidence is needed.",
-                available_families=[FamilyName.DOCS_SEARCH],
-            )
-        )
-    )
-
-    action_iteration = service.action_states[0].require_current_iteration()
-    action_request = action_iteration.action_request
-    assert action_request is not None
-    assert action_iteration.action_mode == "external_acquisition"
-    assert (
-        action_iteration.action_decision_reason
-        == "fresh_or_stale_requires_external"
-    )
-    assert action_request.action_mode == "external_acquisition"
-    assert action_request.fallback_policy == "fallback_to_broader_search"
-    assert action_request.allowed_source_families == [FamilyName.DOCS_SEARCH]
-    assert action_request.preferred_source_families == []
-    assert action_request.desired_evidence_kind == "fresh_status_evidence"
-    assert action_request.freshness_requirement == "fresh_required"
-    assert action_request.success_hint == "补充最新状态 evidence。"
-    tel_request = service.tool_execution_layer_service.requests[0]
-    assert tel_request.action_mode == "external_acquisition"
-    assert tel_request.allowed_source_families == [FamilyName.DOCS_SEARCH]
-    assert tel_request.evidence_shape is not None
-    assert tel_request.evidence_shape.desired_evidence_kind == "status_evidence"
-    assert tel_request.evidence_shape.freshness_requirement == "fresh_required"
-    action_record = next(
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "research_action_selected"
-    )
-    assert action_record.action_mode == "external_acquisition"
-    assert (
-        action_record.action_decision_reason
-        == "fresh_or_stale_requires_external"
-    )
-    assert action_record.top_gap_nature == "stale"
-    assert action_record.desired_evidence_kind == "fresh_status_evidence"
-    assert action_record.freshness_requirement == "fresh_required"
-    assert action_record.allowed_source_families == [FamilyName.DOCS_SEARCH]
-    assert action_record.preferred_source_families == []
-    assert action_record.fallback_policy == "fallback_to_broader_search"
 
 
-def test_research_executor_logs_memory_default_when_both_paths_are_available(
-    caplog,
-) -> None:
-    caplog.set_level(logging.INFO)
-    service = _StateCapturingResearchExecutorService()
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Use the default acquisition priority.",
-                available_families=[
-                    FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                    FamilyName.DOCS_SEARCH,
-                ],
-            )
-        )
-    )
-
-    iteration = service.action_states[0].require_current_iteration()
-    assert iteration.action_mode == "memory_backed_acquisition"
-    assert iteration.action_decision_reason == "memory_preferred_by_default"
-    action_record = next(
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "research_action_selected"
-    )
-    assert action_record.action_decision_reason == "memory_preferred_by_default"
-    assert action_record.available_families == [
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-        FamilyName.DOCS_SEARCH,
-    ]
-    assert action_record.memory_eligible_before_history is True
-    assert action_record.external_eligible_before_history is True
-    assert action_record.external_families_before_history == [
-        FamilyName.DOCS_SEARCH
-    ]
-    assert action_record.external_families_after_history == [
-        FamilyName.DOCS_SEARCH
-    ]
 
 
-def test_research_executor_switches_to_external_when_memory_is_low_value(
-    caplog,
-) -> None:
-    caplog.set_level(logging.INFO)
-    service = _HistorySeededResearchExecutorService(
-        recent_retrieval_attempts=[
-            _low_value_attempt(FamilyName.RESEARCH_KNOWLEDGE_RECALL)
-        ]
-    )
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Switch away from ineffective memory retrieval.",
-                available_families=[
-                    FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                    FamilyName.DOCS_SEARCH,
-                ],
-            )
-        )
-    )
-
-    iteration = service.action_states[0].require_current_iteration()
-    assert iteration.action_mode == "external_acquisition"
-    assert iteration.action_decision_reason == "memory_blocked_by_history"
-    action_record = next(
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "research_action_selected"
-    )
-    assert action_record.low_value_families == [
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL
-    ]
-    assert action_record.external_families_before_history == [
-        FamilyName.DOCS_SEARCH
-    ]
-    assert action_record.external_families_after_history == [
-        FamilyName.DOCS_SEARCH
-    ]
 
 
-def test_research_executor_logs_external_family_filtering_from_history(
-    caplog,
-) -> None:
-    caplog.set_level(logging.INFO)
-    service = _HistorySeededResearchExecutorService(
-        recent_retrieval_attempts=[_low_value_attempt(FamilyName.WEB_SEARCH)]
-    )
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Try a different external family.",
-                available_families=[
-                    FamilyName.WEB_SEARCH,
-                    FamilyName.DOCS_SEARCH,
-                    FamilyName.PAPER_SEARCH,
-                ],
-            )
-        )
-    )
-
-    iteration = service.action_states[0].require_current_iteration()
-    assert iteration.action_mode == "external_acquisition"
-    assert iteration.action_decision_reason == "external_only_candidate"
-    assert iteration.action_request is not None
-    assert iteration.action_request.allowed_source_families == [
-        FamilyName.DOCS_SEARCH,
-        FamilyName.PAPER_SEARCH,
-    ]
-    assert iteration.action_request.blocked_source_families == [
-        FamilyName.WEB_SEARCH
-    ]
-    action_record = next(
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "research_action_selected"
-    )
-    assert action_record.low_value_families == [FamilyName.WEB_SEARCH]
-    assert action_record.external_families_before_history == [
-        FamilyName.WEB_SEARCH,
-        FamilyName.DOCS_SEARCH,
-        FamilyName.PAPER_SEARCH,
-    ]
-    assert action_record.external_families_after_history == [
-        FamilyName.DOCS_SEARCH,
-        FamilyName.PAPER_SEARCH,
-    ]
 
 
-def test_research_executor_reports_acquisition_paths_exhausted() -> None:
-    service = _HistorySeededResearchExecutorService(
-        recent_retrieval_attempts=[
-            _low_value_attempt(FamilyName.RESEARCH_KNOWLEDGE_RECALL),
-            _low_value_attempt(FamilyName.DOCS_SEARCH),
-        ]
-    )
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Stop after all compatible paths are exhausted.",
-                available_families=[
-                    FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                    FamilyName.DOCS_SEARCH,
-                ],
-                iteration_budget=2,
-            )
-        )
-    )
-
-    iteration = service.action_states[0].require_current_iteration()
-    assert iteration.action_mode == "refine_from_existing_state"
-    assert iteration.action_decision_reason == "acquisition_paths_exhausted"
-    assert iteration.acquisition_paths_exhausted is True
 
 
-def test_research_executor_reports_when_no_acquisition_path_is_eligible() -> None:
-    payload = _valid_assessment_payload(
-        gap_nature="stale",
-        freshness_requirement="fresh_required",
-        desired_evidence_kind="fresh_status_evidence",
-    )
-    service = _StateCapturingResearchExecutorService(
-        llm_client=_FakeLLMClient(
-            responses=[json.dumps(payload, ensure_ascii=False)]
-        )
-    )
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Fresh evidence is required but unavailable.",
-                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL],
-            )
-        )
-    )
-
-    iteration = service.action_states[0].require_current_iteration()
-    assert iteration.action_mode == "refine_from_existing_state"
-    assert iteration.action_decision_reason == "no_eligible_acquisition_path"
 
 
 def test_research_executor_maps_supporting_evidence_need_for_tel() -> None:
@@ -1941,7 +1467,6 @@ def test_research_executor_continues_when_llm_outcome_allows_more_iterations(
         if getattr(record, "event", None)
         in {
             "research_state_assessed",
-            "research_action_selected",
             "research_intermediate_findings_refined",
             "research_iteration_outcome",
             "research_retrieval_history_updated",
@@ -1949,12 +1474,10 @@ def test_research_executor_continues_when_llm_outcome_allows_more_iterations(
     ]
     assert loop_events == [
         "research_state_assessed",
-        "research_action_selected",
         "research_intermediate_findings_refined",
         "research_iteration_outcome",
         "research_retrieval_history_updated",
         "research_state_assessed",
-        "research_action_selected",
         "research_intermediate_findings_refined",
         "research_iteration_outcome",
         "research_retrieval_history_updated",
@@ -2315,28 +1838,6 @@ def test_first_iteration_failure_without_output_still_raises() -> None:
         )
 
 
-def test_paths_exhausted_skips_findings_and_outcome_llm() -> None:
-    fake_llm = _FakeLLMClient()
-    service = _PathsExhaustedResearchExecutorService(
-        llm_client=fake_llm,
-        tool_execution_layer_service=_FakeToolExecutionLayerService(),
-        evidence_processing_service=_FakeEvidenceProcessingService(),
-    )
-
-    result = asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Stop when all acquisition paths are exhausted.",
-                available_families=[FamilyName.DOCS_SEARCH],
-                iteration_budget=3,
-            )
-        )
-    )
-
-    assert result.research_status == "failed"
-    assert result.executed_iteration_count == 1
-    assert _findings_prompts(fake_llm) == []
-    assert _outcome_prompts(fake_llm) == []
 
 
 def test_iteration_outcome_prompt_contains_required_context_and_boundaries() -> None:
@@ -2731,45 +2232,8 @@ def test_research_executor_raises_when_intermediate_findings_schema_is_invalid(
     assert failure_record.exception_type == "ValueError"
 
 
-def test_research_executor_refines_when_latency_constrained_and_gap_not_blocking() -> None:
-    service = _StateCapturingResearchExecutorService()
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Latency should block non-blocking acquisition.",
-                available_families=[FamilyName.DOCS_SEARCH],
-                latency_budget_ms=500,
-            )
-        )
-    )
-
-    action_iteration = service.action_states[0].require_current_iteration()
-    assert action_iteration.action_mode == "refine_from_existing_state"
-    assert action_iteration.action_decision_reason == "latency_constrained"
-    assert action_iteration.action_request is None
 
 
-def test_research_executor_allows_blocking_external_acquisition_under_latency_pressure() -> None:
-    payload = _valid_assessment_payload(gap_severity="blocking")
-    service = _StateCapturingResearchExecutorService(
-        llm_client=_FakeLLMClient(responses=[json.dumps(payload, ensure_ascii=False)])
-    )
-
-    asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Blocking gaps can still acquire evidence.",
-                available_families=[FamilyName.DOCS_SEARCH],
-                latency_budget_ms=500,
-            )
-        )
-    )
-
-    action_iteration = service.action_states[0].require_current_iteration()
-    assert action_iteration.action_mode == "external_acquisition"
-    assert action_iteration.action_decision_reason == "external_only_candidate"
-    assert action_iteration.action_request is not None
 
 
 def test_research_executor_accepts_json_object_assessment_output() -> None:
@@ -2780,7 +2244,10 @@ def test_research_executor_accepts_json_object_assessment_output() -> None:
 
     asyncio.run(
         service.execute(
-            ResearchStageInput(original_query="Assess structured JSON.")
+            ResearchStageInput(
+                original_query="Assess structured JSON.",
+                available_families=[FamilyName.DOCS_SEARCH],
+            )
         )
     )
 
@@ -2811,7 +2278,7 @@ def test_research_executor_accepts_moderate_support_and_continues_acquisition() 
     assessment = service.captured_states[0].current_assessment
     assert assessment is not None
     assert assessment.support_strength == "moderate_support"
-    iteration = service.action_states[0].require_current_iteration()
+    iteration = service.captured_states[0].require_current_iteration()
     assert iteration.action_mode == "external_acquisition"
 
 
@@ -2941,6 +2408,7 @@ def test_research_assessment_prompt_contains_required_context_and_boundaries() -
     assert "Distilled context: freshness matters for retrieval." in prompt
     assert "Distilled decision: prefer memory-backed retrieval first." in prompt
     assert "Distilled action: implementation is blocked on freshness evidence." in prompt
+    assert "Prefer low latency." in prompt
     assert '"processed_evidence": []' in prompt
     assert '"coverage_targets": [' in prompt
     assert '"target_key": "objective"' in prompt
@@ -2979,8 +2447,9 @@ def test_research_assessment_prompt_contains_required_context_and_boundaries() -
     assert "输出边界" in prompt
     assert "不要回答用户的原始问题" in prompt
     assert "不要输出面向用户的结论、建议、行动计划或解释性段落" in prompt
-    assert "不要输出具体工具名、执行路径或 action mode" in prompt
-    assert "不要输出搜索词或工具调用参数" in prompt
+    assert "同时选择 action_mode、preferred_family 和 retrieval_query" in prompt
+    assert "只能输出 family 级偏好和检索短语" in prompt
+    assert "不要输出具体工具名或其它执行参数" in prompt
     assert "next_evidence_need 只描述" in prompt
     assert "它不是搜索词，不是工具调用参数，也不是执行步骤" in prompt
     assert "available_families：当前可选择的资料来源类别。每项表示 retrieval family，不是具体工具名或调用参数。" in prompt
@@ -3016,6 +2485,7 @@ def test_research_executor_second_iteration_prompt_sees_previous_identified_gaps
             ResearchStageInput(
                 original_query="Carry gaps across iterations.",
                 iteration_budget=2,
+                available_families=[FamilyName.DOCS_SEARCH],
             )
         )
     )
@@ -3158,12 +2628,10 @@ def test_research_executor_continues_until_stop_within_iteration_budget() -> Non
 
     assert service.calls == [
         "assess_research_state_and_select_next_evidence_need",
-        "decide_whether_external_action_is_needed",
         "update_stage_local_working_state",
         "produce_or_refine_intermediate_findings",
         "evaluate_iteration_outcome",
         "assess_research_state_and_select_next_evidence_need",
-        "decide_whether_external_action_is_needed",
         "update_stage_local_working_state",
         "produce_or_refine_intermediate_findings",
         "evaluate_iteration_outcome",
@@ -3225,403 +2693,3 @@ def test_research_executor_invalid_or_missing_iteration_budget_defaults_to_one()
     assert missing_budget_result.executed_iteration_count == 1
     assert invalid_budget_service.calls.count("evaluate_iteration_outcome") == 1
     assert invalid_budget_result.executed_iteration_count == 1
-
-
-def test_research_executor_feeds_history_to_assessment_and_switches_memory_to_external(
-    tmp_path: Path,
-) -> None:
-    memory_no_result = ToolExecutionLayerResult(
-        execution_status="completed",
-        acquisition_status=AcquisitionStatus.NO_RESULT,
-        retrieval_trace=RetrievalTrace(
-            target_problem="补充 memory-backed retrieval 的直接事实证据。",
-            selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-            selected_tool="research_knowledge_memory_v1",
-            attempts=[
-                RetrievalAttemptTrace(
-                    selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                    selected_tool="research_knowledge_memory_v1",
-                    generated_query="memory retrieval ineffective query",
-                    acquisition_status=AcquisitionStatus.NO_RESULT,
-                )
-            ],
-        ),
-    )
-    fake_llm = _FakeLLMClient(
-        outcome_responses=[
-            json.dumps(
-                _valid_outcome_payload(proposed_iteration_outcome="continue"),
-                ensure_ascii=False,
-            )
-        ]
-    )
-    fake_tel = _FakeToolExecutionLayerService(result=memory_no_result)
-    service = _StateCapturingResearchExecutorService(
-        llm_client=fake_llm,
-        tool_execution_layer_service=fake_tel,
-        evidence_processing_service=_FakeEvidenceProcessingService(),
-    )
-
-    executor_logger = logging.getLogger("app.services.executor")
-    previous_level = executor_logger.level
-    previous_propagate = executor_logger.propagate
-    log_path = tmp_path / "research-events.jsonl"
-    handler = configure_file_logging(
-        FileLoggingSettings(
-            enabled=True,
-            path=log_path,
-            level=logging.INFO,
-            max_bytes=100_000,
-            backup_count=1,
-        ),
-        logger=executor_logger,
-    )
-    assert handler is not None
-    trace_token = bind_trace_id("trace-two-iterations")
-    try:
-        result = asyncio.run(
-            service.execute(
-                ResearchStageInput(
-                    original_query="Decide whether memory or external retrieval should be used.",
-                    available_families=[
-                        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                        FamilyName.DOCS_SEARCH,
-                    ],
-                    iteration_budget=2,
-                )
-            )
-        )
-    finally:
-        reset_trace_id(trace_token)
-        handler.flush()
-        remove_file_logging_handler(logger=executor_logger)
-        executor_logger.setLevel(previous_level)
-        executor_logger.propagate = previous_propagate
-
-    assessment_prompts = _assessment_prompts(fake_llm)
-    assert len(assessment_prompts) == 2
-    assert len(_findings_prompts(fake_llm)) == 1
-    assert len(_outcome_prompts(fake_llm)) == 0
-    assert '"recent_retrieval_history"' in assessment_prompts[1]
-    assert "research_knowledge_recall" in assessment_prompts[1]
-    assert "not_useful" in assessment_prompts[1]
-    assert "memory retrieval ineffective query" not in assessment_prompts[1]
-    assert fake_tel.requests[0].action_mode == "memory_backed_acquisition"
-    assert fake_tel.requests[1].action_mode == "external_acquisition"
-    assert fake_tel.requests[1].allowed_source_families == [
-        FamilyName.DOCS_SEARCH
-    ]
-    log_records = [
-        json.loads(line)
-        for line in log_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
-    ]
-    action_records = [
-        record
-        for record in log_records
-        if record.get("event") == "research_action_selected"
-    ]
-    assessment_records = [
-        record
-        for record in log_records
-        if record.get("event") == "research_state_assessed"
-    ]
-    outcome_records = [
-        record
-        for record in log_records
-        if record.get("event") == "research_iteration_outcome"
-    ]
-    findings_records = [
-        record
-        for record in log_records
-        if record.get("event") == "research_intermediate_findings_refined"
-    ]
-    history_records = [
-        record
-        for record in log_records
-        if record.get("event") == "research_retrieval_history_updated"
-    ]
-    request_records = [
-        record
-        for record in log_records
-        if record.get("event") == "research_tool_execution_requested"
-    ]
-    assert [record["iteration_index"] for record in request_records] == [1, 2]
-    assert [record["tool_execution_request"] for record in request_records] == [
-        request.model_dump(mode="json") for request in fake_tel.requests
-    ]
-    assert [record["action_mode"] for record in action_records] == [
-        "memory_backed_acquisition",
-        "external_acquisition",
-    ]
-    assert [record["action_decision_reason"] for record in action_records] == [
-        "memory_preferred_by_default",
-        "memory_blocked_by_history",
-    ]
-    assert [record["low_value_families"] for record in action_records] == [
-        [],
-        ["research_knowledge_recall"],
-    ]
-    assert [record["external_families_after_history"] for record in action_records] == [
-        ["docs_search"],
-        ["docs_search"],
-    ]
-    assert [record["remaining_iteration_budget"] for record in action_records] == [
-        2,
-        1,
-    ]
-    assert [record["iteration_index"] for record in action_records] == [1, 2]
-    assert [record["iteration_index"] for record in assessment_records] == [1, 2]
-    assert [record["remaining_iteration_budget"] for record in assessment_records] == [
-        2,
-        1,
-    ]
-    assert [record["iteration_index"] for record in outcome_records] == [1, 2]
-    assert [record["iteration_index"] for record in findings_records] == [2]
-    assert [record["iteration_index"] for record in history_records] == [1, 2]
-    assert [record["history_update_status"] for record in history_records] == [
-        "updated",
-        "updated",
-    ]
-    loop_events = [
-        record["event"]
-        for record in log_records
-        if record.get("event")
-        in {
-            "research_state_assessed",
-            "research_action_selected",
-            "research_intermediate_findings_refined",
-            "research_iteration_outcome",
-            "research_retrieval_history_updated",
-        }
-    ]
-    assert loop_events == [
-        "research_state_assessed",
-        "research_action_selected",
-        "research_iteration_outcome",
-        "research_retrieval_history_updated",
-        "research_state_assessed",
-        "research_action_selected",
-        "research_intermediate_findings_refined",
-        "research_iteration_outcome",
-        "research_retrieval_history_updated",
-    ]
-    assert outcome_records[0]["iteration_outcome"] == "continue"
-    assert result.executed_iteration_count == 2
-    assert result.executed_iteration_count <= 2
-    assert all(
-        record["trace_id"] == "trace-two-iterations"
-        for record in [
-            *assessment_records,
-            *action_records,
-            *findings_records,
-            *outcome_records,
-            *history_records,
-        ]
-    )
-    serialized_assessments = json.dumps(assessment_records, ensure_ascii=False)
-    assert "输入 JSON" not in serialized_assessments
-    assert "memory retrieval ineffective query" not in serialized_assessments
-    serialized_actions = json.dumps(action_records, ensure_ascii=False)
-    assert "memory retrieval ineffective query" not in serialized_actions
-    serialized_findings = json.dumps(findings_records, ensure_ascii=False)
-    serialized_history = json.dumps(history_records, ensure_ascii=False)
-    assert "memory retrieval ineffective query" not in serialized_findings
-    assert "memory retrieval ineffective query" not in serialized_history
-    assert all("current_assessment" not in record for record in action_records)
-    assert all("top_gap" not in record for record in action_records)
-    assert all("next_evidence_need" not in record for record in action_records)
-    assert all("evidence_coverage_map" not in record for record in action_records)
-
-
-def test_research_executor_switches_to_external_after_weakly_useful_memory(
-    caplog,
-) -> None:
-    caplog.set_level(logging.INFO)
-    limited_gain_outcome = json.dumps(
-        _valid_outcome_payload(
-            top_gap_progress="partially_advanced",
-            evidence_gain="limited_gain",
-            finding_progress="improved_but_not_stable",
-            residual_uncertainty="moderate",
-            proposed_iteration_outcome="continue",
-            proposed_outcome_rationale=(
-                "Memory 只有有限增量，应继续使用外部来源补齐证据。"
-            ),
-        ),
-        ensure_ascii=False,
-    )
-    stop_outcome = json.dumps(
-        _valid_outcome_payload(
-            proposed_iteration_outcome="stop",
-            proposed_outcome_rationale="外部来源已完成本测试所需的补充。",
-        ),
-        ensure_ascii=False,
-    )
-    memory_result = ToolExecutionLayerResult(
-        execution_status="completed",
-        acquisition_status=AcquisitionStatus.SUCCESS,
-        retrieval_trace=RetrievalTrace(
-            target_problem="补充 memory-backed retrieval 的直接事实证据。",
-            selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-            selected_tool="research_knowledge_memory_v1",
-            attempts=[
-                RetrievalAttemptTrace(
-                    selected_family=FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                    selected_tool="research_knowledge_memory_v1",
-                    generated_query="memory retrieval limited gain query",
-                    acquisition_status=AcquisitionStatus.SUCCESS,
-                )
-            ],
-        ),
-    )
-    fake_llm = _FakeLLMClient(
-        outcome_responses=[limited_gain_outcome, stop_outcome]
-    )
-    fake_tel = _FakeToolExecutionLayerService(result=memory_result)
-    service = _StateCapturingResearchExecutorService(
-        llm_client=fake_llm,
-        tool_execution_layer_service=fake_tel,
-        evidence_processing_service=_successful_evidence_service(),
-    )
-
-    result = asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Switch away from weakly useful memory evidence.",
-                available_families=[
-                    FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                    FamilyName.DOCS_SEARCH,
-                ],
-                iteration_budget=2,
-            )
-        )
-    )
-
-    assert result.executed_iteration_count == 2
-    assert [request.action_mode for request in fake_tel.requests] == [
-        "memory_backed_acquisition",
-        "external_acquisition",
-    ]
-    assert fake_tel.requests[1].allowed_source_families == [FamilyName.DOCS_SEARCH]
-    action_records = [
-        record
-        for record in caplog.records
-        if getattr(record, "event", None) == "research_action_selected"
-    ]
-    assert [record.action_decision_reason for record in action_records] == [
-        "memory_preferred_by_default",
-        "memory_blocked_by_history",
-    ]
-    history_records = [
-        record
-        for record in caplog.records
-        if getattr(record, "event", None)
-        == "research_retrieval_history_updated"
-    ]
-    assert history_records[0].retrieval_attempts[0]["result_utility"] == (
-        RetrievalResultUtility.WEAKLY_USEFUL
-    )
-    assert history_records[0].low_value_families == [
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL
-    ]
-
-
-def test_research_executor_excludes_weakly_useful_docs_on_next_iteration(
-    caplog,
-) -> None:
-    caplog.set_level(logging.INFO)
-    limited_gain_outcome = json.dumps(
-        _valid_outcome_payload(
-            top_gap_progress="partially_advanced",
-            evidence_gain="limited_gain",
-            proposed_iteration_outcome="continue",
-            proposed_outcome_rationale=(
-                "Docs 只有有限增量，应切换到其他 external family。"
-            ),
-        ),
-        ensure_ascii=False,
-    )
-    stop_outcome = json.dumps(
-        _valid_outcome_payload(
-            proposed_iteration_outcome="stop",
-            proposed_outcome_rationale="Web 已完成本测试所需的补充。",
-        ),
-        ensure_ascii=False,
-    )
-    docs_result = ToolExecutionLayerResult(
-        execution_status="completed",
-        acquisition_status=AcquisitionStatus.SUCCESS,
-        retrieval_trace=RetrievalTrace(
-            target_problem="补充当前目标的直接事实证据。",
-            selected_family=FamilyName.DOCS_SEARCH,
-            selected_tool="docs_search_v1",
-            attempts=[
-                RetrievalAttemptTrace(
-                    selected_family=FamilyName.DOCS_SEARCH,
-                    selected_tool="docs_search_v1",
-                    generated_query="docs limited gain query",
-                    acquisition_status=AcquisitionStatus.SUCCESS,
-                )
-            ],
-        ),
-    )
-    web_result = ToolExecutionLayerResult(
-        execution_status="completed",
-        acquisition_status=AcquisitionStatus.SUCCESS,
-        retrieval_trace=RetrievalTrace(
-            target_problem="补充当前目标的直接事实证据。",
-            selected_family=FamilyName.WEB_SEARCH,
-            selected_tool="web_search_v1",
-            attempts=[
-                RetrievalAttemptTrace(
-                    selected_family=FamilyName.WEB_SEARCH,
-                    selected_tool="web_search_v1",
-                    generated_query="web follow-up query",
-                    acquisition_status=AcquisitionStatus.SUCCESS,
-                )
-            ],
-        ),
-    )
-    fake_tel = _SequencedFakeToolExecutionLayerService(
-        [docs_result, web_result]
-    )
-    service = _StateCapturingResearchExecutorService(
-        llm_client=_FakeLLMClient(
-            outcome_responses=[limited_gain_outcome, stop_outcome]
-        ),
-        tool_execution_layer_service=fake_tel,
-        evidence_processing_service=_successful_evidence_service(),
-    )
-
-    result = asyncio.run(
-        service.execute(
-            ResearchStageInput(
-                original_query="Switch away from weakly useful docs evidence.",
-                available_families=[
-                    FamilyName.DOCS_SEARCH,
-                    FamilyName.WEB_SEARCH,
-                ],
-                iteration_budget=2,
-            )
-        )
-    )
-
-    assert result.executed_iteration_count == 2
-    assert fake_tel.requests[0].allowed_source_families == [
-        FamilyName.DOCS_SEARCH,
-        FamilyName.WEB_SEARCH,
-    ]
-    assert fake_tel.requests[1].allowed_source_families == [
-        FamilyName.WEB_SEARCH
-    ]
-    history_records = [
-        record
-        for record in caplog.records
-        if getattr(record, "event", None)
-        == "research_retrieval_history_updated"
-    ]
-    assert history_records[0].retrieval_attempts[0]["result_utility"] == (
-        RetrievalResultUtility.WEAKLY_USEFUL
-    )
-    assert history_records[0].low_value_families == [FamilyName.DOCS_SEARCH]

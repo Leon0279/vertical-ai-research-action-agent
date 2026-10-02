@@ -1,8 +1,5 @@
 """Research Executor 的 service-private 枚举。"""
 
-from app.services.executor.enums.research_action_decision_reason import (
-    ResearchActionDecisionReason,
-)
 from app.services.executor.enums.research_action_mode import ResearchActionMode
 from app.services.executor.enums.research_coverage_status import (
     ResearchCoverageStatus,
@@ -44,7 +41,6 @@ from app.services.executor.enums.research_top_gap_progress import (
 )
 
 __all__ = [
-    "ResearchActionDecisionReason",
     "ResearchActionMode",
     "ResearchCoverageStatus",
     "ResearchCoverageTargetType",

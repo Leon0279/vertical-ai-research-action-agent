@@ -124,8 +124,8 @@ class ResearchStageInput(BaseModel):
         default_factory=list,
         description=(
             "可选字段，默认空列表。当前 runtime 声明可供 research stage 选择的 retrieval family，"
-            "类型为 list[FamilyName]。当前项目中有用：ResearchActionDecider 据此判断 memory-backed "
-            "或 external acquisition 是否可走，并将选中的 family 约束传给 TEL。"
+            "类型为 list[FamilyName]。当前项目中有用：ResearchStateAssessor 只能从其中选择 "
+            "preferred family，ResearchMaterialAcquirer 会将可用性与 action 约束传给 TEL。"
             "它不包含 concrete tool id、adapter 名称或泛化 capability alias。"
         ),
     )
@@ -136,8 +136,4 @@ class ResearchStageInput(BaseModel):
     iteration_budget: int | None = Field(
         default=None,
         description="可选字段。当前 research stage 的迭代预算上限。",
-    )
-    scope_restrictions: list[str] = Field(
-        default_factory=list,
-        description="可选字段，默认空列表。当前 runtime 对 research stage 施加的访问或行动范围限制。",
     )

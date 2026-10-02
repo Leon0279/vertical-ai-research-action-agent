@@ -13,7 +13,12 @@ from app.domain.models import (
     ToolExecutionLayerRequest,
     ToolExecutionLayerResult,
 )
-from app.services.executor.models.research_action_request import ResearchActionRequest
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
+)
+from app.services.executor.models.llm_research_gap_payload import (
+    LLMResearchGapPayload,
+)
 from app.services.executor.models.research_material_acquire_input import (
     ResearchMaterialAcquireInput,
 )
@@ -68,18 +73,28 @@ def _acquire_input() -> ResearchMaterialAcquireInput:
         project_scope_id="project-1",
         latency_budget_ms=3_000,
         iteration_index=1,
-        action_request=ResearchActionRequest(
-            action_mode="external_acquisition",
-            target_problem="查找项目文档中的直接事实。",
-            evidence_goal="establish_coverage",
+        action_mode="external_acquisition",
+        preferred_family=FamilyName.DOCS_SEARCH,
+        retrieval_query="项目文档 直接事实证据",
+        available_families=[FamilyName.DOCS_SEARCH],
+        top_gap=LLMResearchGapPayload(
+            gap_scope="objective_level",
+            gap_nature="missing",
+            gap_severity="important",
+            gap_summary="缺少项目文档中的直接事实。",
+            gap_target="当前目标",
+            gap_actionability="查找官方文档。",
+        ),
+        next_evidence_need=LLMNextEvidenceNeedPayload(
+            need_scope="objective_level",
+            need_target="当前目标",
+            need_purpose="establish_coverage",
             desired_evidence_kind="direct_fact",
             freshness_requirement="normal",
-            allowed_source_families=[FamilyName.DOCS_SEARCH],
-            preferred_source_families=[FamilyName.DOCS_SEARCH],
-            max_results=4,
-            fallback_policy="fallback_to_broader_search",
+            minimum_support_requirement="any_relevant_signal",
+            need_summary="查找项目文档中的直接事实。",
+            coverage_target_key="objective",
         ),
-        coverage_target_key="objective",
         recent_retrieval_attempts=[
             RecentRetrievalAttempt(
                 coverage_target_key="other-target",
@@ -118,6 +133,10 @@ def test_acquire_returns_typed_output_without_mutating_input() -> None:
     assert output.candidate_materials == [material]
     assert output.tool_execution_request.owner_user_id == "user-1"
     assert output.tool_execution_request.project_scope_id == "project-1"
-    assert output.tool_execution_request.max_search_results == 4
+    assert output.tool_execution_request.max_search_results == 5
+    assert output.tool_execution_request.provided_query == "项目文档 直接事实证据"
+    assert output.tool_execution_request.preferred_source_families == [
+        FamilyName.DOCS_SEARCH
+    ]
     assert output.tool_execution_request.recent_retrieval_attempts == []
     assert acquire_input == input_before_acquisition

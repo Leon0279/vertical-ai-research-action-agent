@@ -397,7 +397,6 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                     iteration.remaining_iteration_budget - 1,
                 ),
                 "action_mode": iteration.action_mode,
-                "action_decision_reason": iteration.action_decision_reason,
                 "duration_ms": (
                     round((time.perf_counter() - started_at) * 1000, 2)
                     if started_at is not None
@@ -469,7 +468,6 @@ class IterationOutcomeEvaluator(ResearchExecutorCollaboratorSupport):
                     2,
                 ),
                 "action_mode": iteration.action_mode,
-                "action_decision_reason": iteration.action_decision_reason,
                 "failure_stage": failure_stage,
                 "execution_status": (
                     tool_execution_result.execution_status

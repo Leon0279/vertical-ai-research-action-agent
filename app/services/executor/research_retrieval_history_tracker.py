@@ -23,8 +23,8 @@ class ResearchRetrievalHistoryTracker:
     """将本轮 TEL 结果压缩为下一轮可消费的最小检索历史。
 
     该协作者只维护一次 Research Stage 内的路径经验，不保存 raw trace、不做检索决策，
-    也不写入 RunningState、长期记忆或任何公开 result。ResearchActionDecider 读取它的
-    typed 结果决定高层路径，TEL 只消费其投影后的 query 负例。
+    也不写入 RunningState、长期记忆或任何公开 result。ResearchStateAssessor 读取它的
+    typed 结果避免重复低价值路径与 query，TEL 消费其与当前 target 相关的历史投影。
     """
 
     _MAX_RECENT_ATTEMPTS = 8
@@ -93,7 +93,7 @@ class ResearchRetrievalHistoryTracker:
                     target_problem=target_problem,
                     generated_query=generated_query,
                     query_fingerprint=(
-                        self._query_fingerprint(generated_query) or "no_query"
+                        self.query_fingerprint(generated_query) or "no_query"
                     ),
                     result_status=acquisition_status,
                     result_utility=self._attempt_utility(
@@ -250,6 +250,7 @@ class ResearchRetrievalHistoryTracker:
                 "selected_family": attempt.selected_family.value,
                 "selected_tool": attempt.selected_tool,
                 "target_problem": attempt.target_problem,
+                "generated_query": attempt.generated_query,
                 "query_fingerprint": attempt.query_fingerprint,
                 "result_status": attempt.result_status.value,
                 "result_utility": attempt.result_utility.value,
@@ -263,13 +264,13 @@ class ResearchRetrievalHistoryTracker:
         tool_execution_result: ToolExecutionLayerResult,
         iteration: ResearchExecutorIterationState,
     ) -> str | None:
-        """优先从 TEL trace 读取实际 target，再回退当前 action request。"""
+        """优先从 TEL trace 读取实际 target，再回退当前 TEL request。"""
 
         return normalize_whitespace_or_none(
             tool_execution_result.retrieval_trace.target_problem
             or (
-                iteration.action_request.target_problem
-                if iteration.action_request is not None
+                iteration.tool_execution_request.target_problem
+                if iteration.tool_execution_request is not None
                 else None
             )
         )
@@ -311,7 +312,7 @@ class ResearchRetrievalHistoryTracker:
             return RetrievalResultUtility.STRONGLY_USEFUL
         return RetrievalResultUtility.USEFUL
 
-    def _query_fingerprint(self, generated_query: str | None) -> str | None:
+    def query_fingerprint(self, generated_query: str | None) -> str | None:
         """生成足够稳定且不引入额外持久化依赖的 query 指纹。"""
 
         if generated_query is None:

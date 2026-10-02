@@ -94,8 +94,9 @@ class FamilySelectionRequest(BaseModel):
         default_factory=list,
         description=(
             "可选字段，默认空列表。上游希望优先考虑的 retrieval family 列表。当前项目中有用：FamilySelectionService 会对列表中仍在候选集内的 "
-            "family 增加强偏好分；但 preferred 不会绕过 action_mode、available_families、allowed_source_families 或 blocked_source_families。"
-            "也就是说，它只影响排序，不强制选择。元素类型为 FamilyName，JSON 输出仍是字符串数组。"
+            "family 按输入顺序放在其它合法候选之前；但 preferred 不会绕过 action_mode、available_families、"
+            "allowed_source_families 或 blocked_source_families。只有 preferred family 不可用或被过滤时才会选择其它 family。"
+            "元素类型为 FamilyName，JSON 输出仍是字符串数组。"
         ),
     )
     blocked_source_families: list[FamilyName] = Field(

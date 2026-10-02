@@ -200,6 +200,10 @@ class _FakeZhipuLLMClient:
                 }
             ],
             "prioritization_summary": "默认 pipeline 测试不选择 top gap。",
+            "action_mode": "refine_from_existing_state",
+            "preferred_family": None,
+            "retrieval_query": None,
+            "action_rationale": "当前没有可推进的研究缺口，直接基于已有状态收束。",
         }
         if "研究状态判断" in prompt:
             prompt_input = json.loads(prompt.rsplit("输入 JSON：\n", maxsplit=1)[1])
@@ -1034,7 +1038,6 @@ def test_research_stage_projects_input_and_applies_result() -> None:
             available_families=[FamilyName.DOCS_SEARCH],
             latency_budget_ms=1000,
             iteration_budget=2,
-            scope_restrictions=["project_only"],
         ),
     )
     result = ResearchStageResult(
@@ -1092,7 +1095,6 @@ def test_research_stage_projects_input_and_applies_result() -> None:
         available_families=[FamilyName.DOCS_SEARCH],
         latency_budget_ms=1000,
         iteration_budget=2,
-        scope_restrictions=["project_only"],
     )
     assert context.running_state.retrieved_evidence_refs == [
         existing_evidence_ref,

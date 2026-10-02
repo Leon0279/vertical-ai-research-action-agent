@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from copy import deepcopy
 
 import pytest
 
@@ -17,19 +15,11 @@ from app.domain.models import (
     EvidenceProcessingResult,
     ProcessedEvidenceUnit,
     RecentRetrievalAttempt,
-    ResearchStageInput,
     RetrievalAttemptTrace,
     RetrievalTrace,
     ToolExecutionLayerResult,
 )
-from app.services.executor.iteration_outcome_evaluator import IterationOutcomeEvaluator
 from app.services.executor.models.evidence_coverage_entry import EvidenceCoverageEntry
-from app.services.executor.models.research_action_decider_input import (
-    ResearchActionDeciderInput,
-)
-from app.services.executor.models.research_action_decider_output import (
-    ResearchActionDeciderOutput,
-)
 from app.services.executor.models.research_executor_iteration_state import (
     ResearchExecutorIterationState,
 )
@@ -48,18 +38,11 @@ from app.services.executor.models.research_executor_run_state import (
 from app.services.executor.models.research_iteration_evaluation_state import (
     ResearchIterationEvaluationState,
 )
-from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_retrieval_history_tracker import (
     ResearchRetrievalHistoryTracker,
 )
 
 
-class _FailIfCalledLLMClient:
-    async def generate_text(self, prompt: str) -> str:
-        raise AssertionError(f"不应调用 outcome LLM：{prompt}")
-
-    async def generate_json_object(self, prompt: str) -> dict[str, object]:
-        raise AssertionError(f"不应调用 outcome LLM：{prompt}")
 
 
 def _run_state(
@@ -150,43 +133,8 @@ def _state_with_processed_evidence(
     return state
 
 
-def _decider_input(
-    stage_input: ResearchStageInput,
-    state: ResearchExecutorRunState,
-) -> ResearchActionDeciderInput:
-    assessment = state.current_assessment
-    top_gap = state.top_gap
-    next_evidence_need = state.next_evidence_need
-    assert assessment is not None
-    assert top_gap is not None
-    assert next_evidence_need is not None
-    iteration = state.require_current_iteration()
-    return ResearchActionDeciderInput(
-        original_query=stage_input.original_query,
-        user_goal=stage_input.user_goal,
-        available_families=list(stage_input.available_families),
-        latency_budget_ms=stage_input.latency_budget_ms,
-        scope_restrictions=list(stage_input.scope_restrictions),
-        current_assessment=assessment,
-        top_gap=top_gap,
-        next_evidence_need=next_evidence_need,
-        recent_retrieval_attempts=list(state.recent_retrieval_attempts),
-        iteration_index=iteration.iteration_index,
-        remaining_iteration_budget=iteration.remaining_iteration_budget,
-    )
 
 
-def _apply_decider_output(
-    state: ResearchExecutorRunState,
-    output: ResearchActionDeciderOutput,
-) -> None:
-    iteration = state.require_current_iteration()
-    iteration.candidate_action_modes = list(output.candidate_action_modes)
-    iteration.action_mode = output.action_mode
-    iteration.action_decision_reason = output.action_decision_reason
-    iteration.action_rationale = output.action_rationale
-    iteration.acquisition_paths_exhausted = output.acquisition_paths_exhausted
-    iteration.action_request = output.action_request
 
 
 def test_history_tracker_records_attempt_after_outcome_and_bounds_history(
@@ -243,7 +191,7 @@ def test_history_tracker_records_attempt_after_outcome_and_bounds_history(
         state.recent_retrieval_attempts
     )
     assert prompt_history[-2]["query_fingerprint"] == "8faf947b1cee1409"
-    assert "generated_query" not in prompt_history[-2]
+    assert prompt_history[-2]["generated_query"] == "memory retrieval query"
     history_record = next(
         record
         for record in caplog.records
@@ -272,7 +220,7 @@ def test_history_tracker_records_attempt_after_outcome_and_bounds_history(
         {
             "selected_family": FamilyName.DOCS_SEARCH,
             "selected_tool": "docs_search_v1",
-            "query_fingerprint": tracker._query_fingerprint(
+            "query_fingerprint": tracker.query_fingerprint(
                 "docs retrieval query"
             ),
             "result_status": AcquisitionStatus.NO_RESULT,
@@ -346,107 +294,10 @@ def test_history_tracker_logs_each_skip_reason(caplog) -> None:
     assert all(record.new_retrieval_attempt_count == 0 for record in history_records)
 
 
-def test_memory_low_value_history_switches_current_target_to_external() -> None:
-    tracker = ResearchRetrievalHistoryTracker()
-    state = _run_state(
-        recent_retrieval_attempts=[
-            _attempt(FamilyName.RESEARCH_KNOWLEDGE_RECALL),
-        ]
-    )
-    decider = ResearchActionDecider(retrieval_history_tracker=tracker)
-    decider_input = _decider_input(
-        ResearchStageInput(
-            original_query="补齐当前目标的可靠支撑材料。",
-            available_families=[
-                FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                FamilyName.DOCS_SEARCH,
-            ],
-        ),
-        state,
-    )
-    state_before_decision = deepcopy(state)
-    input_before_decision = decider_input.model_dump(mode="json")
-
-    output = asyncio.run(decider.decide(decider_input))
-
-    assert output.action_mode == "external_acquisition"
-    assert output.action_decision_reason == "memory_blocked_by_history"
-    assert output.action_request is not None
-    assert output.action_request.allowed_source_families == [
-        FamilyName.DOCS_SEARCH
-    ]
-    assert state == state_before_decision
-    assert decider_input.model_dump(mode="json") == input_before_decision
 
 
-def test_weakly_useful_memory_history_switches_current_target_to_external() -> None:
-    tracker = ResearchRetrievalHistoryTracker()
-    state = _run_state(
-        recent_retrieval_attempts=[
-            _attempt(
-                FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                status=AcquisitionStatus.SUCCESS,
-                utility=RetrievalResultUtility.WEAKLY_USEFUL,
-            )
-        ]
-    )
-    decider = ResearchActionDecider(retrieval_history_tracker=tracker)
-
-    output = asyncio.run(
-        decider.decide(
-            _decider_input(
-                ResearchStageInput(
-                    original_query="补齐当前目标的可靠支撑材料。",
-                    available_families=[
-                        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                        FamilyName.DOCS_SEARCH,
-                    ],
-                ),
-                state,
-            )
-        )
-    )
-
-    assert output.action_mode == "external_acquisition"
-    assert output.action_decision_reason == "memory_blocked_by_history"
-    assert output.action_request is not None
-    assert output.action_request.allowed_source_families == [
-        FamilyName.DOCS_SEARCH
-    ]
 
 
-def test_weakly_useful_memory_exhausts_memory_only_path() -> None:
-    tracker = ResearchRetrievalHistoryTracker()
-    state = _run_state(
-        recent_retrieval_attempts=[
-            _attempt(
-                FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                status=AcquisitionStatus.SUCCESS,
-                utility=RetrievalResultUtility.WEAKLY_USEFUL,
-            )
-        ]
-    )
-    decider = ResearchActionDecider(retrieval_history_tracker=tracker)
-
-    output = asyncio.run(
-        decider.decide(
-            _decider_input(
-                ResearchStageInput(
-                    original_query="补齐当前目标的可靠支撑材料。",
-                    available_families=[
-                        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                    ],
-                ),
-                state,
-            )
-        )
-    )
-
-    assert output.candidate_action_modes == ["refine_from_existing_state"]
-    assert output.action_mode == "refine_from_existing_state"
-    assert output.action_decision_reason == "acquisition_paths_exhausted"
-    assert output.acquisition_paths_exhausted is True
-    assert output.action_request is None
 
 
 @pytest.mark.parametrize("family", list(FamilyName))
@@ -683,71 +534,3 @@ def test_weakly_useful_memory_history_is_scoped_to_coverage_target() -> None:
     ) == {
         FamilyName.RESEARCH_KNOWLEDGE_RECALL
     }
-
-
-def test_exhausted_memory_and_external_paths_degrade_without_outcome_llm() -> None:
-    tracker = ResearchRetrievalHistoryTracker()
-    state = _run_state(
-        recent_retrieval_attempts=[
-            _attempt(FamilyName.RESEARCH_KNOWLEDGE_RECALL),
-            _attempt(FamilyName.DOCS_SEARCH),
-        ]
-    )
-    decider = ResearchActionDecider(retrieval_history_tracker=tracker)
-
-    output = asyncio.run(
-        decider.decide(
-            _decider_input(
-                ResearchStageInput(
-                    original_query="补齐当前目标的可靠支撑材料。",
-                    available_families=[
-                        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                        FamilyName.DOCS_SEARCH,
-                    ],
-                ),
-                state,
-            )
-        )
-    )
-    _apply_decider_output(state, output)
-    outcome = asyncio.run(
-        IterationOutcomeEvaluator(llm_client=_FailIfCalledLLMClient()).evaluate(
-            ResearchStageInput(
-                original_query="补齐当前目标的可靠支撑材料。",
-                available_families=[FamilyName.RESEARCH_KNOWLEDGE_RECALL, FamilyName.DOCS_SEARCH],
-            ),
-            state,
-        )
-    )
-
-    iteration = state.require_current_iteration()
-    assert output.action_mode == "refine_from_existing_state"
-    assert iteration.acquisition_paths_exhausted is True
-    assert iteration.action_decision_reason == "acquisition_paths_exhausted"
-    assert outcome == "degrade"
-    assert iteration.outcome_decision_source == "rule_short_circuit"
-
-
-def test_iteration_budget_exhaustion_has_explicit_action_reason() -> None:
-    tracker = ResearchRetrievalHistoryTracker()
-    state = _run_state()
-    state.require_current_iteration().remaining_iteration_budget = 0
-    decider = ResearchActionDecider(retrieval_history_tracker=tracker)
-
-    output = asyncio.run(
-        decider.decide(
-            _decider_input(
-                ResearchStageInput(
-                    original_query="预算耗尽后停止获取材料。",
-                    available_families=[FamilyName.DOCS_SEARCH],
-                ),
-                state,
-            )
-        )
-    )
-
-    assert output.action_mode == "refine_from_existing_state"
-    assert output.action_decision_reason == "iteration_budget_exhausted"
-    assert output.action_rationale == (
-        "当前 iteration budget 已耗尽，因此不再发起 acquisition。"
-    )

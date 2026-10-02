@@ -175,7 +175,6 @@ from app.services.executor.intermediate_findings_refiner import (
     IntermediateFindingsRefiner,
 )
 from app.services.executor.iteration_outcome_evaluator import IterationOutcomeEvaluator
-from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_executor_service import ResearchExecutorService
 from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
@@ -379,9 +378,6 @@ def test_service_protocol_conformance() -> None:
             state_assessor=ResearchStateAssessor(
                 llm_client=llm_client,
                 coverage_tracker=coverage_tracker,
-                retrieval_history_tracker=retrieval_history_tracker,
-            ),
-            action_decider=ResearchActionDecider(
                 retrieval_history_tracker=retrieval_history_tracker,
             ),
             material_acquirer=ResearchMaterialAcquirer(

@@ -61,7 +61,6 @@ from app.services.executor.intermediate_findings_refiner import (
     IntermediateFindingsRefiner,
 )
 from app.services.executor.iteration_outcome_evaluator import IterationOutcomeEvaluator
-from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_executor_service import ResearchExecutorService
 from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
@@ -314,7 +313,6 @@ def test_research_executor_collaborators_are_app_scoped_and_shared() -> None:
                 ResearchRetrievalHistoryTracker
             )
             state_assessor = await container.get(ResearchStateAssessor)
-            action_decider = await container.get(ResearchActionDecider)
             material_acquirer = await container.get(ResearchMaterialAcquirer)
             findings_refiner = await container.get(IntermediateFindingsRefiner)
             outcome_evaluator = await container.get(IterationOutcomeEvaluator)
@@ -329,7 +327,6 @@ def test_research_executor_collaborators_are_app_scoped_and_shared() -> None:
             assert executor._coverage_tracker is coverage_tracker
             assert executor._retrieval_history_tracker is retrieval_history_tracker
             assert executor._state_assessor is state_assessor
-            assert executor._action_decider is action_decider
             assert executor._material_acquirer is material_acquirer
             assert executor._findings_refiner is findings_refiner
             assert executor._outcome_evaluator is outcome_evaluator
@@ -337,10 +334,6 @@ def test_research_executor_collaborators_are_app_scoped_and_shared() -> None:
             assert state_assessor._coverage_tracker is coverage_tracker
             assert (
                 state_assessor._retrieval_history_tracker
-                is retrieval_history_tracker
-            )
-            assert (
-                action_decider._retrieval_history_tracker
                 is retrieval_history_tracker
             )
             assert (

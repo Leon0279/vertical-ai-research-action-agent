@@ -90,15 +90,14 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                 "llm_prompt_char_count_reduction": 234,
                 "selected_family": "web_search",
                 "generated_query": "safe retrieval query",
-                "candidate_action_modes": [
-                    "refine_from_existing_state",
-                    "external_acquisition",
-                ],
+                "action_mode": "external_acquisition",
+                "preferred_family": FamilyName.WEB_SEARCH,
+                "preferred_source_families": [FamilyName.WEB_SEARCH],
+                "query_source": "upstream_assessment",
                 "allowed_source_families": [
                     FamilyName.DOCS_SEARCH,
                     FamilyName.WEB_SEARCH,
                 ],
-                "action_decision_reason": "memory_blocked_by_history",
                 "available_families": [
                     FamilyName.RESEARCH_KNOWLEDGE_RECALL,
                     FamilyName.DOCS_SEARCH,
@@ -108,13 +107,6 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                     FamilyName.RESEARCH_KNOWLEDGE_RECALL,
                     FamilyName.WEB_SEARCH,
                 ],
-                "memory_eligible_before_history": True,
-                "external_eligible_before_history": True,
-                "external_families_before_history": [
-                    FamilyName.DOCS_SEARCH,
-                    FamilyName.WEB_SEARCH,
-                ],
-                "external_families_after_history": [FamilyName.DOCS_SEARCH],
                 "tool_execution_request": {
                     "target_problem": "Use api_key=tel-secret safely.",
                     "action_mode": "external_acquisition",
@@ -252,12 +244,11 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert record["llm_prompt_char_count_reduction"] == 234
     assert record["selected_family"] == "web_search"
     assert record["generated_query"] == "safe retrieval query"
-    assert record["candidate_action_modes"] == [
-        "refine_from_existing_state",
-        "external_acquisition",
-    ]
+    assert record["action_mode"] == "external_acquisition"
+    assert record["preferred_family"] == "web_search"
+    assert record["preferred_source_families"] == ["web_search"]
+    assert record["query_source"] == "upstream_assessment"
     assert record["allowed_source_families"] == ["docs_search", "web_search"]
-    assert record["action_decision_reason"] == "memory_blocked_by_history"
     assert record["available_families"] == [
         "research_knowledge_recall",
         "docs_search",
@@ -267,13 +258,6 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
         "research_knowledge_recall",
         "web_search",
     ]
-    assert record["memory_eligible_before_history"] is True
-    assert record["external_eligible_before_history"] is True
-    assert record["external_families_before_history"] == [
-        "docs_search",
-        "web_search",
-    ]
-    assert record["external_families_after_history"] == ["docs_search"]
     assert record["tool_execution_request"] == {
         "target_problem": "Use api_key=[REDACTED] safely.",
         "action_mode": "external_acquisition",

@@ -218,7 +218,6 @@ class DecompositionPlannerService(DecompositionPlannerProtocol):
             "runtime_limits": {
                 "latency_budget_ms": runtime.latency_budget_ms,
                 "iteration_budget": runtime.iteration_budget,
-                "scope_restrictions": runtime.scope_restrictions,
                 "available_families": [
                     family.value for family in runtime.available_families
                 ],

@@ -1433,7 +1433,6 @@ priority ordering 通常应受以下因素影响：
 - `tool_registry_version: str | None`
 - `latency_budget_ms: int | None`
 - `iteration_budget: int | None`
-- `scope_restrictions: list[str]`
 - `environment_flags: list[str]`
 
 ### 4.5.4.2 Representation Rule

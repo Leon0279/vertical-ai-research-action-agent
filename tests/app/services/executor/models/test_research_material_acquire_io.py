@@ -11,12 +11,13 @@ from app.domain.models import (
     ToolExecutionLayerRequest,
     ToolExecutionLayerResult,
 )
-from app.services.executor.enums import (
-    ResearchActionMode,
-    ResearchDesiredEvidenceKind,
-    ResearchFreshnessRequirement,
+from app.services.executor.enums import ResearchActionMode
+from app.services.executor.models.llm_next_evidence_need_payload import (
+    LLMNextEvidenceNeedPayload,
 )
-from app.services.executor.models.research_action_request import ResearchActionRequest
+from app.services.executor.models.llm_research_gap_payload import (
+    LLMResearchGapPayload,
+)
 from app.services.executor.models.research_material_acquire_input import (
     ResearchMaterialAcquireInput,
 )
@@ -34,16 +35,28 @@ def _acquire_input() -> ResearchMaterialAcquireInput:
         project_scope_id="project-1",
         latency_budget_ms=5_000,
         iteration_index=2,
-        action_request=ResearchActionRequest(
-            action_mode=ResearchActionMode.EXTERNAL_ACQUISITION,
-            target_problem="补充直接事实证据。",
-            desired_evidence_kind=ResearchDesiredEvidenceKind.DIRECT_FACT,
-            freshness_requirement=ResearchFreshnessRequirement.NORMAL,
-            allowed_source_families=[FamilyName.DOCS_SEARCH],
-            preferred_source_families=[FamilyName.DOCS_SEARCH],
-            fallback_policy="fallback_to_broader_search",
+        action_mode=ResearchActionMode.EXTERNAL_ACQUISITION,
+        preferred_family=FamilyName.DOCS_SEARCH,
+        retrieval_query="当前研究目标 直接事实证据",
+        available_families=[FamilyName.DOCS_SEARCH, FamilyName.WEB_SEARCH],
+        top_gap=LLMResearchGapPayload(
+            gap_scope="objective_level",
+            gap_nature="missing",
+            gap_severity="important",
+            gap_summary="缺少直接事实证据。",
+            gap_target="当前研究目标",
+            gap_actionability="补充官方文档证据。",
         ),
-        coverage_target_key="objective",
+        next_evidence_need=LLMNextEvidenceNeedPayload(
+            need_scope="objective_level",
+            need_target="当前研究目标",
+            need_purpose="establish_coverage",
+            desired_evidence_kind="direct_fact",
+            freshness_requirement="normal",
+            minimum_support_requirement="any_relevant_signal",
+            need_summary="补充直接事实证据。",
+            coverage_target_key="objective",
+        ),
         recent_retrieval_attempts=[
             RecentRetrievalAttempt(
                 coverage_target_key="objective",
@@ -77,9 +90,9 @@ def test_research_material_acquire_input_is_json_safe_and_forbids_extra_fields()
 
     dumped = acquire_input.model_dump(mode="json")
 
-    assert dumped["action_request"]["allowed_source_families"] == [
-        "docs_search"
-    ]
+    assert dumped["action_mode"] == "external_acquisition"
+    assert dumped["preferred_family"] == "docs_search"
+    assert dumped["available_families"] == ["docs_search", "web_search"]
     assert dumped["recent_retrieval_attempts"][0]["selected_family"] == (
         "web_search"
     )

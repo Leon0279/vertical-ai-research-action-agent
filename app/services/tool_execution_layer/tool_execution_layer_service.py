@@ -126,7 +126,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
                 self._log_request_result(result)
                 return result
 
-            self._record_attempt(state, attempt_outcome)
+            self._record_attempt(normalized_request, state, attempt_outcome)
             directive = self._apply_evaluation_result(
                 request=normalized_request,
                 state=state,
@@ -210,7 +210,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             )
 
         selected_family = selection_result.selected_family
-        query_generation_result = await self._generate_query(
+        query_generation_result = await self._query_for_selected_family(
             request=request,
             selected_family=selected_family,
         )
@@ -312,6 +312,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
 
     def _record_attempt(
         self,
+        request: ToolExecutionLayerRequest,
         state: ToolExecutionLayerRunState,
         attempt_outcome: ToolExecutionLayerAttemptOutcome,
     ) -> None:
@@ -345,6 +346,12 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
                 "attempt_index": len(state.attempts),
                 "selected_family": attempt["selected_family"],
                 "selected_tool": attempt["selected_tool"],
+                "preferred_source_families": request.preferred_source_families,
+                "query_source": (
+                    attempt_outcome.query_generation_result.generation_summary.get(
+                        "query_source"
+                    )
+                ),
                 **retrieval_query_log_fields(attempt["generated_query"]),
                 "acquisition_status": attempt["acquisition_status"],
                 "evaluation_status": attempt["evaluation_status"],
@@ -519,6 +526,7 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
             ),
             available_families=normalize_family_list(request.available_families),
             success_hint=(request.success_hint or "").strip() or None,
+            provided_query=(request.provided_query or "").strip() or None,
             recent_low_value_queries=unique_non_empty_strings(
                 request.recent_low_value_queries
             ),
@@ -607,6 +615,42 @@ Coordinate one bounded Tool Execution Layer request for Research Executor."""
                     )
                 ),
             )
+        )
+
+    async def _query_for_selected_family(
+        self,
+        *,
+        request: ToolExecutionLayerRequest,
+        selected_family: FamilyName,
+    ) -> RetrievalQueryGenerationResult:
+        """优先复用上游 query；未提供时才调用 TEL Query Generation。"""
+
+        if request.provided_query is None:
+            return await self._generate_query(
+                request=request,
+                selected_family=selected_family,
+            )
+        return RetrievalQueryGenerationResult(
+            selected_family=selected_family,
+            generated_query=request.provided_query,
+            query_focus=request.evidence_goal or request.target_problem,
+            preserved_terms=[],
+            generation_status="succeeded",
+            generation_summary={
+                "selected_family": selected_family,
+                "status": "succeeded",
+                "policy": "upstream_assessment_query_v1",
+                "query_source": "upstream_assessment",
+                "recent_low_value_query_count": 0,
+            },
+            generation_trace={
+                "selected_family": selected_family,
+                "target_problem": request.target_problem,
+                "query_source": "upstream_assessment",
+                "llm_output_format": None,
+                "parser": None,
+            },
+            error_info=None,
         )
 
     def _recent_low_value_queries_for_selected_family(

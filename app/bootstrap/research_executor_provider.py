@@ -11,7 +11,6 @@ from app.services.executor.intermediate_findings_refiner import (
 from app.services.executor.iteration_outcome_evaluator import (
     IterationOutcomeEvaluator,
 )
-from app.services.executor.research_action_decider import ResearchActionDecider
 from app.services.executor.research_coverage_tracker import ResearchCoverageTracker
 from app.services.executor.research_executor_service import ResearchExecutorService
 from app.services.executor.research_material_acquirer import ResearchMaterialAcquirer
@@ -32,7 +31,6 @@ class ResearchExecutorProvider(Provider):
     coverage_tracker = provide(ResearchCoverageTracker)
     retrieval_history_tracker = provide(ResearchRetrievalHistoryTracker)
     state_assessor = provide(ResearchStateAssessor)
-    action_decider = provide(ResearchActionDecider)
     material_acquirer = provide(ResearchMaterialAcquirer)
     findings_refiner = provide(IntermediateFindingsRefiner)
     outcome_evaluator = provide(IterationOutcomeEvaluator)

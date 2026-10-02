@@ -572,7 +572,7 @@ canonical research loop 的基本目标是：
 
 在当前设计中，一轮标准 research iteration 通常包含以下步骤：
 
-#### Step 1. Assess Current Research State
+#### Step 1. Assess State and Select the Next Action
 
 首先评估当前 stage-local working state，明确：
 
@@ -580,16 +580,15 @@ canonical research loop 的基本目标是：
 - 当前 findings 已经推进到什么程度
 - 当前还存在哪些 unresolved gaps
 - 当前 evidence 是否已经接近 sufficiency threshold
+- 当前轮最值得解决的 `top_gap` 和 `next_evidence_need`
+- 当前轮应采用的 `action_mode`、`preferred_family` 和 `retrieval_query`
 
-#### Step 2. Identify the Next Evidence Need
+Assessment LLM 在一次无状态调用中同时完成状态评估、gap prioritization 与高层 action 选择，
+避免再由独立组件重复解释同一组语义状态。系统随后严格校验 family 可用性、低价值历史和 query 重复情况。
 
-基于当前 research state，识别这一轮最值得解决的 evidence need 或 research gap。
+#### Step 2. Branch on the Selected Action
 
-这一步的目标不是同时推进所有问题，而是确定当前轮次最有价值的下一步。
-
-#### Step 3. Decide Whether External Action Is Needed
-
-在明确当前轮的 evidence need 后，判断是否需要额外动作来推进研究，例如：
+根据 assessment 已选定的 `action_mode` 判断是否需要额外动作来推进研究，例如：
 
 - memory-based recall
 - external retrieval
@@ -598,23 +597,23 @@ canonical research loop 的基本目标是：
 
 因此，并不是每一轮都必须调用 retrieval 或 tool。
 
-#### Step 4. Acquire Candidate Material
+#### Step 3. Acquire Candidate Material
 
 如果当前轮判断需要额外 evidence，则触发相应的 retrieval / tool path，获取新的候选材料。
 
 这里获得的内容仍然只是 candidate material，而不是当前轮可直接用于推理的最终输入。
 
-#### Step 5. Process Candidate Material into Usable Evidence
+#### Step 4. Process Candidate Material into Usable Evidence
 
 将当前轮获得的 candidate material 处理为当前 stage 可消费的 evidence representation。
 
 这一步通常包括选择、整形、压缩、去重或组织，但具体机制留在后续 evidence processing 章节展开。
 
-#### Step 6. Update Stage-local Working State
+#### Step 5. Update Stage-local Working State
 
 将本轮新形成的 processed evidence、updated gaps 和新的 supporting signals 并入当前 stage-local working state，使其成为下一步判断与推理的基础。
 
-#### Step 7. Produce or Refine Intermediate Findings
+#### Step 6. Produce or Refine Intermediate Findings
 
 基于更新后的 working state，生成或修正当前的 intermediate findings。
 
@@ -622,7 +621,7 @@ Findings Refiner 的 LLM 输入只携带当前 iteration 新增的 processed evi
 
 这一步的目标不是直接产出最终用户响应，而是逐步形成更完整、更可支撑 downstream conclusion generation 的 research-stage result。
 
-#### Step 8. Evaluate Iteration Outcome
+#### Step 7. Evaluate Iteration Outcome
 
 在本轮结束时，判断当前 research stage 下一步应进入哪种状态：
 
@@ -708,7 +707,9 @@ Research Stage 的 canonical research loop 可以概括为：
 - 哪些 gap 最影响 downstream conclusion quality
 - 在当前预算和约束下，下一步最值得补充的 evidence 是什么
 
-因此，`Research State Assessment and Gap Identification` 的作用，是为后续的 **action decision before evidence acquisition** 提供判断基础，而不是直接替代该决策本身。
+因此，`Research State Assessment and Gap Identification` 同时承担当前轮的高层 action decision：
+它输出 `action_mode`、`preferred_family`、`retrieval_query` 和 `action_rationale`，
+而不是把同一份语义状态再交给独立的 Action Decider。
 
 在本设计中，这一步的核心价值在于：
 
@@ -1756,824 +1757,83 @@ prioritization_summary
 3. Identify one or more `identified_gaps` based on these state descriptors.
 4. Prioritize the identified gaps and select a single `top_gap` for the current iteration.
 5. Translate the `top_gap` into a structured `next_evidence_need`.
-6. Emit structured outputs for downstream action decision.
+6. Select `action_mode`, `preferred_family`, and `retrieval_query`, then emit the complete typed assessment output.
 
 因此，`4.4` 的整体作用可以概括为：
 
 **从当前 research state 出发，先形成状态判断，再提炼 gaps，随后选出当前轮最值得优先推进的 gap，并将其转换为下一步的 evidence objective。**
 
-## 4.5 Action Decision Before Evidence Acquisition
+## 4.5 Assessment-owned Action Decision and TEL Boundary
 
 ### 4.5.1 Purpose and Positioning
 
-本小节的目标，是定义在当前轮的 `top_gap` 和 `next_evidence_need` 已形成之后，Research Stage 如何决定：
+当前实现不再设置独立的 `ResearchActionDecider`。`ResearchStateAssessor` 在同一次 LLM 调用中完成：
 
-- 当前轮是否需要新的 evidence acquisition
-- 如果需要，应进入哪类高层 action mode
-- 如果需要进一步执行 acquisition，应向 Tool Execution Layer 传递什么样的 `action_request`
+- 当前 research state assessment
+- `identified_gaps`、`top_gap` 与 `next_evidence_need`
+- `action_mode`
+- `preferred_family`
+- `retrieval_query`
+- `action_rationale`
 
-因此，`4.5 Action Decision Before Evidence Acquisition` 的职责，不是重新执行 assessment、gap identification 或 gap prioritization，而是基于这些上游结果，做一次**面向执行的动作决策**。
+这样可以避免两个步骤重复解释相同的 research state，也保证 query 与本轮 gap、evidence need 由同一个语义判断产生。
 
-在整体链路中，本小节位于：
+### 4.5.2 Action Contract
 
-- `4.4 Research State Assessment and Gap Identification` 之后
-- `5. Tooling and Retrieval Model` 之前
+支持的高层 action mode 为：
 
-它的作用，是将上游已经形成的“问题表达”和“证据目标表达”进一步转化为：
+- `refine_from_existing_state`：不执行 acquisition；`preferred_family` 和 `retrieval_query` 必须为空。
+- `memory_backed_acquisition`：使用已有 Research Knowledge；`preferred_family` 必须为 `research_knowledge_recall`，query 必须非空。
+- `external_acquisition`：获取新的外部材料；`preferred_family` 必须为 `docs_search`、`paper_search` 或 `web_search`，query 必须非空。
 
-- 高层动作路径选择
-- 面向执行层的 request 构造
+Assessor 只能从当前有效 `available_families` 选择 preferred family。系统在接受输出前还会确定性校验：
 
-因此，本小节主要回答的是：
+- preferred family 当前可用且符合 action mode
+- preferred family 未被当前 coverage target 的低价值历史封禁
+- query 没有重复同一 target、同一 family 的已知低价值 query
+- query 遵守 scope restrictions
 
-**当前轮接下来应该如何推进，而不是当前轮还缺什么。**
+不合法输出按 assessment schema/validation failure 处理，不由系统静默改写 action、family 或 query。
 
-本小节只负责：
+### 4.5.3 Responsibility Boundary
 
-- 选择高层 action mode
-- 构造执行请求的上层表示
+`preferred_family` 是传给 Tool Execution Layer 的强偏好，不是最终执行结果。职责边界为：
 
-它不负责：
+- **ResearchStateAssessor** 决定当前缺什么、是否 acquisition、偏好哪个 family，以及初始 query。
+- **Research Executor** 校验输出、维护 iteration state，并根据 `action_mode` 决定是否调用 TEL。
+- **TEL Family Selection** 应用 action mode、available、allowed、blocked 等硬过滤；preferred family 过滤后仍合法时绝对优先，否则选择其它合法 family。
+- **TEL family/tool 层** 决定实际可执行 family 与 concrete tool，并负责 retry、fallback 和标准化结果。
 
-- 重新判断 `top_gap`
-- 重新生成 `next_evidence_need`
-- 展开具体 tool registry、query construction 或底层调用细节
+因此，Assessor 不选择 concrete tool，TEL 也不重新决定 research gap 或 action mode。
 
----
+### 4.5.4 Query Ownership
 
-### 4.5.2 Inputs
+Assessor 生成的 `retrieval_query` 通过 `ToolExecutionLayerRequest.provided_query` 传入 TEL：
 
-本小节的输入，来自当前 stage-local working state 中已经形成的 assessment 和 prioritization 结果，以及当前轮的运行约束。
+- `provided_query` 非空时，TEL 仍执行 Family Selection，但跳过 Query Generation。
+- 最终 family 与 preferred family 不同时，仍复用同一条 provided query。
+- same-tool retry 和 broader-family fallback 同样复用该 query。
+- `provided_query` 为空的兼容调用方，继续在最终 family 确定后调用 TEL Query Generation。
 
-这些输入的作用，不是重新描述当前研究状态，而是支持当前轮的 **action decision**。
+TEL 的 query result/trace 必须标记 query 来源：
 
-在当前设计下，MVP 阶段建议至少读取以下输入字段。
+- `upstream_assessment`
+- `tel_query_generation`
 
-#### A. Prioritization Outputs
+### 4.5.5 Runtime State and Observability
 
-**字段：`top_gap_scope`**
+当前 iteration 保存：
 
-含义：当前轮最高优先级 gap 所在层级。
-
-**字段：`top_gap_nature`**
-
-含义：当前轮最高优先级 gap 的性质，例如 `missing`、`weak`、`ambiguous`、`stale` 等。
-
-**字段：`top_gap_severity`**
-
-含义：当前轮最高优先级 gap 的严重程度，例如 `blocking`、`important`、`optional`。
-
-**字段：`top_gap_summary`**
-
-含义：对当前 top gap 的简短说明。
-
-**字段：`next_evidence_need`**
-
-含义：当前轮最值得补充的 evidence objective，是本小节的核心输入之一。
-
----
-
-#### B. Current State Summary Fields
-
-**字段：`coverage_status`**
-
-含义：当前关键问题的 evidence 覆盖程度。
-
-**字段：`support_strength`**
-
-含义：当前 evidence 对 findings 的支撑强度。
-
-**字段：`finding_maturity`**
-
-含义：当前 intermediate findings 的成熟度。
-
-**字段：`assessment_summary`**
-
-含义：对当前 research state 的简短总结。
-
-MVP 阶段可选。
-
----
-
-#### C. Runtime Constraint Fields
-
-**字段：`remaining_iteration_budget`**
-
-含义：当前 research loop 还允许继续多少轮 iteration。
-
-**字段：`input_budget_pressure`**
-
-含义：当前输入上下文压力。
-
-推荐枚举值：
-
-- `low`
-- `medium`
-- `high`
-
-**字段：`available_capabilities`**
-
-含义：当前阶段可用的 acquisition-related capabilities 摘要。
-
-该字段不直接决定具体 tool，但会影响当前 action mode 是否现实可行。
-
----
-
-#### Recommended Minimum Input Set
-
-MVP 阶段，建议本小节至少直接消费以下字段：
-
-```
-top_gap_scope
-top_gap_nature
-top_gap_severity
-top_gap_summary
-next_evidence_need
-coverage_status
-support_strength
-finding_maturity
-remaining_iteration_budget
-input_budget_pressure
-available_capabilities
-```
-
-如需更多语义上下文，可再补充：
-
-```
-assessment_summary
-```
-
----
-
-#### Practical Implementation Note
-
-实现上，本小节不要求重新读取完整 `processed_evidence` 或重新执行 assessment。
-
-更现实的做法是：
-
-- `4.4` 先把当前轮最重要的判断结果压缩成少量结构化输出
-- `4.5` 再基于这些输出和 runtime constraints，做 action mode decision 与 `action_request` 构造
-
-因此，本小节的输入，应被理解为：
-
-**当前轮用于决定“如何推进”的最小决策输入视图。**
-
----
-
-### 4.5.3 High-level Action Modes
-
-在当前设计中，`4.5` 的第一层决策结果不是具体 tool 名，也不是最终执行参数，而是一个**高层动作模式**（`action_mode`）。
-
-它表示：在当前轮中，Research Stage 决定采用哪一类总体推进路径来响应当前 `top_gap` 和 `next_evidence_need`。
-
-因此，`action_mode` 的作用是：
-
-- 给当前轮提供一个清晰的高层执行分支
-- 约束后续 `action_request` 的构造范围
-- 将“研究层决策”与“执行层落实”分开
-
-`action_mode` 回答的是：
-
-**“这一轮准备走哪条大路？”**
-
-而不是：
-
-**“这一轮最终调用哪个具体 tool？”**
-
----
-
-#### A. Recommended Action Modes
-
-MVP 阶段，建议先保留以下三类高层动作模式。
-
-**1. `refine_from_existing_state`**
-
-表示当前轮不发起新的 evidence acquisition，而是基于已有 state 继续推进 research。
-
-适用情况通常包括：
-
-- 当前 evidence 已基本足够，当前更适合 refine findings
-- 当前 `top_gap` 不值得继续追
-- 当前 findings 已接近可收束状态
-- 当前预算或上下文压力不适合继续扩 acquisition
-
----
-
-**2. `memory_backed_acquisition`**
-
-表示当前轮需要补充证据，但优先通过 memory path 获取，而不是直接走外部 acquisition。
-
-适用情况通常包括：
-
-- 当前 gap 可能由已有 session memory、long-term memory 或 research knowledge 补足
-- 当前 evidence need 对 freshness 要求不高
-- 当前有较高概率通过已有内部 knowledge 低成本推进 research
-
-在该模式下，后续 `action_request` 应主要约束在 memory-related action family 内。
-
----
-
-**3. `external_acquisition`**
-
-表示当前轮需要通过外部 source 或更明确的 tool-assisted path 获取新 evidence。
-
-适用情况通常包括：
-
-- 当前 `top_gap` 属于 `missing`、`stale`、`imbalanced` 等更依赖新 evidence 的类型
-- memory path 不足以解决当前问题
-- 当前 evidence need 需要更细粒度、更新鲜或更可追溯的外部材料
-
-在该模式下，后续 `action_request` 应主要约束在 external acquisition family 内。
-
----
-
-#### B. What Action Modes Do and Do Not Decide
-
-`action_mode` 只决定当前轮的**高层路径**，不直接决定：
-
-- 最终使用哪个具体 tool
-- query 如何构造
-- retrieval 参数如何设置
-- fallback 如何具体执行
-
-这些内容应由后续 `action_request` 构造和 Tool Execution Layer 消费。
-
-因此：
-
-- `action_mode` 决定当前轮的大方向
-- `action_request` 将这一方向细化为可执行请求
-- Tool Execution Layer 负责执行该请求，而不是重新做高层研究决策
-
----
-
-#### C. Relationship to Available Capabilities
-
-`action_mode` 的选择应受 `available_capabilities` 约束。
-
-例如：
-
-- 没有可用的 external capability 时，不应选择 `external_acquisition`
-- memory path 不足以满足当前 `next_evidence_need` 时，不应机械地选择 `memory_backed_acquisition`
-- 当前没有必要引入新 evidence 时，应优先考虑 `refine_from_existing_state`
-
-因此，`action_mode` 是：
-
-**在当前 `top_gap`、`next_evidence_need` 与当前可用能力共同约束下，Research Executor 做出的高层动作选择。**
-
----
-
-#### D. Recommended Output Field
-
-MVP 阶段，建议本小节至少产出以下字段：
-
-**字段：`action_mode`**
-
-含义：当前轮的高层动作模式。
-
-推荐枚举值：
-
-- `refine_from_existing_state`
-- `memory_backed_acquisition`
-- `external_acquisition`
-
----
-
-#### E. Practical Design Principle
-
-本设计建议：
-
-- 由 **Research Executor** 负责 `action_mode` 的选择
-- 由 **Research Executor** 进一步构造与该模式一致的 `action_request`
-- 由 **Tool Execution Layer** 负责执行 `action_request`
-
-因此，本小节中的 `High-level Action Modes` 应被理解为：
-
-**Research Executor 在 evidence acquisition 之前做出的高层路径决策。**
-
-### 4.5.4 Action Mode Decision Criteria
-
-`action_mode` 的选择不应完全依赖纯规则，也不应完全依赖无约束的 LLM 判断。
-
-更合理的做法是采用 **“规则预筛 + LLM 语义判断”** 的两阶段方式：
-
-1. **先由规则** 基于 capability、budget 和明显条件筛掉不成立的模式
-2. **再由 LLM** 在剩余候选模式中选择最合适的 `action_mode`
-
-MVP 阶段，候选模式为：
-
-- `refine_from_existing_state`
-- `memory_backed_acquisition`
-- `external_acquisition`
-
----
-
-#### A. Stage 1: Rule-based Gating
-
-这一阶段由**规则**完成，目标是形成：
-
-```
-candidate_action_modes
-```
-
-**1. 保留 `refine_from_existing_state` 的条件**
-
-**由规则判断**
-
-当出现以下情况时，应保留该模式：
-
-- `finding_maturity = stable`
-- `top_gap_severity = optional`
-- `top_gap_nature = none`
-- `remaining_iteration_budget` 已较低
-- `input_budget_pressure = high`
-
----
-
-**2. 保留 `memory_backed_acquisition` 的条件**
-
-**由规则判断**
-
-当出现以下情况时，应保留该模式：
-
-- `available_capabilities` 中存在 memory-related capabilities
-- `next_evidence_need.freshness_requirement != fresh_required`
-- `top_gap_nature` 不明显要求外部新证据
-- 当前问题有可能由已有 memory 补足
-
----
-
-**3. 保留 `external_acquisition` 的条件**
-
-**由规则判断**
-
-当出现以下情况时，应保留该模式：
-
-- `available_capabilities` 中存在 external acquisition capabilities
-- `top_gap_nature` 更依赖新外部 evidence，例如：
-    - `missing`
-    - `stale`
-    - `imbalanced`
-- `next_evidence_need.freshness_requirement = fresh_required`
-- memory path 明显不满足当前 evidence need
-
----
-
-**4. Hard Exclusion Rules**
-
-**由规则判断**
-
-以下情况可直接排除某些模式：
-
-- 无 memory capability
-→ 排除 `memory_backed_acquisition`
-- 无 external capability
-→ 排除 `external_acquisition`
-- `remaining_iteration_budget <= 0`
-→ 排除 acquisition 类模式，只保留 `refine_from_existing_state`
-- `input_budget_pressure = high` 且 `top_gap_severity != blocking`
-→ acquisition 类模式降权，优先保留 `refine_from_existing_state`
-
----
-
-#### B. Stage 2: Model-assisted Selection
-
-如果规则筛完后只剩一个候选模式，则**直接由规则**选定。
-
-只有当多个候选模式同时成立时，才由 **LLM** 在候选集合中做最终选择。
-
-**由 LLM 判断的重点包括：**
-
-- 哪种模式最可能解决当前 `top_gap`
-- 哪种模式最匹配当前 `next_evidence_need`
-- 哪种模式最可能推进当前 findings
-- external acquisition 是否真的必要，而不只是“可用”
-
-这里的关键是：
-
-**LLM 只在候选集合内做语义判断，不突破规则约束。**
-
----
-
-#### C. Default Preference Order
-
-当多个模式都可行，且 LLM 没有明显偏好时，建议采用以下默认顺序：
-
-1. `refine_from_existing_state`
-2. `memory_backed_acquisition`
-3. `external_acquisition`
-
-这体现了当前设计的基本倾向：
-
-- 先避免不必要 acquisition
-- 需要 acquisition 时，优先 memory path
-- 只有 memory 不足或不适配时，才升级到 external acquisition
-
----
-
-#### D. Recommended Output Fields
-
-本小节至少应产出：
-
-```
+```text
 action_mode
+preferred_family
+retrieval_query
 action_rationale
+acquisition_paths_exhausted
 ```
 
-**字段：`action_mode`**
-
-含义：当前轮最终选定的高层动作模式。
-
-推荐枚举值：
-
-- `refine_from_existing_state`
-- `memory_backed_acquisition`
-- `external_acquisition`
-
-**字段：`action_rationale`**
-
-含义：用 1~3 句说明为什么当前轮选择该模式。
-
-如果由规则直接确定，也应给出简短规则化说明；如果由 LLM 选出，也应给出简短语义理由。
-
----
-
-#### E. Practical Decision Flow
-
-MVP 阶段可采用以下流程：
-
-1. Read `top_gap`, `next_evidence_need`, findings state, and runtime constraints
-2. **Apply rule-based gating** to form `candidate_action_modes`
-3. If only one candidate remains, **select it by rule**
-4. If multiple candidates remain, **ask LLM to choose among them**
-5. Emit `action_mode` and `action_rationale`
-
-因此，本小节的核心原则是：
-
-**硬约束与明显条件由规则控制，语义匹配与候选模式间权衡由 LLM 辅助完成。**
-
-### 4.5.5 Action Request Construction
-
-在当前设计中，`4.5.4` 已选定当前轮的 `action_mode`。
-
-因此，`4.5.5` 的职责不再是重新判断走哪条路径，而是把该结果转换成传给 Tool Execution Layer 的执行输入对象，即 **`action_request`**。
-
-这里的层次应区分为：
-
-- **`action_mode`**：高层路径决策
-- **`action_request`**：执行层输入对象
-- **`evidence_acquisition_intent`**：`action_request` 中的核心 payload，用于表达本轮 acquisition 的意图
-
----
-
-#### A. When `action_request` Is Needed
-
-如果：
-
-- `action_mode = refine_from_existing_state`
-
-则：
-
-```
-action_request = null
-```
-
-如果：
-
-- `action_mode = memory_backed_acquisition`
-- `action_mode = external_acquisition`
-
-则应构造 `action_request`。
-
----
-
-#### B. Recommended Request Envelope
-
-MVP 阶段，建议：
-
-```
-action_request = {
-  action_mode,
-  evidence_acquisition_intent,
-  fallback_policy,
-  preferred_tool
-}
-```
-
-其中：
-
-- `action_mode`：当前轮已选定的高层动作模式
-- `evidence_acquisition_intent`：本轮 acquisition 的结构化意图
-- `fallback_policy`：失败时允许的 fallback 策略
-- `preferred_tool`：若已明确偏好某个 tool，可选传入
-
----
-
-#### C. Evidence Acquisition Intent
-
-MVP 阶段，建议 `evidence_acquisition_intent` 至少包含：
-
-```
-target_scope
-target_problem
-gap_context
-evidence_goal
-evidence_shape
-constraints
-success_hint
-```
-
-其中：
-
-**`target_scope`**：这轮 acquisition 服务于哪个研究单元
-
-例如某个 `sub_question`、`candidate`、`comparison_dimension` 或 `finding`
-
-**`target_problem`**：这轮到底要回答什么问题
-
-应是明确的问题表达，而不是泛泛主题
-
-**`gap_context`**：当前为什么要查
-
-建议至少包含：
-
-```
-gap_scope
-gap_nature
-gap_severity
-```
-
-**`evidence_goal`**：本轮 acquisition 的直接目标
-
-推荐枚举值：
-
-- `establish_coverage`
-- `strengthen_support`
-- `resolve_ambiguity`
-- `resolve_conflict`
-- `refresh_status`
-- `rebalance_comparison`
-- `improve_actionability`
-
-**`evidence_shape`**：希望拿回什么类型的 evidence
-
-建议至少包含：
-
-```
-desired_evidence_kind
-freshness_requirement
-breadth
-```
-
-例如：
-
-- `desired_evidence_kind`：`direct_fact` / `supporting_evidence` / `disambiguating_evidence` / `comparison_evidence` / `status_evidence`
-- `freshness_requirement`：`normal` / `fresh_preferred` / `fresh_required`
-- `breadth`：`narrow` / `normal` / `broad`
-
-**`constraints`**：执行层必须遵守的硬约束
-
-建议至少包含：
-
-```
-allowed_source_families
-preferred_source_families
-blocked_source_families
-max_results
-```
-
-**`success_hint`**：什么样的结果算对当前轮有帮助
-
-它只是结果偏好提示，不是最终质量裁判
-
----
-
-#### D. Mode-specific Constraints
-
-如果：
-
-- `action_mode = memory_backed_acquisition`
-
-则 `constraints.allowed_source_families` 应限制在 memory families 内，例如：
-
-- `session_memory_lookup`
-- `long_term_memory_lookup`
-- `research_knowledge_recall`
-
-如果：
-
-- `action_mode = external_acquisition`
-
-则 `constraints.allowed_source_families` 应限制在 external families 内，例如：
-
-- `docs_search`
-- `paper_search`
-- `github_lookup`
-- `web_search`
-
----
-
-#### E. Validation Rules
-
-执行前至少检查：
-
-- `action_mode` 与 `action_request` 是否一致
-- `allowed_source_families` 是否与 `action_mode` 一致
-- `preferred_tool` 若存在，是否属于允许 family
-- `blocked_source_families` 是否与 allowed/preferred 配置冲突
-- `freshness_requirement` 是否与允许的 source family 相容
-- `target_problem`、`evidence_goal` 与 `next_evidence_need` 是否一致
-
----
-
-#### F. Practical Note
-
-Research Executor 负责构造 `action_request`。
-
-Tool Execution Layer 负责在该 request 给定的边界内：
-
-- 选择具体 tool
-- 生成 query
-- 执行
-- fallback
-- 标准化结果
-
-因此，本小节的核心是：
-
-**把上游的研究决策，转成下游可执行的 acquisition intent。**
-
-#### G. Example
-
-```json
-{
-  "action_mode": "external_acquisition",
-  "evidence_acquisition_intent": {
-    "target_scope": "sub_question: retrieval_baseline_need",
-    "target_problem": "What is the recommended retrieval baseline for this use case?",
-    "gap_context": {
-      "gap_scope": "sub_question_level",
-      "gap_nature": "missing",
-      "gap_severity": "blocking"
-    },
-    "evidence_goal": "establish_coverage",
-    "evidence_shape": {
-      "desired_evidence_kind": "direct_fact",
-      "freshness_requirement": "fresh_preferred",
-      "breadth": "narrow"
-    },
-    "constraints": {
-      "allowed_source_families": ["docs_search", "web_search"],
-      "preferred_source_families": ["docs_search"],
-      "blocked_source_families": [],
-      "max_results": 5
-    },
-    "success_hint": "At least one direct official guidance statement is preferred."
-  },
-  "fallback_policy": "fallback_within_same_family",
-  "preferred_tool": null
-}
-```
-
-### 4.5.6 Outputs
-
-本小节前面的步骤，最终应产出一组可被后续执行层直接消费的结构化结果。
-
-MVP 阶段，建议至少输出以下字段：
-
-```
-action_mode
-action_request
-action_rationale
-```
-
----
-
-**字段：`action_mode`**
-
-含义：当前轮最终选定的高层动作模式。
-
-推荐枚举值：
-
-- `refine_from_existing_state`
-- `memory_backed_acquisition`
-- `external_acquisition`
-
-该字段主要供 Research Executor / runtime control flow 使用，用于决定当前轮后续分支。
-
----
-
-**字段：`action_request`**
-
-含义：传给 Tool Execution Layer 的执行输入对象。
-
-如果：
-
-- `action_mode = refine_from_existing_state`
-
-则：
-
-```
-action_request = null
-```
-
-如果：
-
-- `action_mode = memory_backed_acquisition`
-- `action_mode = external_acquisition`
-
-则应输出结构化的 `action_request`。
-
-其具体结构定义见 `4.5.5 Action Request Construction`。
-
-该字段主要供 Tool Execution Layer 使用，用于：
-
-- 生成 query
-- 选择具体 tool
-- 执行
-- fallback
-- 标准化结果
-
----
-
-**字段：`action_rationale`**
-
-含义：用 1~3 句说明为什么当前轮选择该 `action_mode`。
-
-如果当前 mode 由规则直接确定，应给出简短规则化说明；
-
-如果由 LLM 在候选模式中选出，应给出简短语义理由。
-
-该字段主要用于：
-
-- observability
-- tracing
-- debugging
-- evaluation
-
----
-
-#### Optional Outputs
-
-如需增强可观测性，可再增加：
-
-```
-candidate_action_modes
-decision_summary
-```
-
-其中：
-
-- `candidate_action_modes`：规则预筛后保留的候选 modes
-- `decision_summary`：对本轮 action decision 的简短总结
-
-MVP 阶段可选。
-
----
-
-#### Recommended Minimum Output Set
-
-MVP 阶段，建议 `4.5` 整体至少输出：
-
-```
-action_mode
-action_request
-action_rationale
-```
-
-这组字段已经足以支持：
-
-- 当前轮控制流分支
-- 执行层落地
-- 基本可观测性
-
----
-
-#### Practical Output Principle
-
-`4.5` 的输出应满足：
-
-- **可执行**：执行层能直接消费 `action_request`
-- **可控制**：运行时能基于 `action_mode` 决定分支
-- **可解释**：能通过 `action_rationale` 理解当前轮决策
-
-因此，本小节的输出应被理解为：
-
-**Research Executor 对当前轮“如何推进”的正式结构化决策结果。**
-
-### 4.5.7 High-level Decision Flow
-
-本小节前面的步骤可以概括为以下高层流程：
-
-1. Read `top_gap`, `next_evidence_need`, current findings state, and runtime constraints.
-2. Apply rule-based gating to form `candidate_action_modes`.
-3. If only one candidate remains, select it directly.
-4. If multiple candidates remain, use LLM-assisted judgment to select the final `action_mode`.
-5. If `action_mode = refine_from_existing_state`, emit `action_request = null`.
-6. If `action_mode` is an acquisition mode, construct `action_request` with a structured `evidence_acquisition_intent`.
-7. Emit `action_mode`, `action_request`, and `action_rationale` for downstream execution.
-
-因此，`4.5` 的整体作用可以概括为：
-
-**在 `top_gap` 和 `next_evidence_need` 已形成之后，先决定当前轮是否进入 acquisition，以及进入哪类 acquisition path，再将该决策转换为执行层可消费的结构化请求。**
+`acquisition_paths_exhausted` 由系统根据当前 available families 与 bounded low-value history 计算，不由 LLM 自报。
+Assessment 日志记录 action、preferred family、query fingerprint、rationale 和路径耗尽状态；不记录完整 query。
 
 ## 4.6 Relationship Between Planning Artifacts and Execution
 
@@ -3690,7 +2950,7 @@ cross_round_merge_summary
 
 - tool categories
 - tool capability metadata
-- `Research Executor` 如何选择 tool
+- `Research Executor` 如何选择 action、preferred family 和初始 query
 - `Tool Execution Layer` 的职责边界
 - memory-based recall 与 external retrieval 的区别
 - retrieval 何时触发
@@ -3710,7 +2970,7 @@ cross_round_merge_summary
 
 因此，`5. Tooling and Retrieval Model` 的职责，不是重新做高层 research decision，而是负责：
 
-- 接收 `action_request`
+- 接收 `ToolExecutionLayerRequest`，其中包含 action mode、preferred family 和可选的 `provided_query`
 - 做 family / tool 路由
 - 生成 query / execution request
 - 执行 retrieval
@@ -3719,7 +2979,7 @@ cross_round_merge_summary
 
 在整体链路中，本节位于：
 
-- `4.5 Action Request Construction` 之后
+- `4.5 Assessment-owned Action Decision and TEL Boundary` 之后
 - `6. Evidence Processing Model` 之前
 
 它的作用，是将上游已经形成的 acquisition intent 落成实际的 retrieval execution，并将执行结果转换为下游可消费的标准化 retrieval result。
@@ -3773,13 +3033,13 @@ cross_round_merge_summary
 
 这类高层 research state。
 
-这些信息应先被上游收敛进 `action_request`，再由本节间接消费。
+这些信息应先被上游收敛进 `ToolExecutionLayerRequest`，再由本节间接消费。
 
 ---
 
 ### A. Inputs from Research Executor
 
-#### A.1 `action_request`
+#### A.1 `ToolExecutionLayerRequest`
 
 **来源：Research Executor**
 
@@ -3788,7 +3048,10 @@ cross_round_merge_summary
 建议至少包含：
 
 - `action_mode`
-- `evidence_acquisition_intent`
+- `target_problem`、`evidence_goal` 与 `evidence_shape`
+- `preferred_source_families`
+- `provided_query`
+- `available_families`、`allowed_source_families` 与 `blocked_source_families`
 - `fallback_policy`
 - `preferred_tool`
 
@@ -4042,7 +3305,7 @@ cross_round_merge_summary
 
 ---
 
-#### A.2 `available_capabilities`
+#### A.2 `available_families`
 
 **来源：Research Executor**
 
@@ -4973,11 +4236,13 @@ routing_rationale
 - `selected_family`
 - `selected_tool`
 
-之后，将当前轮 acquisition intent 转换为可执行的 retrieval request。
+之后，将当前轮 acquisition intent 转换为可执行的 retrieval request。当前请求还可能携带
+Assessor 已生成的 `provided_query`。
 
 本小节负责：
 
-- 生成 retrieval-oriented query
+- 在未提供 `provided_query` 时生成 retrieval-oriented query
+- 在提供 `provided_query` 时跳过 Query Generation 并复用该 query
 - 按 selected family 组织 request 构造原则
 - 按 selected tool 生成最终 payload
 - 结合 recent retrieval 轨迹避免重复低价值 query pattern
@@ -4989,9 +4254,9 @@ routing_rationale
 - 决定 retry / fallback
 - 判断 retrieval result 是否已构成高质量 evidence
 
-因此，本小节中的 query generation 应被理解为：
+因此，本小节中的 query generation 应被理解为一个兼容 fallback：
 
-**在当前轮 intent 和已选路径约束下的受控转换步骤。**
+**上游没有生成 query 时，才在当前轮 intent 和已选路径约束下执行受控转换。**
 
 ### 5.6.2 Inputs
 
@@ -5293,7 +4558,11 @@ recent_retrieval_attempts
 
 ### 5.6.3 Query Generation
 
-本小节的目标，是在 `selected_family` 和 `selected_tool` 已确定后，将当前轮 retrieval intent 转换为适合当前路径的初始 `generated_query`。
+本小节的目标，是在 `selected_family` 已确定且 `provided_query` 为空时，将当前轮 retrieval intent 转换为适合当前路径的初始 `generated_query`。
+
+若 `provided_query` 非空，TEL 不调用 Query Generation Service，而是将其包装成标准
+`RetrievalQueryGenerationResult`，并用 `query_source=upstream_assessment` 标记来源。
+即使 Family Selection 或 broader fallback 选择了不同 family，也继续复用这条 query。
 
 系统不应直接将 `target_problem` 原样作为最终 query，主要原因是：
 

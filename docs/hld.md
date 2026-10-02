@@ -2877,12 +2877,12 @@ For example:
 
 ### Interaction with the Tool and Retrieval Layer
 
-The Research Executor does not directly embed retrieval logic inside itself. Instead, it requests evidence through the Tool and Retrieval Layer.
+The Research Executor does not directly embed retrieval execution logic inside itself. Its assessment selects the high-level action, a preferred retrieval family, and an initial query, then requests evidence through the Tool and Retrieval Layer.
 
 This separation is intentional:
 
-- the Research Executor decides **what to look for**
-- the Tool and Retrieval Layer decides **how to retrieve it**
+- the Research Executor decides **what to look for**, whether acquisition is needed, and which family it prefers
+- the Tool and Retrieval Layer validates the executable family, selects the concrete tool, and decides **how to retrieve it**
 - the Evidence Processing Component decides **how to transform retrieved material into usable evidence**
 
 This separation keeps the Research Executor focused on execution control and reasoning rather than on low-level retrieval mechanics.
@@ -3086,20 +3086,20 @@ The Research Executor is the core adaptive execution engine of the system. It tr
 
 ## Tool Execution Layer
 
-The Tool Execution Layer provides the execution interface for the tools available to the system. It sits below the Research Executor and is responsible for executing the tool calls selected by the Research Executor.
+The Tool Execution Layer provides the execution interface for the retrieval capabilities available to the system. It sits below the Research Executor and is responsible for final family selection, concrete tool selection, execution, retry, and fallback.
 
-This layer does **not** decide which tool should be used. The Research Executor remains aware of the available toolset for the current stage and dynamically decides which tool to invoke based on the current task objective, evidence gaps, intermediate findings, and workflow context. The Tool Execution Layer is responsible for carrying out the selected tool call, handling backend-specific access logic, and returning results in a consistent internal format.
+The Research Executor supplies an `action_mode`, a strong `preferred_family`, and normally an assessment-generated query. The Tool Execution Layer applies availability, allow-list, and block-list constraints before making the final family selection. A legal preferred family is selected first; if it is unavailable, TEL chooses another legal family. TEL then selects the concrete tool, handles backend-specific access logic, and returns normalized results.
 
 ### Role in the Overall Architecture
 
 The Tool Execution Layer answers the question:
 
-**Given a tool selected by the Research Executor, how should the system execute that tool call and return usable results?**
+**Given an acquisition intent, preferred family, and optional upstream query, which executable path should be used and how should it return usable results?**
 
 This layer exists to separate:
 
-- **tool selection and reasoning control**, which belong to the Research Executor
-- **tool execution and backend access details**, which belong to the Tool Execution Layer
+- **research-state reasoning and preferred-path selection**, which belong to the Research Executor
+- **final family/tool selection, execution, and backend access details**, which belong to the Tool Execution Layer
 
 This separation keeps the Research Executor focused on adaptive reasoning rather than infrastructure-specific logic.
 
@@ -3107,13 +3107,18 @@ This separation keeps the Research Executor focused on adaptive reasoning rather
 
 The Research Executor decides:
 
-- which tool to use
+- whether acquisition is needed
+- the preferred retrieval family
+- the initial retrieval query
 - when to use it
 - whether another tool call is needed
 - how tool outputs should influence the next iteration
 
 The Tool Execution Layer is responsible for:
 
+- validating and selecting the final executable family
+- selecting the concrete tool within that family
+- skipping query generation when an upstream query is provided, or generating one otherwise
 - executing the selected tool call
 - interacting with the correct backend or source adapter
 - normalizing returned data into a consistent structure
@@ -3121,8 +3126,8 @@ The Tool Execution Layer is responsible for:
 
 In short:
 
-- the **Research Executor** decides **what tool to use next**
-- the **Tool Execution Layer** executes that tool call
+- the **Research Executor** decides **what evidence to seek and which family to prefer**
+- the **Tool Execution Layer** chooses the executable family/tool and performs the call
 
 ### What This Layer Includes
 
@@ -3257,7 +3262,8 @@ Typical fallback behavior may include:
 
 - returning an empty but well-formed result set
 - returning structured execution failure metadata
-- allowing the Research Executor to decide whether to retry, switch tools, or continue with partial evidence
+- performing bounded retry or broader-family fallback inside TEL
+- allowing the Research Executor to decide the next research iteration from the normalized TEL result
 
 ### Observability
 
@@ -3279,11 +3285,11 @@ For the MVP, the Tool Execution Layer may support only a limited set of tools, s
 - document search tools
 - repository/document readers
 
-What matters for the MVP is not tool breadth, but clear separation between tool selection and tool execution.
+What matters for the MVP is not tool breadth, but a clear separation between research-state reasoning and executable family/tool routing.
 
 ### Summary
 
-The Tool Execution Layer is the execution interface for the tools available to the system. It does not choose which tool to use; that responsibility remains with the Research Executor. Instead, it executes the selected tool call, handles backend-specific access details, and returns results in a consistent structure.
+The Tool Execution Layer is the execution interface for the retrieval capabilities available to the system. The Research Executor supplies the action, preferred family, and normally the initial query; TEL makes the final executable family/tool selection, performs the call, handles retry/fallback, and returns results in a consistent structure.
 
 ## Evidence Processing Component
 
@@ -3310,7 +3316,7 @@ Without this separation, the Research Executor would need to directly handle raw
 The Research Executor remains the main controller of the research stage. It decides:
 
 - what evidence is needed
-- which tool to use
+- which retrieval family to prefer and what initial query to use
 - whether another iteration is needed
 
 The Evidence Processing Component is responsible for:

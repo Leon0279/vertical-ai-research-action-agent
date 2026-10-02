@@ -148,7 +148,6 @@ def _context(
             session_id="session-1",
             latency_budget_ms=5_000,
             iteration_budget=3,
-            scope_restrictions=["仅评估当前项目可采用的方案"],
             available_families=[
                 FamilyName.RESEARCH_KNOWLEDGE_RECALL,
                 FamilyName.DOCS_SEARCH,
@@ -262,6 +261,7 @@ def test_prompt_is_self_contained_and_includes_distilled_context() -> None:
     assert '"runtime_limits"' in prompt
     assert "上一轮决定先比较读写延迟" in prompt
     assert "优先使用可核验资料" in prompt
+    assert "需要低运维成本" in prompt
     assert '"available_families"' in prompt
     assert "research_knowledge_recall" in prompt
     assert "四个列表可以全部返回空列表" in prompt
