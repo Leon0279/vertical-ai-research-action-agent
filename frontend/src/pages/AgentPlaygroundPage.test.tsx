@@ -96,4 +96,71 @@ describe('AgentPlaygroundPage', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent('/agent/session-1');
     expect(screen.getByText('运行完成')).toBeInTheDocument();
   });
+
+  it('accepts and submits the maximum iteration budget', async () => {
+    localStorage.setItem(
+      'vaa.debug.workspace.v1',
+      JSON.stringify({
+        userId: 'user-99',
+        projectId: '',
+        sessionId: 'session-99',
+        iterationBudget: 99,
+      }),
+    );
+    server.use(
+      http.post('http://localhost/api/v1/agent/run', async ({ request }) => {
+        const body = await request.json();
+        expect(body).toMatchObject({ iteration_budget: 99 });
+        return HttpResponse.json({
+          trace_id: 'trace-99',
+          task_type: 'research',
+          workflow_pattern: 'research',
+          answer: '完成',
+          summary: '完成',
+          recommendation: null,
+          action_items: [],
+          citations: [],
+          confidence: 0.9,
+          caveats: [],
+          stage_history: [],
+          metadata: {},
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderWithProviders(<AgentPlaygroundPage />);
+
+    const iterationBudget = screen.getByRole('spinbutton', {
+      name: '迭代预算',
+    });
+    expect(iterationBudget).toHaveValue('99');
+    expect(iterationBudget).toHaveAttribute('aria-valuemax', '99');
+
+    await user.type(screen.getByLabelText('研究请求'), '验证最大迭代预算');
+    await user.click(screen.getByRole('button', { name: /运行 Agent/ }));
+
+    expect(await screen.findByText('运行完成')).toBeInTheDocument();
+  });
+
+  it.each([0, 100])(
+    'falls back to the default iteration budget for persisted value %s',
+    (iterationBudget) => {
+      localStorage.setItem(
+        'vaa.debug.workspace.v1',
+        JSON.stringify({
+          userId: 'user-invalid',
+          projectId: '',
+          sessionId: 'session-invalid',
+          iterationBudget,
+        }),
+      );
+
+      renderWithProviders(<AgentPlaygroundPage />);
+
+      expect(
+        screen.getByRole('spinbutton', { name: '迭代预算' }),
+      ).toHaveValue('2');
+    },
+  );
 });

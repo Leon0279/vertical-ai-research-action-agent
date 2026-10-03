@@ -1,0 +1,3 @@
+export const MIN_ITERATION_BUDGET = 1;
+export const MAX_ITERATION_BUDGET = 99;
+export const DEFAULT_ITERATION_BUDGET = 2;

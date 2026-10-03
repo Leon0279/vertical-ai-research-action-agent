@@ -272,8 +272,8 @@
         "properties": {
           "iteration_budget": {
             "default": 2,
-            "description": "可选字段。当前请求允许执行的最大 research iteration 数量。",
-            "maximum": 5.0,
+            "description": "可选字段。当前请求允许执行的最大 research iteration 数量，取值范围为 1 到 99。",
+            "maximum": 99.0,
             "minimum": 1.0,
             "title": "Iteration Budget",
             "type": "integer"

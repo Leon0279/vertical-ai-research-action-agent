@@ -30,6 +30,11 @@ import { AgentResult } from '../components/AgentResult';
 import { ConversationHistory } from '../components/ConversationHistory';
 import { PageHeading } from '../components/PageHeading';
 import { RequestError } from '../components/RequestError';
+import {
+  DEFAULT_ITERATION_BUDGET,
+  MAX_ITERATION_BUDGET,
+  MIN_ITERATION_BUDGET,
+} from '../config/agent';
 import { useElapsedSeconds } from '../hooks/useElapsedSeconds';
 import { useWorkspace } from '../state/workspace';
 
@@ -126,7 +131,8 @@ export function AgentPlaygroundPage() {
       userId: payload.user_id,
       projectId: payload.project_id ?? '',
       sessionId: payload.session_id ?? workspace.sessionId,
-      iterationBudget: payload.iteration_budget ?? 2,
+      iterationBudget:
+        payload.iteration_budget ?? DEFAULT_ITERATION_BUDGET,
     });
 
     const controller = new AbortController();
@@ -241,7 +247,11 @@ export function AgentPlaygroundPage() {
                 label="迭代预算"
                 rules={[{ required: true, message: '请选择迭代预算' }]}
               >
-                <InputNumber min={1} max={5} className="full-width" />
+                <InputNumber
+                  min={MIN_ITERATION_BUDGET}
+                  max={MAX_ITERATION_BUDGET}
+                  className="full-width"
+                />
               </Form.Item>
             </Col>
           </Row>

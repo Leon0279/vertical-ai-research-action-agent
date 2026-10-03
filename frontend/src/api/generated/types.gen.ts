@@ -147,7 +147,7 @@ export type AgentRunRequest = {
     /**
      * Iteration Budget
      *
-     * 可选字段。当前请求允许执行的最大 research iteration 数量。
+     * 可选字段。当前请求允许执行的最大 research iteration 数量，取值范围为 1 到 99。
      */
     iteration_budget?: number;
     /**

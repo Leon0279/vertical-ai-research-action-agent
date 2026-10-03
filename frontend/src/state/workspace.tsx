@@ -8,6 +8,12 @@ import {
   useState,
 } from 'react';
 
+import {
+  DEFAULT_ITERATION_BUDGET,
+  MAX_ITERATION_BUDGET,
+  MIN_ITERATION_BUDGET,
+} from '../config/agent';
+
 const STORAGE_KEY = 'vaa.debug.workspace.v1';
 
 export interface WorkspaceState {
@@ -34,7 +40,7 @@ const defaultWorkspace = (): WorkspaceState => ({
   userId: 'local-demo',
   projectId: '',
   sessionId: createSessionId(),
-  iterationBudget: 2,
+  iterationBudget: DEFAULT_ITERATION_BUDGET,
 });
 
 function readWorkspace(): WorkspaceState {
@@ -58,8 +64,8 @@ function readWorkspace(): WorkspaceState {
           : fallback.sessionId,
       iterationBudget:
         typeof parsed.iterationBudget === 'number' &&
-        parsed.iterationBudget >= 1 &&
-        parsed.iterationBudget <= 5
+        parsed.iterationBudget >= MIN_ITERATION_BUDGET &&
+        parsed.iterationBudget <= MAX_ITERATION_BUDGET
           ? parsed.iterationBudget
           : fallback.iterationBudget,
     };
