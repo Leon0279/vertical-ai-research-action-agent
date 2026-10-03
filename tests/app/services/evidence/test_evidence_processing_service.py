@@ -63,7 +63,10 @@ class EchoEvidenceLLMClient:
 
 
 def _echo_service() -> EvidenceProcessingService:
-    return EvidenceProcessingService(llm_client=EchoEvidenceLLMClient())
+    return EvidenceProcessingService(
+        llm_client=EchoEvidenceLLMClient(),
+        enable_llm_evidence_extraction=True,
+    )
 
 
 def _process(service: EvidenceProcessingService, request: EvidenceProcessingRequest):
@@ -301,7 +304,10 @@ def test_llm_json_successfully_structures_evidence() -> None:
             )
         ]
     )
-    service = EvidenceProcessingService(llm_client=llm)
+    service = EvidenceProcessingService(
+        llm_client=llm,
+        enable_llm_evidence_extraction=True,
+    )
 
     result = _process(
         service,
@@ -330,7 +336,10 @@ def test_llm_prompt_uses_minimal_material_context() -> None:
             )
         ]
     )
-    service = EvidenceProcessingService(llm_client=llm)
+    service = EvidenceProcessingService(
+        llm_client=llm,
+        enable_llm_evidence_extraction=True,
+    )
 
     _process(
         service,
@@ -383,7 +392,10 @@ def test_llm_json_object_from_adapter_is_processed() -> None:
             """{"decision":"keep","evidence_units":[{"content":"The API supports structured outputs.","evidence_type":"direct_fact"}]}"""
         ]
     )
-    service = EvidenceProcessingService(llm_client=llm)
+    service = EvidenceProcessingService(
+        llm_client=llm,
+        enable_llm_evidence_extraction=True,
+    )
 
     result = _process(
         service,
@@ -411,7 +423,10 @@ def test_invalid_llm_output_drops_current_material_without_crashing() -> None:
             ),
         ]
     )
-    service = EvidenceProcessingService(llm_client=llm)
+    service = EvidenceProcessingService(
+        llm_client=llm,
+        enable_llm_evidence_extraction=True,
+    )
 
     result = _process(
         service,
@@ -455,7 +470,10 @@ def test_same_type_exact_evidence_consolidates_source_references() -> None:
             ),
         ]
     )
-    service = EvidenceProcessingService(llm_client=llm)
+    service = EvidenceProcessingService(
+        llm_client=llm,
+        enable_llm_evidence_extraction=True,
+    )
 
     result = _process(
         service,
@@ -500,7 +518,10 @@ def test_different_evidence_types_do_not_consolidate() -> None:
             ),
         ]
     )
-    service = EvidenceProcessingService(llm_client=llm)
+    service = EvidenceProcessingService(
+        llm_client=llm,
+        enable_llm_evidence_extraction=True,
+    )
 
     result = _process(
         service,
@@ -593,17 +614,44 @@ def test_memory_passthrough_never_calls_llm_or_embedding() -> None:
     assert embedding.call_count == 0
 
 
-def test_short_external_material_calls_llm_but_not_embedding() -> None:
+def test_short_external_material_uses_deterministic_passthrough_by_default(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     embedding = NeverCalledEmbeddingClient()
-    llm = EchoEvidenceLLMClient()
+    llm = NeverCalledLLMClient()
     service = EvidenceProcessingService(llm_client=llm, embedding_client=embedding)
     content = "A short external source contains a useful fact."
 
-    result = _process(service, _request([_item("web-1", "web-1", content)]))
+    with caplog.at_level(logging.INFO, logger="app.services.evidence"):
+        result = _process(service, _request([_item("web-1", "web-1", content)]))
 
     assert result.processing_status == "success"
+    assert llm.call_count == 0
     assert embedding.call_count == 0
-    assert _prompt_input(llm.prompts[0])["material"]["content"] == content
+    assert result.evidence_processing_summary.llm_invalid_output_count == 0
+    unit = result.processed_evidence_units[0]
+    assert unit.content == content
+    assert unit.evidence_type == "supporting_signal"
+    assert unit.source_references[0].source_id == "web-1"
+    assert unit.source_family == FamilyName.DOCS_SEARCH
+    assert unit.target_problem == "Choose a retrieval baseline"
+    assert unit.evidence_goal == "establish_coverage"
+    assert unit.metadata["structuring_method"] == "deterministic_passthrough"
+    assert unit.metadata["selected_tool"] == "tool_v1"
+    assert unit.metadata["generated_query"] == "retrieval baseline docs"
+    events = [getattr(record, "event", None) for record in caplog.records]
+    assert "evidence_processing_chunk_selection_completed" in events
+    assert "evidence_processing_material_prepared" not in events
+    completed = next(
+        record
+        for record in caplog.records
+        if getattr(record, "event", None)
+        == "evidence_processing_material_completed"
+    )
+    assert completed.evidence_decision == "deterministic_passthrough"
+    assert completed.output_evidence_count == 1
+    assert not hasattr(completed, "llm_prompt_char_count")
+    assert not hasattr(completed, "llm_duration_ms")
 
 
 @pytest.mark.parametrize(
@@ -629,7 +677,10 @@ def test_external_llm_output_constraints_fail_closed(payload: dict[str, Any]) ->
     llm = FakeLLMClient([json.dumps(payload)])
 
     result = _process(
-        EvidenceProcessingService(llm_client=llm),
+        EvidenceProcessingService(
+            llm_client=llm,
+            enable_llm_evidence_extraction=True,
+        ),
         _request([_item("web-1", "web-1", "Useful external material.")]),
     )
 
@@ -644,7 +695,10 @@ def test_all_normal_llm_drops_return_no_result() -> None:
     )
 
     result = _process(
-        EvidenceProcessingService(llm_client=llm),
+        EvidenceProcessingService(
+            llm_client=llm,
+            enable_llm_evidence_extraction=True,
+        ),
         _request([_item("web-1", "web-1", "Irrelevant external material.")]),
     )
 
@@ -654,7 +708,10 @@ def test_all_normal_llm_drops_return_no_result() -> None:
 
 def test_memory_success_plus_external_llm_failure_is_partial_success() -> None:
     llm = FakeLLMClient(["not json"])
-    service = EvidenceProcessingService(llm_client=llm)
+    service = EvidenceProcessingService(
+        llm_client=llm,
+        enable_llm_evidence_extraction=True,
+    )
 
     result = _process(
         service,
@@ -702,7 +759,10 @@ class ConcurrencyTrackingLLMClient:
 
 def test_external_processing_limits_concurrency_and_preserves_material_order() -> None:
     llm = ConcurrencyTrackingLLMClient()
-    service = EvidenceProcessingService(llm_client=llm)
+    service = EvidenceProcessingService(
+        llm_client=llm,
+        enable_llm_evidence_extraction=True,
+    )
 
     result = _process(
         service,
@@ -731,7 +791,10 @@ def test_external_material_logs_safe_selection_and_prompt_metadata(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     llm = EchoEvidenceLLMClient()
-    service = EvidenceProcessingService(llm_client=llm)
+    service = EvidenceProcessingService(
+        llm_client=llm,
+        enable_llm_evidence_extraction=True,
+    )
     secret_material = "PRIVATE_MATERIAL_CONTENT useful fact"
     request = _request([_item("web-1", "web-1", secret_material)])
     request.retrieval_trace.generated_query = "PRIVATE_QUERY_TEXT"
@@ -762,7 +825,7 @@ def test_long_external_material_logs_embedding_degradation(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     embedding = NeverCalledEmbeddingClient()
-    llm = EchoEvidenceLLMClient()
+    llm = NeverCalledLLMClient()
     service = EvidenceProcessingService(
         llm_client=llm,
         embedding_client=embedding,
@@ -785,9 +848,14 @@ def test_long_external_material_logs_embedding_degradation(
     assert degraded.selection_method == "lexical_fallback"
     assert degraded.embedding_fallback_reason == "embedding_AssertionError"
     assert degraded.selected_material_char_count <= 24_000
-    selected_content = _prompt_input(llm.prompts[0])["material"]["content"]
+    assert llm.call_count == 0
+    selected_content = result.processed_evidence_units[0].content
     assert len(selected_content) <= 24_000
     assert selected_content != content
+    assert (
+        result.processed_evidence_units[0].metadata["structuring_method"]
+        == "deterministic_passthrough"
+    )
 
 
 class FailingProviderLLMClient:
@@ -813,7 +881,10 @@ class FailingProviderLLMClient:
 def test_external_material_failure_logs_prompt_and_safe_provider_diagnostics(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    service = EvidenceProcessingService(llm_client=FailingProviderLLMClient())
+    service = EvidenceProcessingService(
+        llm_client=FailingProviderLLMClient(),
+        enable_llm_evidence_extraction=True,
+    )
 
     with caplog.at_level(logging.INFO, logger="app.services.evidence"):
         result = _process(

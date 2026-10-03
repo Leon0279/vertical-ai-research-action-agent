@@ -67,7 +67,7 @@ class EvidenceProcessingSummary(BaseModel):
         ge=0,
         description=(
             "可选字段，默认 0，必须大于等于 0。Evidence Processing 阶段丢弃的 material 数量。当前项目中有用："
-            "质量不足、LLM structuring 异常、LLM decision=drop 或没有产出任何 evidence unit 的 material 都会计入该值。"
+            "质量不足、可选 LLM structuring 异常、LLM decision=drop 或没有产出任何 evidence unit 的 material 都会计入该值。"
             "它不包含上游 TEL/family/tool 已经丢弃的 item；上游丢弃数量见 upstream_dropped_item_count。"
         ),
     )
@@ -76,8 +76,8 @@ class EvidenceProcessingSummary(BaseModel):
         ge=0,
         description=(
             "可选字段，默认 0，必须大于等于 0。consolidation 前初步结构化出的 evidence unit 数量。当前项目中有用："
-            "Research Knowledge material 会通过 memory passthrough 生成 supporting_signal；外部 material 则来自 LLM JSON payload "
-            "中通过校验的 evidence_units。"
+            "Research Knowledge material 会通过 memory passthrough 生成 supporting_signal；外部 material 默认通过"
+            " deterministic passthrough 生成 supporting_signal，显式启用 LLM 抽取时则来自通过校验的 JSON payload。"
         ),
     )
     merged_evidence_count: int = Field(
@@ -103,6 +103,7 @@ class EvidenceProcessingSummary(BaseModel):
             "可选字段，默认 0，必须大于等于 0。LLM structuring 失败或输出不合法的 material 数量。当前项目中有用："
             "LLM 调用异常、非 JSON、schema 校验失败、字段为空等导致单条 material 无法结构化时会计入该值；"
             "单条 material 失败不会让整个 service 失败，但可能导致 processing_status='partial_success'。"
+            "默认关闭 LLM evidence extraction 时该值保持为 0。"
         ),
     )
     upstream_acquisition_status: str | None = Field(

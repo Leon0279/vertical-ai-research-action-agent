@@ -289,6 +289,7 @@ class ApplicationServiceProvider(Provider):
         return EvidenceProcessingService(
             llm_client=llm_client,
             embedding_client=embedding_client,
+            enable_llm_evidence_extraction=False,
         )
 
     @provide

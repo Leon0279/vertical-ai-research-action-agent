@@ -59,7 +59,8 @@ class ProcessedEvidenceUnit(BaseModel):
         description=(
             "必填字段，不能为空字符串。面向当前任务整理后的 evidence 内容。当前项目中有用："
             "Research Knowledge Memory 通过 memory passthrough 使用 compact material.content；外部材料"
-            "则来自 LLM 结构化输出的 evidence_units[*].content。该字段应只包含 source-grounded 内容，"
+            "默认使用有界 material selection 的确定性透传内容，显式启用 LLM 抽取时才来自结构化输出。"
+            "该字段应只包含 source-grounded 内容，"
             "不应包含最终结论、建议、行动计划或额外推理过程。"
         ),
     )
@@ -123,7 +124,8 @@ class ProcessedEvidenceUnit(BaseModel):
         default_factory=dict,
         description=(
             "可选字段，默认空 dict。该 evidence unit 的处理过程和 provenance 扩展信息。当前项目中有用："
-            "EvidenceProcessingService 当前会写入 structuring_method（取值通常为 deterministic_fallback 或 llm）、"
+            "EvidenceProcessingService 当前会写入 structuring_method（取值通常为 memory_passthrough、"
+            "deterministic_passthrough 或 llm）、"
             "item_id（原始 NormalizedRetrievalItem.item_id）、selected_tool（从 retrieval_trace 或 source_summary 派生）、"
             "generated_query（从 retrieval_trace 派生）。"
             "当 evidence consolidation 合并 unit 时，还会写入 consolidated=True。"

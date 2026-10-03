@@ -1,4 +1,4 @@
-"""Bound and select external material before LLM evidence extraction."""
+"""Bound and select external material before evidence structuring."""
 
 from __future__ import annotations
 

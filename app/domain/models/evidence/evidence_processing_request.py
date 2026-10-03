@@ -39,7 +39,7 @@ class EvidenceProcessingRequest(BaseModel):
             "可选字段，默认空列表。Tool Execution Layer 最终返回的标准化候选材料列表。当前项目中有用："
             "EvidenceProcessingService 会把它作为主输入，先按 item_id、primary source ref + normalized content、"
             "same-source containment 做 deterministic dedup；Research Knowledge Memory 走 deterministic passthrough，"
-            "外部材料则经过有界 material selection 和 LLM structuring。"
+            "外部材料经过有界 material selection 后默认确定性透传；显式启用时才使用 LLM structuring。"
             "每个元素是 NormalizedRetrievalItem，包含 item_id、source_family、source_references、content、content_type、metadata。"
             "source_references 是正式 provenance 列表；metadata 中保留 tool/provider-specific 附加信息。为空时会短路返回 processing_status='no_result'。"
         ),

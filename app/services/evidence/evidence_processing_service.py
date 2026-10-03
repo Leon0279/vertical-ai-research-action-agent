@@ -101,10 +101,12 @@ Convert candidate materials into current-round processed evidence units."""
         embedding_client: EmbeddingClientProtocol | None = None,
         *,
         max_external_concurrency: int = 2,
+        enable_llm_evidence_extraction: bool = False,
     ) -> None:
         self._llm_client = llm_client
         self._material_selector = EvidenceMaterialSelector(embedding_client)
         self._max_external_concurrency = max(1, max_external_concurrency)
+        self._enable_llm_evidence_extraction = enable_llm_evidence_extraction
 
     async def process(
         self,
@@ -232,7 +234,7 @@ Convert candidate materials into current-round processed evidence units."""
             try:
                 units = await self._structure_external_material(request, material)
             except Exception:
-                return [], True
+                return [], self._enable_llm_evidence_extraction
         return units, False
 
     def _create_result(
@@ -393,18 +395,40 @@ Convert candidate materials into current-round processed evidence units."""
         prompt_fields: dict[str, int | str | None] = {}
         started_at: float | None = None
         try:
+            selection = await self._material_selector.select(request, material)
+            self._log_chunk_selection_completed(request, material, selection)
+            material_fields = self._material_log_fields(request, material)
+
+            if not self._enable_llm_evidence_extraction:
+                unit = self._evidence_unit(
+                    request=request,
+                    material=material,
+                    content=selection.content.strip(),
+                    evidence_type="supporting_signal",
+                    metadata={"structuring_method": "deterministic_passthrough"},
+                )
+                logger.info(
+                    "External evidence material was passed through deterministically.",
+                    extra={
+                        "event": "evidence_processing_material_completed",
+                        **material_fields,
+                        **self._selection_log_fields(selection),
+                        "evidence_decision": "deterministic_passthrough",
+                        "output_evidence_count": 1,
+                        "output_evidence_char_count": len(unit.content),
+                    },
+                )
+                return [unit]
+
             if self._llm_client is None:
                 raise RuntimeError("Evidence Processing LLM client is not configured.")
 
-            selection = await self._material_selector.select(request, material)
-            self._log_chunk_selection_completed(request, material, selection)
             prompt = self._build_prompt(
                 request,
                 material,
                 selected_content=selection.content,
             )
             prompt_fields = llm_prompt_log_fields(prompt)
-            material_fields = self._material_log_fields(request, material)
             logger.info(
                 "External evidence material is ready for LLM extraction.",
                 extra={
