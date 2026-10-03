@@ -584,7 +584,8 @@ canonical research loop 的基本目标是：
 - 当前轮应采用的 `action_mode`、`preferred_family` 和 `retrieval_query`
 
 Assessment LLM 在一次无状态调用中同时完成状态评估、gap prioritization 与高层 action 选择，
-避免再由独立组件重复解释同一组语义状态。系统随后严格校验 family 可用性、低价值历史和 query 重复情况。
+避免再由独立组件重复解释同一组语义状态。系统随后只确定性校验 family 可用性、action contract 和 query 基本合法性；
+近期检索历史作为 LLM 的判断参考，不形成 family 或 query blacklist。
 
 #### Step 2. Branch on the Selected Action
 
@@ -1789,11 +1790,11 @@ prioritization_summary
 Assessor 只能从当前有效 `available_families` 选择 preferred family。系统在接受输出前还会确定性校验：
 
 - preferred family 当前可用且符合 action mode
-- preferred family 未被当前 coverage target 的低价值历史封禁
-- query 没有重复同一 target、同一 family 的已知低价值 query
-- query 遵守 scope restrictions
+- acquisition action 的 query 非空且格式合法
 
-不合法输出按 assessment schema/validation failure 处理，不由系统静默改写 action、family 或 query。
+近期 history 会完整提供给 Assessment LLM，并提示其避免无理由原样重复失败 query；但历史上的 failed、no_result
+或低 utility 不会导致系统拒绝再次使用同一 family 或 query。不合法输出按 assessment schema/validation failure
+处理，不由系统静默改写 action、family 或 query。
 
 ### 4.5.3 Responsibility Boundary
 
@@ -1832,7 +1833,8 @@ action_rationale
 ```
 
 Assessment 日志记录 action、preferred family、query、query fingerprint 和 rationale。
-当前调试期不根据单个 coverage target 的低价值路径历史提前退出 Agent Loop；每轮统一进入 findings 与 outcome evaluation。
+当前调试期不根据单个 coverage target 的低价值路径历史提前退出 Agent Loop，也不从跨 iteration history
+生成 `blocked_source_families`；每轮统一进入 findings 与 outcome evaluation。
 
 ## 4.6 Relationship Between Planning Artifacts and Execution
 
@@ -3912,7 +3914,8 @@ fallback 默认在 family 层表达，例如：
 
 - 先在 **family** 层完成路径选择
 - 再在选定的 family 内解析具体 tool
-- `recent_retrieval_attempts` 优先作用于 **tool** 级别；只有当某个 family 下的可行 tool 已被低价值历史尝试基本耗尽时，才进一步影响 **family** 级候选集
+- `recent_retrieval_attempts` 作为 Assessment LLM 和 query generation 的参考，不直接删除 family 候选
+- `blocked_source_families` 只来自调用方显式 policy 或 TEL 单次执行内的恢复决策，不从跨 iteration history 自动推导
 
 ---
 

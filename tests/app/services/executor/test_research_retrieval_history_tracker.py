@@ -204,10 +204,6 @@ def test_history_tracker_records_attempt_after_outcome_and_bounds_history(
     assert history_record.new_retrieval_attempt_count == 2
     assert history_record.retrieval_history_count == 8
     assert history_record.retrieval_history_truncated_count == 2
-    assert history_record.low_value_families == [
-        FamilyName.DOCS_SEARCH,
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-    ]
     assert history_record.retrieval_attempts == [
         {
             "selected_family": FamilyName.RESEARCH_KNOWLEDGE_RECALL,
@@ -292,97 +288,6 @@ def test_history_tracker_logs_each_skip_reason(caplog) -> None:
         "skipped",
     ]
     assert all(record.new_retrieval_attempt_count == 0 for record in history_records)
-
-
-
-
-
-
-
-
-@pytest.mark.parametrize("family", list(FamilyName))
-@pytest.mark.parametrize(
-    "utility",
-    [
-        RetrievalResultUtility.WEAKLY_USEFUL,
-        RetrievalResultUtility.NOT_USEFUL,
-    ],
-)
-def test_lower_two_utility_levels_make_every_family_low_value(
-    family: FamilyName,
-    utility: RetrievalResultUtility,
-) -> None:
-    tracker = ResearchRetrievalHistoryTracker()
-    state = _run_state(
-        recent_retrieval_attempts=[
-            _attempt(
-                family,
-                status=AcquisitionStatus.SUCCESS,
-                utility=utility,
-            )
-        ]
-    )
-
-    assert tracker.low_value_families_for_target(
-        state.recent_retrieval_attempts,
-        "objective",
-    ) == {family}
-
-
-@pytest.mark.parametrize("family", list(FamilyName))
-@pytest.mark.parametrize(
-    "utility",
-    [
-        RetrievalResultUtility.HIGHLY_USEFUL,
-        RetrievalResultUtility.STRONGLY_USEFUL,
-        RetrievalResultUtility.USEFUL,
-    ],
-)
-def test_top_three_utility_levels_do_not_block_family(
-    family: FamilyName,
-    utility: RetrievalResultUtility,
-) -> None:
-    tracker = ResearchRetrievalHistoryTracker()
-    state = _run_state(
-        recent_retrieval_attempts=[
-            _attempt(
-                family,
-                status=AcquisitionStatus.SUCCESS,
-                utility=utility,
-            )
-        ]
-    )
-
-    assert tracker.low_value_families_for_target(
-        state.recent_retrieval_attempts,
-        "objective",
-    ) == set()
-
-
-def test_only_latest_attempt_per_family_controls_low_value_state() -> None:
-    tracker = ResearchRetrievalHistoryTracker()
-    recovered_attempts = [
-        _attempt(
-            FamilyName.DOCS_SEARCH,
-            status=AcquisitionStatus.SUCCESS,
-            utility=RetrievalResultUtility.WEAKLY_USEFUL,
-        ),
-        _attempt(
-            FamilyName.DOCS_SEARCH,
-            status=AcquisitionStatus.SUCCESS,
-            utility=RetrievalResultUtility.USEFUL,
-        ),
-    ]
-    regressed_attempts = list(reversed(recovered_attempts))
-
-    assert tracker.low_value_families_for_target(
-        recovered_attempts,
-        "objective",
-    ) == set()
-    assert tracker.low_value_families_for_target(
-        regressed_attempts,
-        "objective",
-    ) == {FamilyName.DOCS_SEARCH}
 
 
 @pytest.mark.parametrize(
@@ -486,51 +391,3 @@ def test_success_without_processed_evidence_is_not_useful() -> None:
     assert tracker._attempt_utility(_run_state(), AcquisitionStatus.SUCCESS) == (
         RetrievalResultUtility.NOT_USEFUL
     )
-
-
-def test_failed_no_result_and_not_useful_history_remain_low_value() -> None:
-    tracker = ResearchRetrievalHistoryTracker()
-    attempts = [
-        _attempt(
-            FamilyName.WEB_SEARCH,
-            status=AcquisitionStatus.FAILED,
-            utility=RetrievalResultUtility.WEAKLY_USEFUL,
-        ),
-        _attempt(
-            FamilyName.PAPER_SEARCH,
-            status=AcquisitionStatus.NO_RESULT,
-            utility=RetrievalResultUtility.USEFUL,
-        ),
-        _attempt(
-            FamilyName.DOCS_SEARCH,
-            status=AcquisitionStatus.SUCCESS,
-            utility=RetrievalResultUtility.NOT_USEFUL,
-        ),
-    ]
-
-    assert all(tracker.is_definitively_low_value(attempt) for attempt in attempts)
-
-
-def test_weakly_useful_memory_history_is_scoped_to_coverage_target() -> None:
-    tracker = ResearchRetrievalHistoryTracker()
-    state = _run_state(
-        recent_retrieval_attempts=[
-            _attempt(
-                FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                status=AcquisitionStatus.SUCCESS,
-                utility=RetrievalResultUtility.WEAKLY_USEFUL,
-                target_key="sub_question:1",
-            )
-        ]
-    )
-
-    assert tracker.low_value_families_for_target(
-        state.recent_retrieval_attempts,
-        "objective",
-    ) == set()
-    assert tracker.low_value_families_for_target(
-        state.recent_retrieval_attempts,
-        "sub_question:1",
-    ) == {
-        FamilyName.RESEARCH_KNOWLEDGE_RECALL
-    }

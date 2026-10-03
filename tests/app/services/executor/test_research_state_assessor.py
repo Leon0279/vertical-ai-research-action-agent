@@ -235,7 +235,7 @@ def test_assess_rejects_unavailable_preferred_family() -> None:
         asyncio.run(assessor.assess(_assessor_input()))
 
 
-def test_assess_rejects_family_blocked_by_low_value_history() -> None:
+def test_assess_allows_family_with_low_value_history() -> None:
     assessor_input = _assessor_input().model_copy(
         update={
             "recent_retrieval_attempts": [
@@ -251,17 +251,23 @@ def test_assess_rejects_family_blocked_by_low_value_history() -> None:
             ]
         }
     )
+    llm_client = _FakeLLMClient(_valid_response())
     assessor = ResearchStateAssessor(
-        llm_client=_FakeLLMClient(_valid_response()),
+        llm_client=llm_client,
         coverage_tracker=ResearchCoverageTracker(),
         retrieval_history_tracker=ResearchRetrievalHistoryTracker(),
     )
 
-    with pytest.raises(ValueError, match="blocked by low-value history"):
-        asyncio.run(assessor.assess(assessor_input))
+    output = asyncio.run(assessor.assess(assessor_input))
+
+    assert output.preferred_family == FamilyName.DOCS_SEARCH
+    prompt = llm_client.prompts[0]
+    assert '"selected_family": "docs_search"' in prompt
+    assert "此前效果不佳不会自动禁止再次选择同一 family 或 query" in prompt
+    assert "建议避免在没有新理由时原样重复" in prompt
 
 
-def test_assess_rejects_repeated_low_value_query() -> None:
+def test_assess_allows_repeated_low_value_query() -> None:
     response = _valid_response()
     assessor_input = _assessor_input().model_copy(
         update={
@@ -284,8 +290,9 @@ def test_assess_rejects_repeated_low_value_query() -> None:
         retrieval_history_tracker=ResearchRetrievalHistoryTracker(),
     )
 
-    with pytest.raises(ValueError, match="repeats a known low-value query"):
-        asyncio.run(assessor.assess(assessor_input))
+    output = asyncio.run(assessor.assess(assessor_input))
+
+    assert output.retrieval_query == response["retrieval_query"]
 
 
 def test_assess_allows_refine_when_current_target_paths_are_low_value() -> None:

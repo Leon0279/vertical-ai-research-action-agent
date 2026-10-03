@@ -127,6 +127,7 @@ class ToolExecutionLayerRequest(BaseModel):
             "当前项目中有用：TEL 在已选择 family 后，会从同一 target_problem、同一 family 且明确低价值的 "
             "attempt 派生 query 负例，降低重复无效 query 的概率。每项包含 coverage target、family/tool、"
             "query、执行状态、实际效用和 fallback 标记；它不是 raw trace，也不直接决定高层 memory/external 路径。"
+            "它也不会自动加入 blocked_source_families。"
             "旧调用方可继续只传 recent_low_value_queries。"
         ),
     )

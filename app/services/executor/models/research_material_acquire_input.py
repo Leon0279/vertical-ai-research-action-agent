@@ -68,6 +68,7 @@ class ResearchMaterialAcquireInput(BaseModel):
     )
     recent_retrieval_attempts: list[RecentRetrievalAttempt] = Field(
         description=(
-            "必填字段。本 Research Stage 内可用于 TEL 避免低价值重复检索的近期历史。"
+            "必填字段。本 Research Stage 内供 Assessment、TEL 和诊断参考的近期检索历史；"
+            "它不会自动生成 family blacklist。"
         ),
     )

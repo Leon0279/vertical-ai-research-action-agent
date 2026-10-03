@@ -97,6 +97,15 @@ def _acquire_input() -> ResearchMaterialAcquireInput:
         ),
         recent_retrieval_attempts=[
             RecentRetrievalAttempt(
+                coverage_target_key="objective",
+                selected_family=FamilyName.DOCS_SEARCH,
+                target_problem="查找项目文档中的直接事实。",
+                generated_query="旧的低价值文档 query",
+                query_fingerprint="same-target-query",
+                result_status=AcquisitionStatus.NO_RESULT,
+                result_utility=RetrievalResultUtility.NOT_USEFUL,
+            ),
+            RecentRetrievalAttempt(
                 coverage_target_key="other-target",
                 selected_family=FamilyName.WEB_SEARCH,
                 target_problem="其它问题。",
@@ -138,5 +147,10 @@ def test_acquire_returns_typed_output_without_mutating_input() -> None:
     assert output.tool_execution_request.preferred_source_families == [
         FamilyName.DOCS_SEARCH
     ]
-    assert output.tool_execution_request.recent_retrieval_attempts == []
+    assert output.tool_execution_request.blocked_source_families == []
+    assert len(output.tool_execution_request.recent_retrieval_attempts) == 1
+    assert (
+        output.tool_execution_request.recent_retrieval_attempts[0].selected_family
+        == FamilyName.DOCS_SEARCH
+    )
     assert acquire_input == input_before_acquisition

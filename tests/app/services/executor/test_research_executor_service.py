@@ -189,17 +189,6 @@ def _valid_outcome_payload(
     }
 
 
-def _low_value_attempt(family: FamilyName) -> RecentRetrievalAttempt:
-    return RecentRetrievalAttempt(
-        coverage_target_key="objective",
-        selected_family=family,
-        target_problem="补充当前研究目标的直接事实证据。",
-        query_fingerprint=f"{family.value}-low-value",
-        result_status=AcquisitionStatus.NO_RESULT,
-        result_utility=RetrievalResultUtility.NOT_USEFUL,
-    )
-
-
 class _FakeLLMClient:
     def __init__(
         self,
@@ -270,19 +259,7 @@ class _FakeLLMClient:
             for target in targets
         ]
         available_families = prompt_input["runtime_control"]["available_families"]
-        history = prompt_input["recent_retrieval_history"]
-        low_value_families = {
-            item["selected_family"]
-            for item in history
-            if item["result_status"] in {"failed", "no_result"}
-            or item["result_utility"] in {"weakly_useful", "not_useful"}
-        }
-        eligible_families = [
-            family
-            for family in available_families
-            if family not in low_value_families
-        ]
-        if payload["top_gap"]["gap_nature"] == "none" or not eligible_families:
+        if payload["top_gap"]["gap_nature"] == "none" or not available_families:
             payload.update(
                 action_mode="refine_from_existing_state",
                 preferred_family=None,
@@ -290,7 +267,7 @@ class _FakeLLMClient:
                 action_rationale="当前没有可执行的获取路径或可推进缺口。",
             )
         else:
-            preferred_family = eligible_families[0]
+            preferred_family = available_families[0]
             payload.update(
                 action_mode=(
                     "memory_backed_acquisition"
@@ -664,34 +641,6 @@ class _FailingFourthFindingsResearchExecutorService(_TestResearchExecutorService
         iteration.outcome_rationale = "continue test loop"
         self._retrieval_history_tracker.record_completed_iteration(run_state)
         return "continue"
-
-
-class _HistorySeededResearchExecutorService(
-    _StateCapturingResearchExecutorService
-):
-    """在 assessment 后注入既有低价值路径，便于隔离 action 规则测试。"""
-
-    def __init__(
-        self,
-        *,
-        recent_retrieval_attempts: list[RecentRetrievalAttempt],
-        llm_client: _FakeLLMClient | None = None,
-    ) -> None:
-        super().__init__(llm_client=llm_client)
-        self._seed_retrieval_attempts = recent_retrieval_attempts
-
-    async def _assess_research_state_and_select_next_evidence_need(
-        self,
-        stage_input: ResearchStageInput,
-        run_state: ResearchExecutorRunState,
-    ) -> None:
-        await super()._assess_research_state_and_select_next_evidence_need(
-            stage_input,
-            run_state,
-        )
-        run_state.recent_retrieval_attempts = list(
-            self._seed_retrieval_attempts
-        )
 
 
 def test_research_executor_runs_canonical_iteration_steps_in_order() -> None:

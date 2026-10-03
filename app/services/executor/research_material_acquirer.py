@@ -144,16 +144,7 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
         """将 Assessor 的结构化决策投影为 TEL public request。"""
 
         next_evidence_need = acquire_input.next_evidence_need
-        low_value_families = self._retrieval_history_tracker.low_value_families_for_target(
-            acquire_input.recent_retrieval_attempts,
-            next_evidence_need.coverage_target_key,
-        )
         allowed_families = self._allowed_source_families(acquire_input)
-        blocked_families = [
-            family
-            for family in allowed_families
-            if family in low_value_families
-        ]
         max_results = 5
         return ToolExecutionLayerRequest(
             target_problem=self._required_text(
@@ -167,7 +158,7 @@ class ResearchMaterialAcquirer(ResearchExecutorCollaboratorSupport):
             task_framing=acquire_input.task_framing,
             allowed_source_families=allowed_families,
             preferred_source_families=[acquire_input.preferred_family],
-            blocked_source_families=blocked_families,
+            blocked_source_families=[],
             available_families=list(acquire_input.available_families),
             success_hint=(
                 next_evidence_need.need_summary

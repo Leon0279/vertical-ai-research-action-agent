@@ -89,7 +89,6 @@ _STRUCTURED_FIELDS = (
     "preferred_family",
     "action_rationale",
     "available_families",
-    "low_value_families",
     "top_gap_nature",
     "top_gap_severity",
     "evidence_need_purpose",

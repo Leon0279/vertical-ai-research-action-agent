@@ -6,7 +6,7 @@ import hashlib
 import logging
 
 from app.common.utils.text import normalize_whitespace_or_none
-from app.domain.enums import AcquisitionStatus, FamilyName, RetrievalResultUtility
+from app.domain.enums import AcquisitionStatus, RetrievalResultUtility
 from app.domain.models import RecentRetrievalAttempt, ToolExecutionLayerResult
 from app.services.executor.enums import ResearchEvidenceGain, ResearchTopGapProgress
 from app.services.executor.models.research_executor_iteration_state import (
@@ -22,9 +22,9 @@ logger = logging.getLogger(__name__)
 class ResearchRetrievalHistoryTracker:
     """将本轮 TEL 结果压缩为下一轮可消费的最小检索历史。
 
-    该协作者只维护一次 Research Stage 内的路径经验，不保存 raw trace、不做检索决策，
-    也不写入 RunningState、长期记忆或任何公开 result。ResearchStateAssessor 读取它的
-    typed 结果避免重复低价值路径与 query，TEL 消费其与当前 target 相关的历史投影。
+    该协作者只维护一次 Research Stage 内的检索经验，不保存 raw trace、不做检索决策，
+    也不写入 RunningState、长期记忆或任何公开 result。ResearchStateAssessor 将其作为
+    LLM 的参考信息，TEL 可消费与当前 target 相关的历史投影，但历史不会形成 family blacklist。
     """
 
     _MAX_RECENT_ATTEMPTS = 8
@@ -146,17 +146,6 @@ class ResearchRetrievalHistoryTracker:
 
         iteration = run_state.require_current_iteration()
         attempts = list(new_attempts or [])
-        low_value_families = (
-            sorted(
-                self.low_value_families_for_target(
-                    run_state.recent_retrieval_attempts,
-                    coverage_target_key,
-                ),
-                key=lambda family: family.value,
-            )
-            if coverage_target_key is not None
-            else []
-        )
         logger.info(
             "Research retrieval history processed.",
             extra={
@@ -182,7 +171,6 @@ class ResearchRetrievalHistoryTracker:
                     }
                     for attempt in attempts
                 ],
-                "low_value_families": low_value_families,
             },
         )
 
@@ -198,45 +186,6 @@ class ResearchRetrievalHistoryTracker:
             for attempt in recent_retrieval_attempts
             if attempt.coverage_target_key == coverage_target_key
         ]
-
-    def low_value_families_for_target(
-        self,
-        recent_retrieval_attempts: list[RecentRetrievalAttempt],
-        coverage_target_key: str,
-    ) -> set[FamilyName]:
-        """依据每个 family 的最近一次结果返回当前 target 应规避的路径。"""
-
-        latest_attempt_by_family: dict[FamilyName, RecentRetrievalAttempt] = {}
-        for attempt in self.attempts_for_target(
-            recent_retrieval_attempts,
-            coverage_target_key,
-        ):
-            latest_attempt_by_family[attempt.selected_family] = attempt
-        return {
-            family
-            for family, attempt in latest_attempt_by_family.items()
-            if self.is_definitively_low_value(attempt)
-        }
-
-    def is_definitively_low_value(
-        self,
-        attempt: RecentRetrievalAttempt,
-    ) -> bool:
-        """判断某条历史是否足以阻止当前 target 立刻重复同一 family。
-
-        AcquisitionStatus 只描述检索是否返回材料；Utility 描述材料对当前 target
-        的实际增量。任意 family 一旦只有微弱增量或完全无用，下一轮都应切换路径。
-        """
-
-        return (
-            attempt.result_status
-            in {AcquisitionStatus.FAILED, AcquisitionStatus.NO_RESULT}
-            or attempt.result_utility
-            in {
-                RetrievalResultUtility.WEAKLY_USEFUL,
-                RetrievalResultUtility.NOT_USEFUL,
-            }
-        )
 
     def assessment_prompt_value(
         self,

@@ -103,10 +103,6 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
                     FamilyName.DOCS_SEARCH,
                     FamilyName.WEB_SEARCH,
                 ],
-                "low_value_families": [
-                    FamilyName.RESEARCH_KNOWLEDGE_RECALL,
-                    FamilyName.WEB_SEARCH,
-                ],
                 "tool_execution_request": {
                     "target_problem": "Use api_key=tel-secret safely.",
                     "action_mode": "external_acquisition",
@@ -252,10 +248,6 @@ def test_jsonl_handler_writes_allowlisted_fields_and_redacts_credentials(
     assert record["available_families"] == [
         "research_knowledge_recall",
         "docs_search",
-        "web_search",
-    ]
-    assert record["low_value_families"] == [
-        "research_knowledge_recall",
         "web_search",
     ]
     assert record["tool_execution_request"] == {

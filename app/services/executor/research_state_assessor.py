@@ -305,8 +305,9 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
             "- coverage_target_key 表示该尝试服务的覆盖对象；selected_family / selected_tool 表示实际资料渠道；\n"
             "  result_status 表示是否拿到材料，result_utility 表示材料是否实际推进了该对象。\n"
             "- generated_query 是已尝试的检索短语。对同一 coverage target 和 family，"
-            "不要重复 failed、no_result 或明确低价值的 query。\n"
-            "- 历史用于避免重复低价值路径并选择新的 action mode、preferred family 和 query。\n\n"
+            "建议避免在没有新理由时原样重复 failed、no_result 或明确低价值的 query。\n"
+            "- 历史仅作为你判断 action mode、preferred family 和 query 的参考；"
+            "此前效果不佳不会自动禁止再次选择同一 family 或 query。\n\n"
             "7. runtime_control\n"
             "- iteration_index：当前是第几轮研究迭代。\n"
             "- remaining_iteration_budget：当前还允许继续多少轮。\n"
@@ -581,13 +582,8 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
         assessor_input: ResearchStateAssessorInput,
         payload: LLMResearchAssessmentAndGapsPayload,
     ) -> None:
-        """用 runtime 能力和历史校验 LLM 的 action、family 与 query。"""
+        """用 runtime 能力校验 LLM 的 action、family 与 query 基本合法性。"""
 
-        target_key = payload.next_evidence_need.coverage_target_key
-        low_value_families = self._retrieval_history_tracker.low_value_families_for_target(
-            assessor_input.recent_retrieval_attempts,
-            target_key,
-        )
         available_families = list(dict.fromkeys(assessor_input.available_families))
 
         if payload.action_mode == ResearchActionMode.REFINE_FROM_EXISTING_STATE:
@@ -602,25 +598,6 @@ class ResearchStateAssessor(ResearchExecutorCollaboratorSupport):
         normalized_query = normalize_whitespace_or_none(payload.retrieval_query)
         if normalized_query is None:
             raise ValueError("Research assessment retrieval_query must not be empty.")
-        normalized_query_key = normalized_query.casefold()
-        for attempt in self._retrieval_history_tracker.attempts_for_target(
-            assessor_input.recent_retrieval_attempts,
-            target_key,
-        ):
-            previous_query = normalize_whitespace_or_none(attempt.generated_query)
-            if (
-                attempt.selected_family == preferred_family
-                and self._retrieval_history_tracker.is_definitively_low_value(attempt)
-                and previous_query is not None
-                and previous_query.casefold() == normalized_query_key
-            ):
-                raise ValueError(
-                    "Research assessment retrieval_query repeats a known low-value query."
-                )
-        if preferred_family in low_value_families:
-            raise ValueError(
-                "Research assessment preferred_family is blocked by low-value history."
-            )
         payload.retrieval_query = normalized_query
 
     @staticmethod
