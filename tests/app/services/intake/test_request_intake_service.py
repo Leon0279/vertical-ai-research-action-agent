@@ -4,6 +4,7 @@ import asyncio
 from datetime import UTC
 
 import pytest
+from pydantic import ValidationError
 
 from app.domain.models import ExecutionContext, RequestContext
 from app.domain.enums import FamilyName
@@ -87,12 +88,21 @@ def test_request_intake_service_preserves_explicit_iteration_budget() -> None:
             RequestContext(
                 original_query="Run a deeper research loop.",
                 user_id="user-1",
-                iteration_budget=4,
+                iteration_budget=99,
             )
         )
     )
 
-    assert state.runtime_context.iteration_budget == 4
+    assert state.runtime_context.iteration_budget == 99
+
+
+def test_request_context_rejects_iteration_budget_above_limit() -> None:
+    with pytest.raises(ValidationError):
+        RequestContext(
+            original_query="Run too many research iterations.",
+            user_id="user-1",
+            iteration_budget=100,
+        )
 
 
 def test_request_intake_service_rejects_blank_query() -> None:

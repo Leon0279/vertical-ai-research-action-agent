@@ -23,7 +23,7 @@ Transport-agnostic request context for orchestration."""
     iteration_budget: int = Field(
         default=2,
         ge=1,
-        le=5,
+        le=99,
         strict=True,
-        description="可选字段。当前请求允许执行的最大 research iteration 数量。",
+        description="可选字段。当前请求允许执行的最大 research iteration 数量，取值范围为 1 到 99。",
     )

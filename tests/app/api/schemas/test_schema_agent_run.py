@@ -14,7 +14,7 @@ def test_agent_run_request_minimal() -> None:
     assert payload.iteration_budget == 2
 
 
-@pytest.mark.parametrize("iteration_budget", [1, 5])
+@pytest.mark.parametrize("iteration_budget", [1, 99])
 def test_agent_run_request_accepts_iteration_budget_boundaries(
     iteration_budget: int,
 ) -> None:
@@ -29,7 +29,7 @@ def test_agent_run_request_accepts_iteration_budget_boundaries(
 
 @pytest.mark.parametrize(
     "iteration_budget",
-    [0, -1, 6, 1.5, "2", None],
+    [0, -1, 100, 1.5, "2", None],
 )
 def test_agent_run_request_rejects_invalid_iteration_budget(
     iteration_budget: object,

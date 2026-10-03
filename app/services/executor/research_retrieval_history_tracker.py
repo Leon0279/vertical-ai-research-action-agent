@@ -27,7 +27,7 @@ class ResearchRetrievalHistoryTracker:
     LLM 的参考信息，TEL 可消费与当前 target 相关的历史投影，但历史不会形成 family blacklist。
     """
 
-    _MAX_RECENT_ATTEMPTS = 8
+    _MAX_RECENT_ATTEMPTS = 30
 
     def record_completed_iteration(self, run_state: ResearchExecutorRunState) -> None:
         """在 Step 7 后压缩当前 iteration 的实际 retrieval attempts。"""

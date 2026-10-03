@@ -102,8 +102,8 @@ def test_agent_route_forwards_explicit_iteration_budget() -> None:
         {
             "query": "执行较深入的研究。",
             "user_id": "user-1",
-            "iteration_budget": 3,
+            "iteration_budget": 99,
         },
     )
 
-    assert pipeline.request.iteration_budget == 3
+    assert pipeline.request.iteration_budget == 99

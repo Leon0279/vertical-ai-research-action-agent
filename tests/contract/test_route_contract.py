@@ -89,12 +89,12 @@ def test_run_request_openapi_describes_iteration_budget() -> None:
     assert iteration_budget_schema["type"] == "integer"
     assert iteration_budget_schema["default"] == 2
     assert iteration_budget_schema["minimum"] == 1
-    assert iteration_budget_schema["maximum"] == 5
+    assert iteration_budget_schema["maximum"] == 99
 
 
 @pytest.mark.parametrize(
     "iteration_budget",
-    [0, -1, 6, 1.5, "2", None],
+    [0, -1, 100, 1.5, "2", None],
 )
 def test_run_route_rejects_invalid_iteration_budget(
     iteration_budget: object,

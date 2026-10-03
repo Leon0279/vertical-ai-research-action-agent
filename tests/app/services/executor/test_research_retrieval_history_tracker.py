@@ -149,7 +149,7 @@ def test_history_tracker_records_attempt_after_outcome_and_bounds_history(
             utility=RetrievalResultUtility.WEAKLY_USEFUL,
             target_key=f"old:{index}",
         )
-        for index in range(8)
+        for index in range(30)
     ]
     state = _run_state(recent_retrieval_attempts=old_attempts)
     iteration = state.require_current_iteration()
@@ -180,7 +180,7 @@ def test_history_tracker_records_attempt_after_outcome_and_bounds_history(
 
     tracker.record_completed_iteration(state)
 
-    assert len(state.recent_retrieval_attempts) == 8
+    assert len(state.recent_retrieval_attempts) == 30
     recorded_attempt = state.recent_retrieval_attempts[-2]
     assert recorded_attempt.coverage_target_key == "objective"
     assert recorded_attempt.selected_family == FamilyName.RESEARCH_KNOWLEDGE_RECALL
@@ -202,7 +202,7 @@ def test_history_tracker_records_attempt_after_outcome_and_bounds_history(
     assert history_record.history_skip_reason is None
     assert history_record.coverage_target_key == "objective"
     assert history_record.new_retrieval_attempt_count == 2
-    assert history_record.retrieval_history_count == 8
+    assert history_record.retrieval_history_count == 30
     assert history_record.retrieval_history_truncated_count == 2
     assert history_record.retrieval_attempts == [
         {

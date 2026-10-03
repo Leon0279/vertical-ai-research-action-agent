@@ -181,7 +181,7 @@ curl --request POST http://127.0.0.1:8000/v1/agent/run \
   }'
 ```
 
-`iteration_budget` 允许范围为 `1–5`，表示本次请求允许的最大研究轮数。外部请求会消耗对应 provider 的额度。
+`iteration_budget` 允许范围为 `1–99`，表示本次请求允许的最大研究轮数。外部请求会消耗对应 provider 的额度。
 
 ## 日志
 
